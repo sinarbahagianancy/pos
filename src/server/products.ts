@@ -10,6 +10,9 @@ import {
   parseDbProduct,
   parseDbSerialNumber
 } from '../../app/schemas/product.schema';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const connectionString = process.env.DATABASE_URL;
 
