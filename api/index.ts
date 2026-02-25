@@ -10,7 +10,7 @@ import {
   validateCreateSerialNumberInput,
   parseDbProduct,
   parseDbSerialNumber
-} from '../src/app/schemas/product.schema';
+} from '../app/schemas/product.schema';
 import dotenv from 'dotenv';
 
 dotenv.config();
