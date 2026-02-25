@@ -12,6 +12,9 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@effect/io": "^0.41.2",
+    "@effect/platform": "^0.94.5",
+    "@effect/schema": "^0.75.5",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.97.0",
     "@tailwindcss/vite": "^4.1.18",
@@ -19,7 +22,9 @@
     "@tanstack/react-router": "^1.132.0",
     "@tanstack/react-router-devtools": "^1.132.0",
     "@tanstack/router-plugin": "^1.132.0",
+    "dotenv": "^17.3.1",
     "drizzle-orm": "^0.45.1",
+    "effect": "^3.19.19",
     "lucide-react": "^0.545.0",
     "postgres": "^3.4.8",
     "react": "^19.2.0",

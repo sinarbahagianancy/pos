@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { createRouter, RootRoute, Route } from '@tanstack/react-router';
 import { AppLayout } from './routes/__root';
 import POSView from './routes/POS';
@@ -10,22 +10,94 @@ import AuditLogsView from './routes/AuditLogs';
 import SettingsView from './routes/Settings';
 import DashboardView from './routes/Dashboard';
 import LoginView from './routes/Login';
+import { 
+  getAllProducts, 
+  getAllSerialNumbers, 
+  getAuditLogsByProduct,
+  createProduct as dbCreateProduct,
+  adjustStock as dbAdjustStock,
+  createSerialNumbersBulk
+} from '../app/services/product.service';
+import type { Product, SerialNumber, AuditLog } from '../app/types';
+
+const STAF_LIST = ['Nancy', 'Mami', 'Vita', 'Cicik', 'Budi', 'Siti', 'Andi', 'Rina', 'Joko'];
 
 const DashboardComponent = () => (
   <DashboardView sales={[]} claims={[]} products={[]} />
 );
 
-const InventoryComponent = () => (
-  <InventoryView 
-    products={[]} 
-    sns={[]} 
-    logs={[]} 
-    setProducts={() => {}} 
-    canViewSensitive={true}
-    onManualAdjust={() => {}}
-    onAddProduct={() => {}}
-  />
-);
+const InventoryComponent = () => {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [sns, setSns] = useState<SerialNumber[]>([]);
+  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  React.useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [productsData, snsData] = await Promise.all([
+          getAllProducts(),
+          getAllSerialNumbers(),
+        ]);
+        setProducts(productsData);
+        setSns(snsData);
+      } catch (error) {
+        console.error('Failed to load inventory data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadData();
+  }, []);
+
+  const handleManualAdjust = async (productId: string, newStock: number, reason: string) => {
+    try {
+      await dbAdjustStock(productId, newStock, reason, 'Admin');
+      setProducts(prev => prev.map(p => 
+        p.id === productId ? { ...p, stock: newStock } : p
+      ));
+    } catch (error) {
+      console.error('Failed to adjust stock:', error);
+    }
+  };
+
+  const handleAddProduct = async (product: Product, serials: string[]) => {
+    try {
+      const newProduct = await dbCreateProduct(product);
+      if (serials.length > 0) {
+        const snInputs = serials.map(sn => ({ sn, productId: product.id }));
+        await createSerialNumbersBulk(snInputs);
+      }
+      setProducts(prev => [...prev, newProduct]);
+      if (serials.length > 0) {
+        const snsData = await getAllSerialNumbers();
+        setSns(snsData);
+      }
+    } catch (error) {
+      console.error('Failed to add product:', error);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+      </div>
+    );
+  }
+
+  return (
+    <InventoryView 
+      products={products}
+      sns={sns}
+      logs={logs}
+      setProducts={setProducts}
+      canViewSensitive={true}
+      onManualAdjust={handleManualAdjust}
+      onAddProduct={handleAddProduct}
+    />
+  );
+};
 
 const CustomersComponent = () => (
   <CustomersView 
@@ -65,7 +137,7 @@ const SettingsComponent = () => (
   <SettingsView 
     storeConfig={{ storeName: 'Sinar Bahagia', address: '', ppnRate: 11, currency: 'IDR' }}
     onUpdateStoreConfig={() => {}}
-    staffList={['Nancy', 'Mami', 'Vita', 'Cicik', 'Budi', 'Siti', 'Andi', 'Rina', 'Joko']}
+    staffList={STAF_LIST}
     onAddStaff={() => {}}
     isAdmin={true}
     onReset={() => {}}
@@ -74,7 +146,7 @@ const SettingsComponent = () => (
 
 const LoginComponent = () => (
   <LoginView 
-    staffList={['Nancy', 'Mami', 'Vita', 'Cicik', 'Budi', 'Siti', 'Andi', 'Rina', 'Joko']}
+    staffList={STAF_LIST}
     onLogin={() => {}}
   />
 );
@@ -97,13 +169,13 @@ const rootRoute = new RootRoute({
 
 const indexRoute = new Route({
   getParentRoute: () => rootRoute,
-  path: '/',
+  path: '/pos',
   component: POSComponent,
 });
 
 const dashboardRoute = new Route({
   getParentRoute: () => rootRoute,
-  path: '/dashboard',
+  path: '/',
   component: DashboardComponent,
 });
 

@@ -1,0 +1,285 @@
+export type MountType = 'E-mount' | 'RF-mount' | 'X-mount' | 'L-mount' | 'Z-mount' | 'M-mount';
+export type ConditionType = 'New' | 'Used';
+export type ProductCategory = 'Body' | 'Lens' | 'Accessory';
+export type WarrantyType = 'Official Sony Indonesia' | 'Official Canon Indonesia' | 'Official Fujifilm Indonesia' | 'Distributor' | 'Store Warranty';
+export type SNStatus = 'In Stock' | 'Sold' | 'Claimed';
+
+const MountTypes: MountType[] = ['E-mount', 'RF-mount', 'X-mount', 'L-mount', 'Z-mount', 'M-mount'];
+const ConditionTypes: ConditionType[] = ['New', 'Used'];
+const ProductCategories: ProductCategory[] = ['Body', 'Lens', 'Accessory'];
+const WarrantyTypes: WarrantyType[] = ['Official Sony Indonesia', 'Official Canon Indonesia', 'Official Fujifilm Indonesia', 'Distributor', 'Store Warranty'];
+const SNStatuses: SNStatus[] = ['In Stock', 'Sold', 'Claimed'];
+
+export interface Product {
+  id: string;
+  brand: string;
+  model: string;
+  category: ProductCategory;
+  mount?: MountType;
+  condition: ConditionType;
+  price: number;
+  cogs: number;
+  warrantyMonths: number;
+  warrantyType: WarrantyType;
+  stock: number;
+}
+
+export interface CreateProductInput {
+  id: string;
+  brand: string;
+  model: string;
+  category: ProductCategory;
+  mount?: MountType;
+  condition: ConditionType;
+  price: number;
+  cogs: number;
+  warrantyMonths: number;
+  warrantyType: WarrantyType;
+  stock: number;
+}
+
+export interface UpdateProductInput {
+  brand?: string;
+  model?: string;
+  category?: ProductCategory;
+  mount?: MountType;
+  condition?: ConditionType;
+  price?: number;
+  cogs?: number;
+  warrantyMonths?: number;
+  warrantyType?: WarrantyType;
+  stock?: number;
+}
+
+export interface StockAdjustmentInput {
+  productId: string;
+  newStock: number;
+  reason: string;
+}
+
+export interface SerialNumber {
+  sn: string;
+  productId: string;
+  status: SNStatus;
+}
+
+export interface CreateSerialNumberInput {
+  sn: string;
+  productId: string;
+}
+
+function isMountType(value: unknown): value is MountType {
+  return typeof value === 'string' && MountTypes.includes(value as MountType);
+}
+
+function isConditionType(value: unknown): value is ConditionType {
+  return typeof value === 'string' && ConditionTypes.includes(value as ConditionType);
+}
+
+function isProductCategory(value: unknown): value is ProductCategory {
+  return typeof value === 'string' && ProductCategories.includes(value as ProductCategory);
+}
+
+function isWarrantyType(value: unknown): value is WarrantyType {
+  return typeof value === 'string' && WarrantyTypes.includes(value as WarrantyType);
+}
+
+function isSNStatus(value: unknown): value is SNStatus {
+  return typeof value === 'string' && SNStatuses.includes(value as SNStatus);
+}
+
+export function validateCreateProductInput(input: unknown): CreateProductInput {
+  if (!input || typeof input !== 'object') {
+    throw new Error('Invalid input: must be an object');
+  }
+  
+  const obj = input as Record<string, unknown>;
+  
+  if (typeof obj.id !== 'string' || obj.id.length === 0) {
+    throw new Error('Invalid input: id is required and must be a non-empty string');
+  }
+  if (typeof obj.brand !== 'string' || obj.brand.length === 0) {
+    throw new Error('Invalid input: brand is required and must be a non-empty string');
+  }
+  if (typeof obj.model !== 'string' || obj.model.length === 0) {
+    throw new Error('Invalid input: model is required and must be a non-empty string');
+  }
+  if (!isProductCategory(obj.category)) {
+    throw new Error(`Invalid input: category must be one of ${ProductCategories.join(', ')}`);
+  }
+  if (obj.mount !== undefined && !isMountType(obj.mount)) {
+    throw new Error(`Invalid input: mount must be one of ${MountTypes.join(', ')}`);
+  }
+  if (!isConditionType(obj.condition)) {
+    throw new Error(`Invalid input: condition must be one of ${ConditionTypes.join(', ')}`);
+  }
+  if (typeof obj.price !== 'number' || obj.price <= 0) {
+    throw new Error('Invalid input: price must be a positive number');
+  }
+  if (typeof obj.cogs !== 'number' || obj.cogs < 0) {
+    throw new Error('Invalid input: cogs must be a non-negative number');
+  }
+  if (typeof obj.warrantyMonths !== 'number' || obj.warrantyMonths < 0) {
+    throw new Error('Invalid input: warrantyMonths must be a non-negative number');
+  }
+  if (!isWarrantyType(obj.warrantyType)) {
+    throw new Error(`Invalid input: warrantyType must be one of ${WarrantyTypes.join(', ')}`);
+  }
+  if (typeof obj.stock !== 'number' || obj.stock < 0) {
+    throw new Error('Invalid input: stock must be a non-negative number');
+  }
+  
+  return {
+    id: obj.id,
+    brand: obj.brand,
+    model: obj.model,
+    category: obj.category,
+    mount: obj.mount,
+    condition: obj.condition,
+    price: obj.price,
+    cogs: obj.cogs,
+    warrantyMonths: obj.warrantyMonths,
+    warrantyType: obj.warrantyType,
+    stock: obj.stock,
+  };
+}
+
+export function validateUpdateProductInput(input: unknown): UpdateProductInput {
+  if (!input || typeof input !== 'object') {
+    throw new Error('Invalid input: must be an object');
+  }
+  
+  const obj = input as Record<string, unknown>;
+  const result: UpdateProductInput = {};
+  
+  if (obj.brand !== undefined) {
+    if (typeof obj.brand !== 'string' || obj.brand.length === 0) {
+      throw new Error('Invalid input: brand must be a non-empty string');
+    }
+    result.brand = obj.brand;
+  }
+  if (obj.model !== undefined) {
+    if (typeof obj.model !== 'string' || obj.model.length === 0) {
+      throw new Error('Invalid input: model must be a non-empty string');
+    }
+    result.model = obj.model;
+  }
+  if (obj.category !== undefined && !isProductCategory(obj.category)) {
+    throw new Error(`Invalid input: category must be one of ${ProductCategories.join(', ')}`);
+  }
+  if (obj.category !== undefined) {
+    result.category = obj.category;
+  }
+  if (obj.mount !== undefined) {
+    if (obj.mount !== null && !isMountType(obj.mount)) {
+      throw new Error(`Invalid input: mount must be one of ${MountTypes.join(', ')}`);
+    }
+    result.mount = obj.mount ?? undefined;
+  }
+  if (obj.condition !== undefined && !isConditionType(obj.condition)) {
+    throw new Error(`Invalid input: condition must be one of ${ConditionTypes.join(', ')}`);
+  }
+  if (obj.condition !== undefined) {
+    result.condition = obj.condition;
+  }
+  if (obj.price !== undefined) {
+    if (typeof obj.price !== 'number' || obj.price <= 0) {
+      throw new Error('Invalid input: price must be a positive number');
+    }
+    result.price = obj.price;
+  }
+  if (obj.cogs !== undefined) {
+    if (typeof obj.cogs !== 'number' || obj.cogs < 0) {
+      throw new Error('Invalid input: cogs must be a non-negative number');
+    }
+    result.cogs = obj.cogs;
+  }
+  if (obj.warrantyMonths !== undefined) {
+    if (typeof obj.warrantyMonths !== 'number' || obj.warrantyMonths < 0) {
+      throw new Error('Invalid input: warrantyMonths must be a non-negative number');
+    }
+    result.warrantyMonths = obj.warrantyMonths;
+  }
+  if (obj.warrantyType !== undefined && !isWarrantyType(obj.warrantyType)) {
+    throw new Error(`Invalid input: warrantyType must be one of ${WarrantyTypes.join(', ')}`);
+  }
+  if (obj.warrantyType !== undefined) {
+    result.warrantyType = obj.warrantyType;
+  }
+  if (obj.stock !== undefined) {
+    if (typeof obj.stock !== 'number' || obj.stock < 0) {
+      throw new Error('Invalid input: stock must be a non-negative number');
+    }
+    result.stock = obj.stock;
+  }
+  
+  return result;
+}
+
+export function validateStockAdjustmentInput(input: unknown): StockAdjustmentInput {
+  if (!input || typeof input !== 'object') {
+    throw new Error('Invalid input: must be an object');
+  }
+  
+  const obj = input as Record<string, unknown>;
+  
+  if (typeof obj.productId !== 'string' || obj.productId.length === 0) {
+    throw new Error('Invalid input: productId is required and must be a non-empty string');
+  }
+  if (typeof obj.newStock !== 'number' || obj.newStock < 0 || !Number.isInteger(obj.newStock)) {
+    throw new Error('Invalid input: newStock must be a non-negative integer');
+  }
+  if (typeof obj.reason !== 'string' || obj.reason.length === 0) {
+    throw new Error('Invalid input: reason is required and must be a non-empty string');
+  }
+  
+  return {
+    productId: obj.productId,
+    newStock: obj.newStock,
+    reason: obj.reason,
+  };
+}
+
+export function validateCreateSerialNumberInput(input: unknown): CreateSerialNumberInput {
+  if (!input || typeof input !== 'object') {
+    throw new Error('Invalid input: must be an object');
+  }
+  
+  const obj = input as Record<string, unknown>;
+  
+  if (typeof obj.sn !== 'string' || obj.sn.length === 0) {
+    throw new Error('Invalid input: sn is required and must be a non-empty string');
+  }
+  if (typeof obj.productId !== 'string' || obj.productId.length === 0) {
+    throw new Error('Invalid input: productId is required and must be a non-empty string');
+  }
+  
+  return {
+    sn: obj.sn,
+    productId: obj.productId,
+  };
+}
+
+export function parseDbProduct(row: Record<string, unknown>): Product {
+  return {
+    id: row.id as string,
+    brand: row.brand as string,
+    model: row.model as string,
+    category: row.category as ProductCategory,
+    mount: row.mount as MountType | undefined,
+    condition: row.condition as ConditionType,
+    price: typeof row.price === 'string' ? parseFloat(row.price) : (row.price as number),
+    cogs: typeof row.cogs === 'string' ? parseFloat(row.cogs) : (row.cogs as number),
+    warrantyMonths: row.warranty_months as number,
+    warrantyType: row.warranty_type as WarrantyType,
+    stock: row.stock as number,
+  };
+}
+
+export function parseDbSerialNumber(row: Record<string, unknown>): SerialNumber {
+  return {
+    sn: row.sn as string,
+    productId: row.product_id as string,
+    status: row.status as SNStatus,
+  };
+}

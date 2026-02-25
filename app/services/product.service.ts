@@ -1,74 +1,148 @@
-import { db } from '../../src/db';
-import { products, serialNumbers } from '../../src/db/schema';
-import { eq } from 'drizzle-orm';
+import type { Product, SerialNumber } from '../types';
 
-export async function getAllProducts() {
-  return db.select().from(products);
-}
+const API_BASE = '/api';
 
-export async function getProductById(id: string) {
-  const result = await db.select().from(products).where(eq(products.id, id));
-  return result[0] || null;
-}
+export const getAllProducts = async (): Promise<Product[]> => {
+  const response = await fetch(`${API_BASE}/products`);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to fetch products');
+  }
+  return response.json();
+};
 
-export async function createProduct(data: {
-  id: string;
-  brand: string;
-  model: string;
-  category: 'Body' | 'Lens' | 'Accessory';
-  mount?: string;
-  condition: 'New' | 'Used';
-  price: number;
-  cogs: number;
-  warrantyMonths: number;
-  warrantyType: string;
-  stock: number;
-}) {
-  const result = await db.insert(products).values(data as any).returning();
-  return result[0];
-}
+export const getProductById = async (id: string): Promise<Product | null> => {
+  const response = await fetch(`${API_BASE}/products/${id}`);
+  if (!response.ok) {
+    if (response.status === 404) return null;
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to fetch product');
+  }
+  return response.json();
+};
 
-export async function updateProductStock(id: string, stock: number) {
-  const result = await db
-    .update(products)
-    .set({ stock, updatedAt: new Date() })
-    .where(eq(products.id, id))
-    .returning();
-  return result[0];
-}
+export const createProduct = async (input: unknown): Promise<Product> => {
+  const response = await fetch(`${API_BASE}/products`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to create product');
+  }
+  return response.json();
+};
 
-export async function deleteProduct(id: string) {
-  await db.delete(products).where(eq(products.id, id));
-}
+export const updateProduct = async (id: string, input: unknown): Promise<Product | null> => {
+  const response = await fetch(`${API_BASE}/products/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    if (response.status === 404) return null;
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to update product');
+  }
+  return response.json();
+};
 
-export async function getAllSerialNumbers() {
-  return db.select().from(serialNumbers);
-}
+export const adjustStock = async (
+  productId: string, 
+  newStock: number, 
+  reason: string, 
+  staffName: string = 'System'
+): Promise<Product | null> => {
+  const response = await fetch(`${API_BASE}/products/adjust-stock`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ productId, newStock, reason, staffName }),
+  });
+  if (!response.ok) {
+    if (response.status === 404) return null;
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to adjust stock');
+  }
+  return response.json();
+};
 
-export async function getAvailableSerialNumbers() {
-  return db
-    .select()
-    .from(serialNumbers)
-    .where(eq(serialNumbers.status, 'In Stock'));
-}
+export const deleteProduct = async (id: string): Promise<void> => {
+  const response = await fetch(`${API_BASE}/products/${id}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to delete product');
+  }
+};
 
-export async function getSerialNumbersByProduct(productId: string) {
-  return db
-    .select()
-    .from(serialNumbers)
-    .where(eq(serialNumbers.productId, productId));
-}
+export const getAllSerialNumbers = async (): Promise<SerialNumber[]> => {
+  const response = await fetch(`${API_BASE}/serial-numbers`);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to fetch serial numbers');
+  }
+  return response.json();
+};
 
-export async function createSerialNumber(data: { sn: string; productId: string }) {
-  const result = await db.insert(serialNumbers).values(data as any).returning();
-  return result[0];
-}
+export const getAvailableSerialNumbers = async (): Promise<SerialNumber[]> => {
+  const response = await fetch(`${API_BASE}/serial-numbers?status=In Stock`);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to fetch serial numbers');
+  }
+  return response.json();
+};
 
-export async function updateSerialNumberStatus(sn: string, status: 'In Stock' | 'Sold' | 'Claimed') {
-  const result = await db
-    .update(serialNumbers)
-    .set({ status })
-    .where(eq(serialNumbers.sn, sn))
-    .returning();
-  return result[0];
-}
+export const getSerialNumbersByProduct = async (productId: string): Promise<SerialNumber[]> => {
+  const response = await fetch(`${API_BASE}/serial-numbers/${productId}`);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to fetch serial numbers');
+  }
+  return response.json();
+};
+
+export const createSerialNumber = async (input: unknown): Promise<SerialNumber> => {
+  const response = await fetch(`${API_BASE}/serial-numbers`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to create serial number');
+  }
+  return response.json();
+};
+
+export const createSerialNumbersBulk = async (inputs: unknown[]): Promise<SerialNumber[]> => {
+  const response = await fetch(`${API_BASE}/serial-numbers/bulk`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(inputs),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to create serial numbers');
+  }
+  return response.json();
+};
+
+export const updateSerialNumberStatus = async (
+  sn: string, 
+  status: 'In Stock' | 'Sold' | 'Claimed'
+): Promise<SerialNumber | null> => {
+  const response = await fetch(`${API_BASE}/serial-numbers/${sn}/status`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+  if (!response.ok) {
+    if (response.status === 404) return null;
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to update serial number status');
+  }
+  return response.json();
+};
