@@ -8,9 +8,10 @@ interface CustomersProps {
   sales: Sale[];
   setCustomers: React.Dispatch<React.SetStateAction<Customer[]>>;
   notify: (message: string, type: 'success' | 'error' | 'info') => void;
+  onAddCustomer?: (customer: Customer) => Promise<void>;
 }
 
-const CustomersView: React.FC<CustomersProps> = ({ customers, sales, setCustomers, notify }) => {
+const CustomersView: React.FC<CustomersProps> = ({ customers, sales, setCustomers, notify, onAddCustomer }) => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [newCustomer, setNewCustomer] = useState({ name: '', phone: '', email: '', address: '', npwp: '' });
@@ -21,7 +22,7 @@ const CustomersView: React.FC<CustomersProps> = ({ customers, sales, setCustomer
     return { label: 'Standard Member', color: 'bg-slate-100 text-slate-600 shadow-slate-50' };
   };
 
-  const handleAdd = (e: React.FormEvent) => {
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     const customer: Customer = {
       id: `CUST-${Date.now()}`,
@@ -33,10 +34,22 @@ const CustomersView: React.FC<CustomersProps> = ({ customers, sales, setCustomer
       loyaltyPoints: 0
     };
     
-    setCustomers(prev => [...prev, customer]);
-    notify(`${newCustomer.name} berhasil didaftarkan ke sistem.`, 'success');
-    setShowAddModal(false);
-    setNewCustomer({ name: '', phone: '', email: '', address: '', npwp: '' });
+    if (onAddCustomer) {
+      try {
+        await onAddCustomer(customer);
+        setCustomers(prev => [...prev, customer]);
+        notify(`${newCustomer.name} berhasil didaftarkan ke sistem.`, 'success');
+        setShowAddModal(false);
+        setNewCustomer({ name: '', phone: '', email: '', address: '', npwp: '' });
+      } catch (error) {
+        notify('Gagal menambahkan pelanggan', 'error');
+      }
+    } else {
+      setCustomers(prev => [...prev, customer]);
+      notify(`${newCustomer.name} berhasil didaftarkan ke sistem.`, 'success');
+      setShowAddModal(false);
+      setNewCustomer({ name: '', phone: '', email: '', address: '', npwp: '' });
+    }
   };
 
   const customerTransactions = selectedCustomer 

@@ -49,6 +49,36 @@ const auditLogsTable = {
   }
 };
 
+const customersTable = {
+  tableName: 'customers',
+  columns: {
+    id: { name: 'id' },
+    name: { name: 'name' },
+    phone: { name: 'phone' },
+    email: { name: 'email' },
+    address: { name: 'address' },
+    npwp: { name: 'npwp' },
+    loyaltyPoints: { name: 'loyalty_points' },
+    createdAt: { name: 'created_at' },
+    updatedAt: { name: 'updated_at' },
+  }
+};
+
+const salesTable = {
+  tableName: 'sales',
+  columns: {
+    id: { name: 'id' },
+    customerId: { name: 'customer_id' },
+    customerName: { name: 'customer_name' },
+    subtotal: { name: 'subtotal' },
+    tax: { name: 'tax' },
+    total: { name: 'total' },
+    paymentMethod: { name: 'payment_method' },
+    staffName: { name: 'staff_name' },
+    timestamp: { name: 'timestamp' },
+  }
+};
+
 type ProductCategory = 'Body' | 'Lens' | 'Accessory';
 type ConditionType = 'New' | 'Used';
 type WarrantyType = 'Official Sony Indonesia' | 'Official Canon Indonesia' | 'Official Fujifilm Indonesia' | 'Distributor' | 'Store Warranty';
@@ -75,6 +105,41 @@ interface SerialNumber {
   status: SNStatus;
 }
 
+interface Customer {
+  id: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  npwp?: string;
+  loyaltyPoints: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+type PaymentMethod = 'Cash' | 'Debit' | 'Credit Card' | 'QRIS' | 'Transfer';
+
+interface SaleItem {
+  productId: string;
+  model: string;
+  sn: string;
+  price: number;
+  cogs: number;
+}
+
+interface Sale {
+  id: string;
+  customerId: string;
+  customerName: string;
+  items: SaleItem[];
+  subtotal: number;
+  tax: number;
+  total: number;
+  paymentMethod: PaymentMethod;
+  staffName: string;
+  timestamp: string;
+}
+
 const parseDbProduct = (row: Record<string, unknown>): Product => ({
   id: row.id as string,
   brand: row.brand as string,
@@ -94,6 +159,103 @@ const parseDbSerialNumber = (row: Record<string, unknown>): SerialNumber => ({
   productId: row.product_id as string,
   status: row.status as SNStatus,
 });
+
+const parseDbCustomer = (row: Record<string, unknown>): Customer => ({
+  id: row.id as string,
+  name: row.name as string,
+  phone: row.phone as string | undefined,
+  email: row.email as string | undefined,
+  address: row.address as string | undefined,
+  npwp: row.npwp as string | undefined,
+  loyaltyPoints: typeof row.loyalty_points === 'string' ? parseInt(row.loyalty_points) : (row.loyalty_points as number),
+  createdAt: row.created_at as string,
+  updatedAt: row.updated_at as string,
+});
+
+const parseDbSale = (row: Record<string, unknown>): Sale => ({
+  id: row.id as string,
+  customerId: row.customer_id as string,
+  customerName: row.customer_name as string,
+  items: [],
+  subtotal: typeof row.subtotal === 'string' ? parseFloat(row.subtotal) : (row.subtotal as number),
+  tax: typeof row.tax === 'string' ? parseFloat(row.tax) : (row.tax as number),
+  total: typeof row.total === 'string' ? parseFloat(row.total) : (row.total as number),
+  paymentMethod: row.payment_method as PaymentMethod,
+  staffName: row.staff_name as string,
+  timestamp: row.timestamp as string,
+});
+
+// Staff and Store Config types
+interface StaffMember {
+  id: string;
+  name: string;
+  role: 'Admin' | 'Staff';
+  createdAt: string;
+}
+
+interface StoreConfig {
+  id: number;
+  storeName: string;
+  address: string;
+  ppnRate: number;
+  currency: 'IDR' | 'USD';
+  updatedAt: string;
+}
+
+const parseDbStaffMember = (row: Record<string, unknown>): StaffMember => ({
+  id: row.id as string,
+  name: row.name as string,
+  role: row.role as 'Admin' | 'Staff',
+  createdAt: row.created_at as string,
+});
+
+const parseDbStoreConfig = (row: Record<string, unknown>): StoreConfig => ({
+  id: row.id as number,
+  storeName: row.store_name as string,
+  address: row.address as string,
+  ppnRate: typeof row.ppn_rate === 'string' ? parseFloat(row.ppn_rate) : (row.ppn_rate as number),
+  currency: row.currency as 'IDR' | 'USD',
+  updatedAt: row.updated_at as string,
+});
+
+// Initialize database - add password_hash column and default admins
+let initialized = false;
+const initializeDatabase = async () => {
+  if (initialized) return;
+  
+  try {
+    // Add password_hash column if not exists
+    await client.unsafe(`ALTER TABLE staff_members ADD COLUMN IF NOT EXISTS password_hash TEXT`).catch(() => {});
+    
+    // Create default admin accounts if they don't exist
+    const defaultAdmins = [
+      { name: 'Nancy', password: 'nancy123', role: 'Admin' },
+      { name: 'Mami', password: 'mami123', role: 'Admin' },
+      { name: 'Vita', password: 'vita123', role: 'Admin' },
+    ];
+    
+    for (const admin of defaultAdmins) {
+      const hash = btoa(admin.password); // Simple base64 encoding for demo
+      await client.unsafe(`
+        INSERT INTO staff_members (name, role, password_hash) 
+        VALUES ($1, $2, $3)
+        ON CONFLICT (name) DO UPDATE SET role = EXCLUDED.role
+      `, [admin.name, admin.role, hash]).catch(() => {});
+    }
+    
+    // Create default store config if not exists
+    await client.unsafe(`
+      INSERT INTO store_config (id, store_name, address, ppn_rate, currency)
+      VALUES (1, 'Sinar Bahagia Surabaya', 'Jl. Kramat Gantung No. 63, Genteng, Surabaya, Jawa Timur 60174, Indonesia', 11.00, 'IDR')
+      ON CONFLICT (id) DO NOTHING
+    `).catch(() => {});
+    
+    initialized = true;
+    console.log('Database initialized');
+  } catch (error) {
+    console.error('Failed to initialize database:', error);
+  }
+};
 
 // Validation functions
 const ProductCategories: ProductCategory[] = ['Body', 'Lens', 'Accessory'];
@@ -379,6 +541,278 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(404).json({ error: 'Serial number not found' });
       }
       return res.status(200).json(parseDbSerialNumber(result));
+    }
+
+    // === AUTH ROUTES ===
+    
+    // POST /api/auth/login
+    if (method === 'POST' && url === '/api/auth/login') {
+      await initializeDatabase();
+      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const { name, password } = input;
+      
+      if (!name || !password) {
+        return res.status(400).json({ error: 'Name and password required' });
+      }
+      
+      const passwordHash = btoa(password);
+      const result = await client.unsafe(
+        'SELECT id, name, role FROM staff_members WHERE name = $1 AND password_hash = $2',
+        [name, passwordHash]
+      );
+      
+      if (!result || result.length === 0) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+      
+      const user = result[0];
+      return res.status(200).json({
+        id: user.id,
+        name: user.name,
+        role: user.role
+      });
+    }
+
+    // === STAFF ROUTES ===
+    
+    // GET /api/staff
+    if (method === 'GET' && url === '/api/staff') {
+      await initializeDatabase();
+      const result = await client.unsafe('SELECT id, name, role, created_at FROM staff_members ORDER BY name');
+      return res.status(200).json(result.map(parseDbStaffMember));
+    }
+
+    // POST /api/staff
+    if (method === 'POST' && url === '/api/staff') {
+      await initializeDatabase();
+      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const { name, password, role = 'Staff' } = input;
+      
+      if (!name || !password) {
+        return res.status(400).json({ error: 'Name and password required' });
+      }
+      
+      const passwordHash = btoa(password);
+      
+      try {
+        const result = await client.unsafe(
+          'INSERT INTO staff_members (name, role, password_hash) VALUES ($1, $2, $3) RETURNING id, name, role, created_at',
+          [name, role, passwordHash]
+        );
+        return res.status(201).json(parseDbStaffMember(result[0]));
+      } catch (error: unknown) {
+        if (error && typeof error === 'object' && 'code' in error && error.code === '23505') {
+          return res.status(400).json({ error: 'Staff name already exists' });
+        }
+        throw error;
+      }
+    }
+
+    // DELETE /api/staff/:id
+    if (method === 'DELETE' && url?.startsWith('/api/staff/')) {
+      const staffId = url.replace('/api/staff/', '');
+      await client.unsafe('DELETE FROM staff_members WHERE id = $1', [staffId]);
+      return res.status(204).send(null);
+    }
+
+    // === STORE CONFIG ROUTES ===
+    
+    // GET /api/store-config
+    if (method === 'GET' && url === '/api/store-config') {
+      await initializeDatabase();
+      const result = await client.unsafe('SELECT * FROM store_config WHERE id = 1');
+      if (!result || result.length === 0) {
+        return res.status(404).json({ error: 'Store config not found' });
+      }
+      return res.status(200).json(parseDbStoreConfig(result[0]));
+    }
+
+    // PUT /api/store-config
+    if (method === 'PUT' && url === '/api/store-config') {
+      await initializeDatabase();
+      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const { storeName, address, ppnRate, currency } = input;
+      
+      const result = await client.unsafe(
+        'UPDATE store_config SET store_name = $1, address = $2, ppn_rate = $3, currency = $4, updated_at = NOW() WHERE id = 1 RETURNING *',
+        [storeName, address, ppnRate, currency]
+      );
+      
+      return res.status(200).json(parseDbStoreConfig(result[0]));
+    }
+
+    // === CUSTOMER ROUTES ===
+
+    // GET /api/customers
+    if (method === 'GET' && url === '/api/customers') {
+      await initializeDatabase();
+      const result = await client.unsafe('SELECT * FROM customers ORDER BY name');
+      return res.status(200).json(result.map(parseDbCustomer));
+    }
+
+    // GET /api/customers/:id
+    if (method === 'GET' && url?.startsWith('/api/customers/')) {
+      const customerId = url.replace('/api/customers/', '');
+      await initializeDatabase();
+      const result = await client.unsafe('SELECT * FROM customers WHERE id = $1', [customerId]);
+      if (!result || result.length === 0) {
+        return res.status(404).json({ error: 'Customer not found' });
+      }
+      return res.status(200).json(parseDbCustomer(result[0]));
+    }
+
+    // POST /api/customers
+    if (method === 'POST' && url === '/api/customers') {
+      await initializeDatabase();
+      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const { id, name, phone, email, address, npwp, loyaltyPoints = 0 } = input;
+
+      if (!id || !name) {
+        return res.status(400).json({ error: 'ID and name are required' });
+      }
+
+      const result = await client.unsafe(
+        'INSERT INTO customers (id, name, phone, email, address, npwp, loyalty_points) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+        [id, name, phone || null, email || null, address || null, npwp || null, loyaltyPoints]
+      );
+
+      return res.status(201).json(parseDbCustomer(result[0]));
+    }
+
+    // PUT /api/customers/:id
+    if (method === 'PUT' && url?.startsWith('/api/customers/')) {
+      const customerId = url.replace('/api/customers/', '');
+      await initializeDatabase();
+      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const { name, phone, email, address, npwp, loyaltyPoints } = input;
+
+      const updates: string[] = [];
+      const values: unknown[] = [];
+      let paramIndex = 1;
+
+      if (name !== undefined) {
+        updates.push(`name = $${paramIndex++}`);
+        values.push(name);
+      }
+      if (phone !== undefined) {
+        updates.push(`phone = $${paramIndex++}`);
+        values.push(phone);
+      }
+      if (email !== undefined) {
+        updates.push(`email = $${paramIndex++}`);
+        values.push(email);
+      }
+      if (address !== undefined) {
+        updates.push(`address = $${paramIndex++}`);
+        values.push(address);
+      }
+      if (npwp !== undefined) {
+        updates.push(`npwp = $${paramIndex++}`);
+        values.push(npwp);
+      }
+      if (loyaltyPoints !== undefined) {
+        updates.push(`loyalty_points = $${paramIndex++}`);
+        values.push(loyaltyPoints);
+      }
+
+      if (updates.length === 0) {
+        return res.status(400).json({ error: 'No fields to update' });
+      }
+
+      updates.push(`updated_at = NOW()`);
+      values.push(customerId);
+
+      const result = await client.unsafe(
+        `UPDATE customers SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+        values as (string | number | null)[]
+      );
+
+      if (!result || result.length === 0) {
+        return res.status(404).json({ error: 'Customer not found' });
+      }
+
+      return res.status(200).json(parseDbCustomer(result[0]));
+    }
+
+    // DELETE /api/customers/:id
+    if (method === 'DELETE' && url?.startsWith('/api/customers/')) {
+      const customerId = url.replace('/api/customers/', '');
+      await initializeDatabase();
+      
+      const hasSales = await client.unsafe('SELECT 1 FROM sales WHERE customer_id = $1 LIMIT 1', [customerId]);
+      if (hasSales && hasSales.length > 0) {
+        return res.status(400).json({ error: 'Cannot delete customer with existing sales' });
+      }
+      
+      await client.unsafe('DELETE FROM customers WHERE id = $1', [customerId]);
+      return res.status(204).send(null);
+    }
+
+    // === SALES ROUTES ===
+
+    // GET /api/sales
+    if (method === 'GET' && url === '/api/sales') {
+      await initializeDatabase();
+      const result = await client.unsafe('SELECT * FROM sales ORDER BY timestamp DESC');
+      return res.status(200).json(result.map(parseDbSale));
+    }
+
+    // GET /api/sales/customer/:customerId
+    if (method === 'GET' && url?.startsWith('/api/sales/customer/')) {
+      const customerId = url.replace('/api/sales/customer/', '');
+      await initializeDatabase();
+      const result = await client.unsafe(
+        'SELECT * FROM sales WHERE customer_id = $1 ORDER BY timestamp DESC',
+        [customerId]
+      );
+      return res.status(200).json(result.map(parseDbSale));
+    }
+
+    // POST /api/sales - Create new sale
+    if (method === 'POST' && url === '/api/sales') {
+      await initializeDatabase();
+      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const { id, customerId, customerName, items, subtotal, tax, total, paymentMethod, staffName } = input;
+
+      if (!id || !customerId || !items || items.length === 0 || !paymentMethod || !staffName) {
+        return res.status(400).json({ error: 'Missing required fields' });
+      }
+
+      try {
+        // Insert sale
+        await client.unsafe(
+          'INSERT INTO sales (id, customer_id, customer_name, subtotal, tax, total, payment_method, staff_name) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+          [id, customerId, customerName, String(subtotal), String(tax), String(total), paymentMethod, staffName]
+        );
+
+        // Insert sale items and update serial numbers
+        for (const item of items) {
+          await client.unsafe(
+            'INSERT INTO sale_items (sale_id, product_id, model, sn, price, cogs, warranty_expiry) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+            [id, item.productId, item.model, item.sn, String(item.price), String(item.cogs), item.warrantyExpiry]
+          );
+
+          // Update serial number status to Sold
+          await client.unsafe(
+            'UPDATE serial_numbers SET status = $1 WHERE sn = $2',
+            ['Sold', item.sn]
+          );
+        }
+
+        // Update customer loyalty points (1 point per 1000 IDR)
+        const pointsEarned = Math.floor(total / 1000);
+        await client.unsafe(
+          'UPDATE customers SET loyalty_points = loyalty_points + $1, updated_at = NOW() WHERE id = $2',
+          [pointsEarned, customerId]
+        );
+
+        // Return the created sale
+        const result = await client.unsafe('SELECT * FROM sales WHERE id = $1', [id]);
+        return res.status(201).json(parseDbSale(result[0]));
+      } catch (err) {
+        console.error('Sale error:', err);
+        return res.status(500).json({ error: 'Failed to create sale' });
+      }
     }
 
     return res.status(404).json({ error: 'Not found' });

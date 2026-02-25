@@ -25,27 +25,73 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
     return sns.filter(sn => sn.status === 'In Stock' && !cart.some(c => c.sn === sn.sn));
   }, [sns, cart]);
 
-  const filteredSNs = useMemo(() => {
-    if (!search) return [];
+  const fuzzyMatch = (text: string, query: string): boolean => {
+    const textLower = text.toLowerCase();
+    const queryLower = query.toLowerCase();
+    if (textLower.includes(queryLower)) return true;
+    let queryIndex = 0;
+    for (let i = 0; i < textLower.length && queryIndex < queryLower.length; i++) {
+      if (textLower[i] === queryLower[queryIndex]) {
+        queryIndex++;
+      }
+    }
+    return queryIndex === queryLower.length;
+  };
+
+  const filteredResults = useMemo(() => {
+    if (!search || search.length < 2) return { products: [], serialNumbers: [] };
     const query = search.toLowerCase();
-    return availableSNs.filter(sn => {
-      const product = products.find(p => p.id === sn.productId);
-      return sn.sn.toLowerCase().includes(query) || 
-             product?.model.toLowerCase().includes(query) || 
-             product?.id.toLowerCase().includes(query);
+
+    const matchedProducts = products.filter(p => {
+      return fuzzyMatch(p.id, query) || fuzzyMatch(p.model, query) || fuzzyMatch(p.brand, query);
     });
-  }, [availableSNs, search, products]);
+
+    const matchedSNs = availableSNs.filter(sn => {
+      if (!sn.productId) return fuzzyMatch(sn.sn, query);
+      const product = products.find(p => p.id === sn.productId);
+      if (!product) return fuzzyMatch(sn.sn, query);
+      return fuzzyMatch(sn.sn, query);
+    });
+
+    return { products: matchedProducts, serialNumbers: matchedSNs };
+  }, [search, products, availableSNs]);
+
+  const addToCartByProduct = (product: Product) => {
+    // First try to find an available SN for this product
+    let snToUse: string;
+    const availableSN = availableSNs.find(sn => sn.productId === product.id);
+    
+    if (availableSN) {
+      snToUse = availableSN.sn;
+    } else {
+      // Generate placeholder SN if none available
+      snToUse = `NOSN-${product.id.substring(0, 8)}-${Date.now()}`;
+    }
+    
+    const warrantyMonths = product.warrantyMonths ?? 0;
+    
+    setCart([...cart, {
+      productId: product.id,
+      model: product.model,
+      sn: snToUse,
+      price: product.price,
+      cogs: product.cogs,
+      warrantyExpiry: calculateWarrantyExpiry(warrantyMonths)
+    }]);
+    setSearch('');
+  };
 
   const addToCart = (sn: SerialNumber) => {
     const product = products.find(p => p.id === sn.productId);
     if (!product) return;
+    const warrantyMonths = product.warrantyMonths ?? 0;
     setCart([...cart, {
       productId: product.id,
       model: product.model,
       sn: sn.sn,
       price: product.price,
       cogs: product.cogs,
-      warrantyExpiry: calculateWarrantyExpiry(product.warrantyMonths)
+      warrantyExpiry: calculateWarrantyExpiry(warrantyMonths)
     }]);
     setSearch('');
   };
@@ -130,27 +176,64 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
             <svg className="w-6 h-6 absolute left-5 top-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
           </div>
           
-          {search && (
-            <div className="mt-4 border border-slate-100 rounded-2xl overflow-hidden divide-y divide-slate-100 shadow-xl max-h-64 overflow-y-auto bg-white z-20">
-              {filteredSNs.length > 0 ? filteredSNs.map(sn => {
-                const product = products.find(p => p.id === sn.productId)!;
-                return (
-                  <button 
-                    key={sn.sn}
-                    onClick={() => addToCart(sn)}
-                    className="w-full p-4 flex items-center justify-between hover:bg-indigo-50 text-left transition-colors group"
-                  >
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <span className="text-[10px] font-black text-indigo-500 uppercase">{product.brand}</span>
-                        <p className="font-bold text-slate-900 truncate text-sm">{product.model}</p>
-                      </div>
-                      <p className="text-[10px] text-slate-500 mt-1 font-mono uppercase tracking-tighter">Barcode ID: {product.id} • S/N: <span className="font-bold text-slate-700">{sn.sn}</span></p>
-                    </div>
-                    <p className="text-indigo-600 font-black text-sm">{formatIDR(product.price)}</p>
-                  </button>
-                );
-              }) : (
+          {search && search.length >= 2 && (
+            <div className="mt-4 border border-slate-100 rounded-2xl overflow-hidden divide-y divide-slate-100 shadow-xl max-h-96 overflow-y-auto bg-white z-20">
+              {filteredResults.products.length > 0 && (
+                <>
+                  <div className="px-4 py-2 bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                    Products ({filteredResults.products.length})
+                  </div>
+                  {filteredResults.products.slice(0, 10).map(product => {
+                    const availableCount = availableSNs.filter(sn => sn.productId === product.id).length;
+                    return (
+                      <button 
+                        key={product.id}
+                        onClick={() => addToCartByProduct(product)}
+                        className="w-full p-4 flex items-center justify-between hover:bg-indigo-50 text-left transition-colors group"
+                      >
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <span className="text-[10px] font-black text-indigo-500 uppercase">{product.brand}</span>
+                            <p className="font-bold text-slate-900 truncate text-sm">{product.model}</p>
+                          </div>
+                          <p className="text-[10px] text-slate-500 mt-1 font-mono uppercase tracking-tighter">ID: {product.id} • <span className={availableCount > 0 ? "text-green-600" : "text-red-500"} font-bold>{availableCount} available</span></p>
+                        </div>
+                        <p className="text-indigo-600 font-black text-sm">{formatIDR(product.price)}</p>
+                      </button>
+                    );
+                  })}
+                </>
+              )}
+              
+              {filteredResults.serialNumbers.length > 0 && (
+                <>
+                  <div className="px-4 py-2 bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                    Serial Numbers ({filteredResults.serialNumbers.length})
+                  </div>
+                  {filteredResults.serialNumbers.slice(0, 10).map(sn => {
+                    const product = products.find(p => p.id === sn.productId);
+                    if (!product) return null;
+                    return (
+                      <button 
+                        key={sn.sn}
+                        onClick={() => addToCart(sn)}
+                        className="w-full p-4 flex items-center justify-between hover:bg-indigo-50 text-left transition-colors group"
+                      >
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <span className="text-[10px] font-black text-indigo-500 uppercase">{product.brand}</span>
+                            <p className="font-bold text-slate-900 truncate text-sm">{product.model}</p>
+                          </div>
+                          <p className="text-[10px] text-slate-500 mt-1 font-mono uppercase tracking-tighter">Barcode ID: {product.id} • S/N: <span className="font-bold text-slate-700">{sn.sn}</span></p>
+                        </div>
+                        <p className="text-indigo-600 font-black text-sm">{formatIDR(product.price)}</p>
+                      </button>
+                    );
+                  })}
+                </>
+              )}
+              
+              {filteredResults.products.length === 0 && filteredResults.serialNumbers.length === 0 && (
                 <div className="p-10 text-center text-slate-400 font-medium italic">Data tidak ditemukan di inventori aktif.</div>
               )}
             </div>

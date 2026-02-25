@@ -1,12 +1,14 @@
 
 import React, { useState, useEffect } from 'react';
-import { StoreConfig } from '../../app/types';
+import { StoreConfig as StoreConfigType } from '../../app/types';
+import { StaffMember } from '../../app/services/auth.service';
 
 interface SettingsProps {
-  storeConfig: StoreConfig;
-  onUpdateStoreConfig: (config: StoreConfig) => void;
-  staffList: string[];
-  onAddStaff: (name: string) => void;
+  storeConfig: StoreConfigType;
+  onUpdateStoreConfig: (config: StoreConfigType) => Promise<void>;
+  staffList: StaffMember[];
+  onAddStaff: (name: string, password: string, role: 'Admin' | 'Staff') => Promise<void>;
+  onDeleteStaff: (id: string) => Promise<void>;
   isAdmin: boolean;
   onReset: () => void;
 }
@@ -15,29 +17,56 @@ const SettingsView: React.FC<SettingsProps> = ({
   storeConfig, 
   onUpdateStoreConfig, 
   staffList, 
-  onAddStaff, 
+  onAddStaff,
+  onDeleteStaff,
   isAdmin,
   onReset
 }) => {
-  const [localConfig, setLocalConfig] = useState<StoreConfig>(storeConfig);
+  const [localConfig, setLocalConfig] = useState<StoreConfigType>(storeConfig);
   const [showAddStaffModal, setShowAddStaffModal] = useState(false);
   const [newStaffName, setNewStaffName] = useState('');
+  const [newStaffPassword, setNewStaffPassword] = useState('');
+  const [newStaffRole, setNewStaffRole] = useState<'Admin' | 'Staff'>('Staff');
+  const [saving, setSaving] = useState(false);
 
-  // Sync prop changes to local state
   useEffect(() => {
     setLocalConfig(storeConfig);
   }, [storeConfig]);
 
-  const handleSave = () => {
-    onUpdateStoreConfig(localConfig);
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await onUpdateStoreConfig(localConfig);
+    } catch (error) {
+      console.error('Failed to save:', error);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const submitNewStaff = (e: React.FormEvent) => {
+  const submitNewStaff = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newStaffName.trim()) {
-      onAddStaff(newStaffName.trim());
-      setNewStaffName('');
-      setShowAddStaffModal(false);
+    if (newStaffName.trim() && newStaffPassword) {
+      try {
+        await onAddStaff(newStaffName.trim(), newStaffPassword, newStaffRole);
+        setNewStaffName('');
+        setNewStaffPassword('');
+        setNewStaffRole('Staff');
+        setShowAddStaffModal(false);
+      } catch (error) {
+        console.error('Failed to add staff:', error);
+        alert(error instanceof Error ? error.message : 'Failed to add staff');
+      }
+    }
+  };
+
+  const handleDeleteStaff = async (id: string, name: string) => {
+    if (window.confirm(`Are you sure you want to delete staff "${name}"?`)) {
+      try {
+        await onDeleteStaff(id);
+      } catch (error) {
+        console.error('Failed to delete staff:', error);
+      }
     }
   };
 
@@ -59,9 +88,10 @@ const SettingsView: React.FC<SettingsProps> = ({
               </button>
               <button 
                 onClick={handleSave}
-                className="flex-1 sm:flex-none bg-indigo-600 text-white px-8 py-3 rounded-2xl text-sm font-black hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all active:scale-95 uppercase tracking-widest"
+                disabled={saving}
+                className="flex-1 sm:flex-none bg-indigo-600 text-white px-8 py-3 rounded-2xl text-sm font-black hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all active:scale-95 uppercase tracking-widest disabled:opacity-50"
               >
-                Simpan Perubahan
+                {saving ? 'Saving...' : 'Simpan Perubahan'}
               </button>
             </>
           )}
@@ -86,7 +116,7 @@ const SettingsView: React.FC<SettingsProps> = ({
               />
             </div>
             <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Alamat Fisik Cabang</label>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Alamat Fisik Cabin</label>
               <textarea 
                 disabled={!isAdmin}
                 className="w-full px-5 py-3.5 rounded-2xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none h-32 resize-none transition-all placeholder-slate-400 disabled:bg-slate-100 disabled:text-slate-500"
@@ -109,7 +139,7 @@ const SettingsView: React.FC<SettingsProps> = ({
                 <select 
                   className="w-full px-5 py-3.5 rounded-2xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all appearance-none cursor-pointer"
                   value={localConfig.currency}
-                  onChange={(e) => setLocalConfig({...localConfig, currency: e.target.value as any})}
+                  onChange={(e) => setLocalConfig({...localConfig, currency: e.target.value as 'IDR' | 'USD'})}
                 >
                   <option value="IDR">IDR (Rupiah Indonesia)</option>
                   <option value="USD">USD (United States Dollar)</option>
@@ -129,44 +159,44 @@ const SettingsView: React.FC<SettingsProps> = ({
           </div>
         ) : (
            <div className="bg-slate-100 p-8 rounded-[32px] border border-slate-200 flex flex-col items-center justify-center text-center">
-              <svg className="w-12 h-12 text-slate-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-              <p className="font-black text-slate-400 uppercase tracking-widest text-[10px]">Restricted Area</p>
-              <p className="text-[11px] text-slate-400 mt-2 font-medium max-w-[200px]">Pengaturan finansial hanya dapat diakses oleh Store Admin (Nancy, Mami, Vita).</p>
-           </div>
+             <svg className="w-12 h-12 text-slate-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+             <p className="font-black text-slate-400 uppercase tracking-widest text-[10px]">Restricted Area</p>
+             <p className="text-[11px] text-slate-400 mt-2 font-medium max-w-[200px]">Pengaturan finansial hanya dapat diakses oleh Store Admin (Nancy, Mami, Vita).</p>
+          </div>
         )}
 
         <div className="bg-white p-6 lg:p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-6 md:col-span-2">
           <h2 className="font-black text-slate-900 flex items-center uppercase text-sm tracking-tighter">
             <svg className="w-5 h-5 mr-3 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
-            Manajemen Tim & Operator
+            manajemen Tim & Operator
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {staffList.map(name => {
-              const isStaffAdmin = ['Nancy', 'Mami', 'Vita'].includes(name);
-              return (
-                <div key={name} className="p-5 border border-slate-100 rounded-2xl bg-slate-50 flex items-center justify-between group hover:border-indigo-200 transition-all">
-                  <div className="flex items-center space-x-4">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black border border-slate-100 shadow-sm transition-all text-xs uppercase ${isStaffAdmin ? 'bg-indigo-600 text-white' : 'bg-white text-indigo-600'}`}>
-                      {name.substring(0, 2)}
-                    </div>
-                    <div>
-                      <span className="text-sm font-black text-slate-900 block truncate max-w-[100px]">{name}</span>
-                      <span className={`text-[9px] font-black uppercase tracking-widest ${isStaffAdmin ? 'text-indigo-600' : 'text-slate-400'}`}>{isStaffAdmin ? 'Admin' : 'Staff'}</span>
-                    </div>
+            {staffList.map((staff) => (
+              <div key={staff.id} className="p-5 border border-slate-100 rounded-2xl bg-slate-50 flex items-center justify-between group hover:border-indigo-200 transition-all">
+                <div className="flex items-center space-x-4">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black border border-slate-100 shadow-sm transition-all text-xs uppercase ${staff.role === 'Admin' ? 'bg-indigo-600 text-white' : 'bg-white text-indigo-600'}`}>
+                    {staff.name.substring(0, 2)}
                   </div>
-                  {isAdmin && (
-                    <button className="text-slate-300 hover:text-red-500 transition-colors p-1">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                    </button>
-                  )}
+                  <div>
+                    <span className="text-sm font-black text-slate-900 block truncate max-w-[100px]">{staff.name}</span>
+                    <span className={`text-[9px] font-black uppercase tracking-widest ${staff.role === 'Admin' ? 'text-indigo-600' : 'text-slate-400'}`}>{staff.role}</span>
+                  </div>
                 </div>
-              );
-            })}
+                {isAdmin && (
+                  <button 
+                    onClick={() => handleDeleteStaff(staff.id, staff.name)}
+                    className="text-slate-300 hover:text-red-500 transition-colors p-1"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                  </button>
+                )}
+              </div>
+            ))}
             
             {isAdmin && (
               <button 
                 onClick={() => setShowAddStaffModal(true)}
-                className="p-5 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 hover:text-indigo-600 hover:border-indigo-300 transition-all text-xs font-black uppercase tracking-widest bg-white h-full min-h-[88px]"
+                className="p-5 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 hover:text-indigo-600 hover:border-indigo-300 transition-all text-xs font-black uppercase tracking-widest bg-white h-full min-h-[88px] flex items-center justify-center"
               >
                 + Registrasi Staff
               </button>
@@ -195,9 +225,32 @@ const SettingsView: React.FC<SettingsProps> = ({
                   onChange={(e) => setNewStaffName(e.target.value)}
                 />
               </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Password</label>
+                <input 
+                  type="password" 
+                  required
+                  minLength={3}
+                  className="w-full px-5 py-3 rounded-2xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all placeholder-slate-400"
+                  placeholder="Min. 3 karakter"
+                  value={newStaffPassword}
+                  onChange={(e) => setNewStaffPassword(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Role</label>
+                <select 
+                  className="w-full px-5 py-3 rounded-2xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all appearance-none cursor-pointer"
+                  value={newStaffRole}
+                  onChange={(e) => setNewStaffRole(e.target.value as 'Admin' | 'Staff')}
+                >
+                  <option value="Staff">Staff</option>
+                  <option value="Admin">Admin</option>
+                </select>
+              </div>
               <div className="flex gap-4">
                 <button type="button" onClick={() => setShowAddStaffModal(false)} className="flex-1 py-4 bg-white border border-slate-200 text-slate-700 font-black rounded-2xl text-xs uppercase tracking-widest hover:bg-slate-50 transition-all">Batal</button>
-                <button type="submit" disabled={!newStaffName.trim()} className={`flex-1 py-4 rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg transition-all ${!newStaffName.trim() ? 'bg-slate-300 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white shadow-indigo-100 hover:bg-indigo-700'}`}>Simpan</button>
+                <button type="submit" disabled={!newStaffName.trim() || !newStaffPassword} className={`flex-1 py-4 rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg transition-all ${!newStaffName.trim() || !newStaffPassword ? 'bg-slate-300 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white shadow-indigo-100 hover:bg-indigo-700'}`}>Simpan</button>
               </div>
             </form>
           </div>

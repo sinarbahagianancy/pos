@@ -118,6 +118,216 @@ export default defineConfig(({ mode }) => {
                 });
                 return;
               }
+              
+              // Auth routes
+              if (path === 'auth/login' && req.method === 'POST') {
+                const { loginHandler } = await import('./src/server/auth.js');
+                let body = '';
+                req.on('data', chunk => body += chunk);
+                req.on('end', async () => {
+                  try {
+                    const data = JSON.parse(body);
+                    const result = await loginHandler(data.name, data.password);
+                    res.setHeader('Content-Type', 'application/json');
+                    res.end(JSON.stringify(result));
+                  } catch (error) {
+                    res.statusCode = 401;
+                    res.end(JSON.stringify({ error: String(error) }));
+                  }
+                });
+                return;
+              }
+              
+              // Staff routes
+              if (path === 'staff' && req.method === 'GET') {
+                const { getStaffHandler } = await import('./src/server/auth.js');
+                try {
+                  const result = await getStaffHandler();
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify(result));
+                } catch (error) {
+                  res.statusCode = 500;
+                  res.end(JSON.stringify({ error: String(error) }));
+                }
+                return;
+              }
+              
+              if (path === 'staff' && req.method === 'POST') {
+                const { addStaffHandler } = await import('./src/server/auth.js');
+                let body = '';
+                req.on('data', chunk => body += chunk);
+                req.on('end', async () => {
+                  try {
+                    const data = JSON.parse(body);
+                    const result = await addStaffHandler(data.name, data.password, data.role);
+                    res.setHeader('Content-Type', 'application/json');
+                    res.end(JSON.stringify(result));
+                  } catch (error) {
+                    res.statusCode = 400;
+                    res.end(JSON.stringify({ error: String(error) }));
+                  }
+                });
+                return;
+              }
+              
+              if (path.startsWith('staff/') && req.method === 'DELETE') {
+                const { deleteStaffHandler } = await import('./src/server/auth.js');
+                const staffId = path.replace('staff/', '');
+                try {
+                  await deleteStaffHandler(staffId);
+                  res.statusCode = 204;
+                  res.end();
+                } catch (error) {
+                  res.statusCode = 500;
+                  res.end(JSON.stringify({ error: String(error) }));
+                }
+                return;
+              }
+              
+              // Store config routes
+              if (path === 'store-config' && req.method === 'GET') {
+                const { getStoreConfigHandler } = await import('./src/server/auth.js');
+                try {
+                  const result = await getStoreConfigHandler();
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify(result));
+                } catch (error) {
+                  res.statusCode = 500;
+                  res.end(JSON.stringify({ error: String(error) }));
+                }
+                return;
+              }
+              
+              if (path === 'store-config' && req.method === 'PUT') {
+                const { updateStoreConfigHandler } = await import('./src/server/auth.js');
+                let body = '';
+                req.on('data', chunk => body += chunk);
+                req.on('end', async () => {
+                  try {
+                    const data = JSON.parse(body);
+                    const result = await updateStoreConfigHandler(data);
+                    res.setHeader('Content-Type', 'application/json');
+                    res.end(JSON.stringify(result));
+                  } catch (error) {
+                    res.statusCode = 500;
+                    res.end(JSON.stringify({ error: String(error) }));
+                  }
+                });
+                return;
+              }
+              
+              // Customer routes
+              if (path === 'customers' && req.method === 'GET') {
+                const { getAllCustomersHandler } = await import('./src/server/customers.js');
+                try {
+                  const result = await getAllCustomersHandler();
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify(result));
+                } catch (error) {
+                  res.statusCode = 500;
+                  res.end(JSON.stringify({ error: String(error) }));
+                }
+                return;
+              }
+              
+              if (path === 'customers' && req.method === 'POST') {
+                const { createCustomerHandler } = await import('./src/server/customers.js');
+                let body = '';
+                req.on('data', chunk => body += chunk);
+                req.on('end', async () => {
+                  try {
+                    const data = JSON.parse(body);
+                    const result = await createCustomerHandler(data);
+                    res.setHeader('Content-Type', 'application/json');
+                    res.statusCode = 201;
+                    res.end(JSON.stringify(result));
+                  } catch (error) {
+                    res.statusCode = 400;
+                    res.end(JSON.stringify({ error: String(error) }));
+                  }
+                });
+                return;
+              }
+              
+              if (path.startsWith('customers/') && req.method === 'PUT') {
+                const customerId = path.replace('customers/', '');
+                const { updateCustomerHandler } = await import('./src/server/customers.js');
+                let body = '';
+                req.on('data', chunk => body += chunk);
+                req.on('end', async () => {
+                  try {
+                    const data = JSON.parse(body);
+                    const result = await updateCustomerHandler(customerId, data);
+                    res.setHeader('Content-Type', 'application/json');
+                    res.end(JSON.stringify(result));
+                  } catch (error) {
+                    res.statusCode = 500;
+                    res.end(JSON.stringify({ error: String(error) }));
+                  }
+                });
+                return;
+              }
+              
+              if (path.startsWith('customers/') && req.method === 'DELETE') {
+                const customerId = path.replace('customers/', '');
+                const { deleteCustomerHandler } = await import('./src/server/customers.js');
+                try {
+                  await deleteCustomerHandler(customerId);
+                  res.statusCode = 204;
+                  res.end();
+                } catch (error) {
+                  res.statusCode = 400;
+                  res.end(JSON.stringify({ error: String(error) }));
+                }
+                return;
+              }
+              
+              // Sales routes
+              if (path === 'sales' && req.method === 'GET') {
+                const { getAllSalesHandler } = await import('./src/server/customers.js');
+                try {
+                  const result = await getAllSalesHandler();
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify(result));
+                } catch (error) {
+                  res.statusCode = 500;
+                  res.end(JSON.stringify({ error: String(error) }));
+                }
+                return;
+              }
+              
+              if (path === 'sales' && req.method === 'POST') {
+                const { createSaleHandler } = await import('./src/server/customers.js');
+                let body = '';
+                req.on('data', chunk => body += chunk);
+                req.on('end', async () => {
+                  try {
+                    const data = JSON.parse(body);
+                    const result = await createSaleHandler(data);
+                    res.setHeader('Content-Type', 'application/json');
+                    res.statusCode = 201;
+                    res.end(JSON.stringify(result));
+                  } catch (error) {
+                    res.statusCode = 500;
+                    res.end(JSON.stringify({ error: String(error) }));
+                  }
+                });
+                return;
+              }
+              
+              if (path.startsWith('sales/customer/') && req.method === 'GET') {
+                const customerId = path.replace('sales/customer/', '');
+                const { getSalesByCustomerHandler } = await import('./src/server/customers.js');
+                try {
+                  const result = await getSalesByCustomerHandler(customerId);
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify(result));
+                } catch (error) {
+                  res.statusCode = 500;
+                  res.end(JSON.stringify({ error: String(error) }));
+                }
+                return;
+              }
             }
             next();
           });

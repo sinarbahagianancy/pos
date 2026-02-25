@@ -80,10 +80,12 @@ export interface AuditLog {
 }
 
 export interface StoreConfig {
+  id: number;
   storeName: string;
   address: string;
   ppnRate: number;
   currency: 'IDR' | 'USD';
+  updatedAt?: string;
 }
 
 export interface StaffMember {
