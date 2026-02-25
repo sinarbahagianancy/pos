@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import { products, serialNumbers, auditLogs } from '../src/db/schema';
+import { products, serialNumbers, auditLogs } from './src/db/schema.js';
 import { eq, desc } from 'drizzle-orm';
 import { 
   validateCreateProductInput,
@@ -10,7 +10,7 @@ import {
   validateCreateSerialNumberInput,
   parseDbProduct,
   parseDbSerialNumber
-} from '../app/schemas/product.schema';
+} from './app/schemas/product.schema.js';
 import dotenv from 'dotenv';
 
 dotenv.config();

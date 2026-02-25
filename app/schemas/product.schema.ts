@@ -130,17 +130,17 @@ export function validateCreateProductInput(input: unknown): CreateProductInput {
   }
   
   return {
-    id: obj.id,
-    brand: obj.brand,
-    model: obj.model,
-    category: obj.category,
-    mount: obj.mount,
-    condition: obj.condition,
-    price: obj.price,
-    cogs: obj.cogs,
-    warrantyMonths: obj.warrantyMonths,
-    warrantyType: obj.warrantyType,
-    stock: obj.stock,
+    id: obj.id as string,
+    brand: obj.brand as string,
+    model: obj.model as string,
+    category: obj.category as ProductCategory,
+    mount: obj.mount as MountType | undefined,
+    condition: obj.condition as ConditionType,
+    price: obj.price as number,
+    cogs: obj.cogs as number,
+    warrantyMonths: obj.warrantyMonths as number,
+    warrantyType: obj.warrantyType as WarrantyType,
+    stock: obj.stock as number,
   };
 }
 
@@ -156,49 +156,49 @@ export function validateUpdateProductInput(input: unknown): UpdateProductInput {
     if (typeof obj.brand !== 'string' || obj.brand.length === 0) {
       throw new Error('Invalid input: brand must be a non-empty string');
     }
-    result.brand = obj.brand;
+    result.brand = obj.brand as string;
   }
   if (obj.model !== undefined) {
     if (typeof obj.model !== 'string' || obj.model.length === 0) {
       throw new Error('Invalid input: model must be a non-empty string');
     }
-    result.model = obj.model;
+    result.model = obj.model as string;
   }
   if (obj.category !== undefined && !isProductCategory(obj.category)) {
     throw new Error(`Invalid input: category must be one of ${ProductCategories.join(', ')}`);
   }
   if (obj.category !== undefined) {
-    result.category = obj.category;
+    result.category = obj.category as ProductCategory;
   }
   if (obj.mount !== undefined) {
     if (obj.mount !== null && !isMountType(obj.mount)) {
       throw new Error(`Invalid input: mount must be one of ${MountTypes.join(', ')}`);
     }
-    result.mount = obj.mount ?? undefined;
+    result.mount = obj.mount as MountType | undefined;
   }
   if (obj.condition !== undefined && !isConditionType(obj.condition)) {
     throw new Error(`Invalid input: condition must be one of ${ConditionTypes.join(', ')}`);
   }
   if (obj.condition !== undefined) {
-    result.condition = obj.condition;
+    result.condition = obj.condition as ConditionType;
   }
   if (obj.price !== undefined) {
     if (typeof obj.price !== 'number' || obj.price <= 0) {
       throw new Error('Invalid input: price must be a positive number');
     }
-    result.price = obj.price;
+    result.price = obj.price as number;
   }
   if (obj.cogs !== undefined) {
     if (typeof obj.cogs !== 'number' || obj.cogs < 0) {
       throw new Error('Invalid input: cogs must be a non-negative number');
     }
-    result.cogs = obj.cogs;
+    result.cogs = obj.cogs as number;
   }
   if (obj.warrantyMonths !== undefined) {
     if (typeof obj.warrantyMonths !== 'number' || obj.warrantyMonths < 0) {
       throw new Error('Invalid input: warrantyMonths must be a non-negative number');
     }
-    result.warrantyMonths = obj.warrantyMonths;
+    result.warrantyMonths = obj.warrantyMonths as number;
   }
   if (obj.warrantyType !== undefined && !isWarrantyType(obj.warrantyType)) {
     throw new Error(`Invalid input: warrantyType must be one of ${WarrantyTypes.join(', ')}`);
