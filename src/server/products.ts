@@ -46,7 +46,7 @@ export const createProduct = async (input: unknown) => {
     brand: validated.brand,
     model: validated.model,
     category: validated.category,
-    mount: validated.mount,
+    mount: validated.mount ?? null,
     condition: validated.condition,
     price: validated.price.toString(),
     cogs: validated.cogs.toString(),
