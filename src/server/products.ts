@@ -29,7 +29,7 @@ const db = drizzle(client, { schema: { products, serialNumbers, auditLogs } });
 console.log('Database client initialized');
 
 export const getAllProducts = async () => {
-  const result = await db.select().from(products);
+  const result = await db.select().from(products).where(eq(products.deleted, false));
   return result.map(parseDbProduct);
 };
 
@@ -163,31 +163,17 @@ export const adjustStock = async (
 };
 
 export const deleteProduct = async (id: string) => {
-  const inStockSNs = await db.select().from(serialNumbers).where(
-    eq(serialNumbers.productId, id) && eq(serialNumbers.status, 'In Stock')
-  );
-  
-  const productResult = await db.select().from(products).where(eq(products.id, id));
-  const product = productResult[0];
-  
-  if (inStockSNs.length > 0) {
-    throw new Error(`Produk memiliki ${inStockSNs.length} nomor seri yang belum terjual. Hapus atau jual nomor seri tersebut terlebih dahulu.`);
-  }
-  
-  // Check for NOSN stock (stock without serial numbers)
-  const totalSNs = await db.select().from(serialNumbers).where(eq(serialNumbers.productId, id));
-  const trackedStock = totalSNs.length;
-  const nosnStock = product ? (Number(product.stock) - trackedStock) : 0;
-  
-  if (nosnStock > 0) {
-    throw new Error(`Produk memiliki ${nosnStock} unit stok tanpa nomor seri (NOSN). Kurangi stok terlebih dahulu sebelum menghapus produk.`);
-  }
-  
-  await db.delete(products).where(eq(products.id, id));
+  // Soft delete - mark as deleted
+  await db.update(products).set({ deleted: true }).where(eq(products.id, id));
 };
 
 export const toggleProductHidden = async (id: string, hidden: boolean) => {
   const result = await db.update(products).set({ hidden: hidden ? 1 : 0 }).where(eq(products.id, id)).returning();
+  return result[0] ? parseDbProduct(result[0]) : null;
+};
+
+export const restoreProduct = async (id: string) => {
+  const result = await db.update(products).set({ deleted: false }).where(eq(products.id, id)).returning();
   return result[0] ? parseDbProduct(result[0]) : null;
 };
 

@@ -70,6 +70,9 @@ export const storeConfig = pgTable('store_config', {
     .notNull()
     .default('11.00'),
   currency: currencyTypeEnum('currency').notNull().default('IDR'),
+  monthlyTarget: numeric('monthly_target', { precision: 15, scale: 0 })
+    .notNull()
+    .default('500000000'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
 
@@ -95,6 +98,7 @@ export const products = pgTable('products', {
   warrantyType: warrantyTypeEnum('warranty_type').notNull(),
   stock: integer('stock').notNull().default(0),
   hidden: integer('hidden').notNull().default(0),
+  deleted: boolean('deleted').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });

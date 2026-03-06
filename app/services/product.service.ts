@@ -108,6 +108,25 @@ export const deleteProduct = async (id: string): Promise<void> => {
   }
 };
 
+export const restoreProduct = async (id: string): Promise<Product> => {
+  const response = await fetch(`${API_BASE}/products/${id}/restore`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    if (text) {
+      try {
+        const error = JSON.parse(text);
+        throw new Error(error.error || 'Failed to restore product');
+      } catch {
+        throw new Error(text || 'Failed to restore product');
+      }
+    }
+    throw new Error('Failed to restore product');
+  }
+  return response.json();
+};
+
 export const getAllSerialNumbers = async (): Promise<SerialNumber[]> => {
   const response = await fetch(`${API_BASE}/serial-numbers`);
   if (!response.ok) {

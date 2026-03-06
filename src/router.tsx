@@ -8,6 +8,7 @@ import ReportsView from './routes/Reports';
 import AuditLogsView from './routes/AuditLogs';
 import SettingsView from './routes/Settings';
 import DashboardView from './routes/Dashboard';
+import SalesLogsView from './routes/SalesLogs';
 import LoginView from './routes/Login';
 import { 
   getAllProducts, 
@@ -16,6 +17,7 @@ import {
   adjustStock as dbAdjustStock,
   createSerialNumbersBulk,
   deleteProduct as dbDeleteProduct,
+  restoreProduct,
   toggleProductHidden,
   updateProduct as dbUpdateProduct,
   getAllAuditLogs
@@ -116,6 +118,7 @@ const AppLayout = () => {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', path: '/', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
     { id: 'pos', label: 'Cashier (POS)', path: '/pos', icon: 'M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z' },
+    { id: 'sales', label: 'Sales Logs', path: '/sales-logs', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01' },
     { id: 'inventory', label: 'Inventory', path: '/inventory', icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4' },
     { id: 'warranty', label: 'Service Center', path: '/warranty', icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-7.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z' },
     { id: 'customers', label: 'CRM / Customers', path: '/customers', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z' },
@@ -212,9 +215,47 @@ const rootRoute = new RootRoute({
 });
 
 // Dashboard
-const DashboardComponent = () => (
-  <DashboardView sales={[]} claims={[]} products={[]} />
-);
+const DashboardComponent = () => {
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [claims, setClaims] = useState<WarrantyClaim[]>([]);
+  const [monthlyTarget, setMonthlyTarget] = useState<number>(500000000);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [salesData, productsData, claimsData, configData] = await Promise.all([
+          getAllSales(),
+          getAllProducts(),
+          getAllWarrantyClaims(),
+          getStoreConfig()
+        ]);
+        setSales(salesData);
+        setProducts(productsData);
+        setClaims(claimsData);
+        if (configData?.monthlyTarget) {
+          setMonthlyTarget(configData.monthlyTarget);
+        }
+      } catch (error) {
+        console.error('Failed to load dashboard data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+      </div>
+    );
+  }
+
+  return <DashboardView sales={sales} claims={claims} products={products} monthlyTarget={monthlyTarget} />;
+};
 
 // Inventory
 const InventoryComponent = () => {
@@ -308,6 +349,18 @@ const InventoryComponent = () => {
     }
   };
 
+  const handleRestoreProduct = async (id: string) => {
+    try {
+      const restored = await restoreProduct(id);
+      setProducts(prev => [...prev, restored]);
+      const snsData = await getAllSerialNumbers();
+      setSns(snsData);
+    } catch (error) {
+      console.error('Failed to restore product:', error);
+      throw error;
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -327,6 +380,7 @@ const InventoryComponent = () => {
       onAddProduct={handleAddProduct}
       onEditProduct={handleEditProduct}
       onDeleteProduct={handleDeleteProduct}
+      onRestoreProduct={handleRestoreProduct}
       onToggleHidden={handleToggleHidden}
     />
   );
@@ -423,6 +477,50 @@ const CustomersComponent = () => {
       onAddCustomer={handleAddCustomer}
       onUpdateCustomer={handleUpdateCustomer}
       onDeleteCustomer={handleDeleteCustomer}
+    />
+  );
+};
+
+// Sales Logs
+const SalesLogsComponent = () => {
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [storeConfig, setStoreConfig] = useState<StoreConfigType | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [salesData, customersData, configData] = await Promise.all([
+          getAllSales(),
+          getAllCustomers(),
+          getStoreConfig()
+        ]);
+        setSales(salesData);
+        setCustomers(customersData);
+        setStoreConfig(configData);
+      } catch (error) {
+        console.error('Failed to load sales logs:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadData();
+  }, []);
+
+  if (loading || !storeConfig) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+      </div>
+    );
+  }
+
+  return (
+    <SalesLogsView 
+      sales={sales}
+      customers={customers}
+      storeConfig={{ storeName: storeConfig.storeName, address: storeConfig.address, ppnRate: storeConfig.ppnRate }}
     />
   );
 };
@@ -732,6 +830,22 @@ const POSComponent = () => {
     }
   };
 
+  const handleCreateCustomer = async (name: string, phone?: string, address?: string) => {
+    try {
+      const newCustomer = await apiCreateCustomer({ 
+        id: `CUST-${Date.now()}`,
+        name, 
+        phone, 
+        address 
+      });
+      setCustomers(prev => [...prev, newCustomer]);
+      return newCustomer;
+    } catch (error) {
+      console.error('Failed to create customer:', error);
+      throw error;
+    }
+  };
+
   if (loading || !storeConfig) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -746,6 +860,7 @@ const POSComponent = () => {
       sns={sns} 
       customers={customers} 
       onCompleteSale={handleCompleteSale}
+      onCreateCustomer={handleCreateCustomer}
       staffName={staffName}
       taxRate={storeConfig.ppnRate / 100}
       storeConfig={storeConfig}
@@ -780,6 +895,12 @@ const indexRoute = new Route({
   getParentRoute: () => rootRoute,
   path: '/pos',
   component: POSComponent,
+});
+
+const salesLogsRoute = new Route({
+  getParentRoute: () => rootRoute,
+  path: '/sales-logs',
+  component: () => <ProtectedRoute component={SalesLogsComponent} />,
 });
 
 const dashboardRoute = new Route({
@@ -834,6 +955,7 @@ const loginRoute = new Route({
 const routeTree = rootRoute.addChildren([
   indexRoute,
   dashboardRoute,
+  salesLogsRoute,
   inventoryRoute,
   customersRoute,
   warrantyRoute,

@@ -16,6 +16,7 @@ interface StoreConfig {
   address: string;
   ppnRate: number;
   currency: 'IDR' | 'USD';
+  monthlyTarget: number;
   updatedAt: string;
 }
 
@@ -32,6 +33,7 @@ const parseDbStoreConfig = (row: Record<string, unknown>): StoreConfig => ({
   address: row.address as string,
   ppnRate: typeof row.ppn_rate === 'string' ? parseFloat(row.ppn_rate) : (row.ppn_rate as number),
   currency: row.currency as 'IDR' | 'USD',
+  monthlyTarget: typeof row.monthly_target === 'string' ? parseInt(row.monthly_target) : (row.monthly_target as number) || 500000000,
   updatedAt: row.updated_at as string,
 });
 
@@ -168,7 +170,7 @@ export const getStoreConfigHandler = async () => {
   return parseDbStoreConfig(result[0]);
 };
 
-export const updateStoreConfigHandler = async (config: { storeName?: string; address?: string; ppnRate?: number; currency?: string }) => {
+export const updateStoreConfigHandler = async (config: { storeName?: string; address?: string; ppnRate?: number; currency?: string; monthlyTarget?: number }) => {
   await initializeDatabase();
   
   const current = await client.unsafe('SELECT * FROM store_config WHERE id = 1');
@@ -180,10 +182,11 @@ export const updateStoreConfigHandler = async (config: { storeName?: string; add
   const address = config.address ?? current[0].address;
   const ppnRate = config.ppnRate ?? current[0].ppn_rate;
   const currency = config.currency ?? current[0].currency;
+  const monthlyTarget = config.monthlyTarget ?? current[0].monthly_target ?? 500000000;
   
   const result = await client.unsafe(
-    'UPDATE store_config SET store_name = $1, address = $2, ppn_rate = $3, currency = $4, updated_at = NOW() WHERE id = 1 RETURNING *',
-    [storeName, address, ppnRate, currency]
+    'UPDATE store_config SET store_name = $1, address = $2, ppn_rate = $3, currency = $4, monthly_target = $5, updated_at = NOW() WHERE id = 1 RETURNING *',
+    [storeName, address, ppnRate, currency, monthlyTarget]
   );
   
   return parseDbStoreConfig(result[0]);

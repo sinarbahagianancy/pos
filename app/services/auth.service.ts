@@ -13,6 +13,7 @@ export interface StoreConfig {
   address: string;
   ppnRate: number;
   currency: 'IDR' | 'USD';
+  monthlyTarget: number;
   updatedAt?: string;
 }
 

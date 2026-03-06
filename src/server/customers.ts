@@ -156,8 +156,37 @@ export const deleteCustomerHandler = async (id: string, staffName: string = 'Sys
 };
 
 export const getAllSalesHandler = async () => {
-  const result = await client.unsafe('SELECT * FROM sales ORDER BY timestamp DESC');
-  return result.map(parseDbSale);
+  const salesResult = await client.unsafe('SELECT * FROM sales ORDER BY timestamp DESC');
+  
+  const salesWithItems = await Promise.all(salesResult.map(async (sale: Record<string, unknown>) => {
+    const itemsResult = await client.unsafe(
+      'SELECT * FROM sale_items WHERE sale_id = $1',
+      [sale.id]
+    );
+    const items = itemsResult.map((item: Record<string, unknown>) => ({
+      productId: item.product_id as string,
+      model: item.model as string,
+      sn: item.sn as string,
+      price: typeof item.price === 'string' ? parseFloat(item.price) : (item.price as number),
+      cogs: typeof item.cogs === 'string' ? parseFloat(item.cogs) : (item.cogs as number),
+      warrantyExpiry: item.warranty_expiry as string
+    }));
+    
+    return {
+      id: sale.id as string,
+      customerId: sale.customer_id as string,
+      customerName: sale.customer_name as string,
+      items,
+      subtotal: typeof sale.subtotal === 'string' ? parseFloat(sale.subtotal) : (sale.subtotal as number),
+      tax: typeof sale.tax === 'string' ? parseFloat(sale.tax) : (sale.tax as number),
+      total: typeof sale.total === 'string' ? parseFloat(sale.total) : (sale.total as number),
+      paymentMethod: sale.payment_method as string,
+      staffName: sale.staff_name as string,
+      timestamp: sale.timestamp as string,
+    };
+  }));
+  
+  return salesWithItems;
 };
 
 export const getSalesByCustomerHandler = async (customerId: string) => {

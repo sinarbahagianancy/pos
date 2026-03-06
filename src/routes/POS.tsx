@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Product, SerialNumber, Customer, Sale, PaymentMethod, SaleItem, StoreConfig } from '../../app/types';
 import { formatIDR, calculateWarrantyExpiry, formatDate } from '../../app/utils/formatters';
 import { pdf } from '@react-pdf/renderer';
@@ -10,21 +10,41 @@ interface POSProps {
   sns: SerialNumber[];
   customers: Customer[];
   onCompleteSale: (sale: Sale) => void;
+  onCreateCustomer?: (name: string, phone?: string, address?: string) => Promise<Customer>;
   staffName: string;
   taxRate: number;
   storeConfig: StoreConfig;
 }
 
-const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale, staffName, taxRate, storeConfig }) => {
+const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale, onCreateCustomer, staffName, taxRate, storeConfig }) => {
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState<SaleItem[]>([]);
-  const [selectedCustomerId, setSelectedCustomerId] = useState(customers[0]?.id || '');
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [customerSuggestions, setCustomerSuggestions] = useState<Customer[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [isRegistered, setIsRegistered] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash');
   const [showInvoice, setShowInvoice] = useState(false);
   const [lastSale, setLastSale] = useState<Sale | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
   const [printModalHtml, setPrintModalHtml] = useState('');
   const [printPdfUrl, setPrintPdfUrl] = useState<string | null>(null);
+
+  // Close customer suggestions when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.customer-search-container')) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Filter out hidden products
 
   // Filter out hidden products
   const visibleProducts = useMemo(() => {
@@ -122,13 +142,25 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
   const tax = subtotal * taxRate;
   const total = subtotal + tax;
 
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
     if (cart.length === 0) return;
-    const customer = customers.find(c => c.id === selectedCustomerId) || customers[0];
+    
+    let customer = selectedCustomer;
+    
+    if (!customer && customerSearch.trim()) {
+      if (onCreateCustomer) {
+        customer = await onCreateCustomer(customerSearch, customerPhone || undefined, undefined);
+        setSelectedCustomer(customer);
+        setIsRegistered(true);
+      }
+    } else if (!customer) {
+      customer = { id: 'guest', name: 'Guest', phone: undefined, email: undefined, address: undefined, npwp: undefined, loyaltyPoints: 0 };
+    }
+    
     const sale: Sale = {
       id: `INV-${Date.now()}`,
-      customerId: customer.id,
-      customerName: customer.name,
+      customerId: customer!.id,
+      customerName: customer!.name,
       items: cart,
       subtotal, tax, total,
       paymentMethod,
@@ -139,9 +171,62 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
     setLastSale(sale);
     setShowInvoice(true);
     setCart([]);
+    setCustomerSearch('');
+    setCustomerPhone('');
+    setSelectedCustomer(null);
+    setIsRegistered(false);
   };
 
-  const selectedCustomer = customers.find(c => c.id === selectedCustomerId);
+  // Customer search logic
+  const handleCustomerSearch = (value: string) => {
+    setCustomerSearch(value);
+    setShowSuggestions(true);
+    
+    if (value.trim()) {
+      const query = value.toLowerCase();
+      const matches = customers.filter(c => 
+        c.name.toLowerCase().includes(query) || 
+        (c.phone && c.phone.includes(query)) ||
+        (c.address && c.address.toLowerCase().includes(query))
+      );
+      setCustomerSuggestions(matches.slice(0, 8));
+    } else {
+      setCustomerSuggestions([]);
+    }
+  };
+
+  const handlePhoneSearch = (value: string) => {
+    setCustomerPhone(value);
+    setShowSuggestions(true);
+    
+    if (value.trim()) {
+      const query = value.toLowerCase();
+      const matches = customers.filter(c => 
+        c.name.toLowerCase().includes(query) || 
+        (c.phone && c.phone.includes(query)) ||
+        (c.address && c.address.toLowerCase().includes(query))
+      );
+      setCustomerSuggestions(matches.slice(0, 8));
+    } else {
+      setCustomerSuggestions([]);
+    }
+  };
+
+  const selectCustomer = (customer: Customer) => {
+    setSelectedCustomer(customer);
+    setCustomerSearch(customer.name);
+    setCustomerPhone(customer.phone || '');
+    setIsRegistered(true);
+    setShowSuggestions(false);
+  };
+
+  const clearCustomer = () => {
+    setSelectedCustomer(null);
+    setCustomerSearch('');
+    setCustomerPhone('');
+    setIsRegistered(false);
+    setShowSuggestions(false);
+  };
 
   return (
     <div className="flex flex-col lg:grid lg:grid-cols-12 gap-6 h-full pb-32 lg:pb-4 max-w-full mx-auto relative">
@@ -305,18 +390,72 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
       {/* Checkout Summary Right Panel */}
       <div className="col-span-12 lg:col-span-5 xl:col-span-4 space-y-6 no-print">
         <div className="bg-slate-900 p-8 lg:p-10 rounded-[48px] border border-slate-800 shadow-2xl flex flex-col space-y-10 text-white relative overflow-hidden h-full">
-          <div className="space-y-4">
-            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest">Select Customer</label>
-            <select 
-              className="w-full px-6 py-4 rounded-2xl border border-slate-800 bg-slate-800 text-white focus:ring-4 focus:ring-indigo-500/20 outline-none text-sm font-bold transition-all cursor-pointer"
-              value={selectedCustomerId}
-              onChange={(e) => setSelectedCustomerId(e.target.value)}
-            >
-              {customers.map(c => <option key={c.id} value={c.id} className="text-slate-900 bg-white">{c.name}</option>)}
-            </select>
+          <div className="space-y-4 customer-search-container">
+            <div className="flex items-center justify-between">
+              <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest">Customer</label>
+              {isRegistered && selectedCustomer && (
+                <span className="text-[9px] font-bold bg-green-500/20 text-green-400 px-2 py-1 rounded-full uppercase tracking-wider">Registered</span>
+              )}
+              {!isRegistered && customerSearch.trim() && (
+                <span className="text-[9px] font-bold bg-amber-500/20 text-amber-400 px-2 py-1 rounded-full uppercase tracking-wider">New Customer</span>
+              )}
+            </div>
+            
+            {/* Name Search */}
+            <input 
+              type="text" 
+              placeholder="Search name..."
+              className="w-full px-6 py-4 rounded-2xl border border-slate-700 bg-slate-800 text-white placeholder-slate-500 focus:ring-4 focus:ring-indigo-500/20 outline-none text-sm font-bold transition-all"
+              value={customerSearch}
+              onChange={(e) => handleCustomerSearch(e.target.value)}
+              onFocus={() => customerSuggestions.length > 0 && setShowSuggestions(true)}
+            />
+            
+            {/* Phone Search */}
+            <input 
+              type="text" 
+              placeholder="Search phone number..."
+              className="w-full px-6 py-4 rounded-2xl border border-slate-700 bg-slate-800 text-white placeholder-slate-500 focus:ring-4 focus:ring-indigo-500/20 outline-none text-sm font-bold transition-all"
+              value={customerPhone}
+              onChange={(e) => handlePhoneSearch(e.target.value)}
+            />
+            
+            {/* Clear button when customer selected */}
             {selectedCustomer && (
+              <button onClick={clearCustomer} className="text-xs text-slate-400 hover:text-white flex items-center gap-1">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                Clear selection
+              </button>
+            )}
+            
+            {/* Customer Suggestions Dropdown */}
+            {showSuggestions && customerSuggestions.length > 0 && (
+              <div className="relative">
+                <div className="absolute z-50 w-full bg-slate-800 border border-slate-700 rounded-2xl shadow-xl overflow-hidden max-h-64 overflow-y-auto mt-1">
+                  {customerSuggestions.map(c => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => selectCustomer(c)}
+                      className="w-full px-4 py-3 text-left hover:bg-slate-700 border-b border-slate-700 last:border-0 transition-colors"
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="text-sm font-bold text-white">{c.name}</p>
+                          <p className="text-xs text-slate-400">{c.phone || 'No phone'}</p>
+                        </div>
+                        <p className="text-[10px] text-slate-500 max-w-[150px] truncate">{c.address || 'No address'}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* Show selected customer address */}
+            {selectedCustomer && selectedCustomer.address && (
               <div className="text-[10px] text-slate-400 px-2 font-medium italic">
-                {selectedCustomer.address || 'No Address Listed'}
+                {selectedCustomer.address}
               </div>
             )}
           </div>
@@ -428,7 +567,6 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
                 <thead>
                   <tr className="text-[9px] text-slate-400 uppercase font-black tracking-widest border-b border-slate-200">
                     <th className="text-left py-3">Description / Serial Number</th>
-                    <th className="text-center py-3">Warranty</th>
                     <th className="text-right py-3">Total</th>
                   </tr>
                 </thead>
@@ -438,12 +576,6 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
                       <td className="py-4 pr-4">
                         <p className="font-black text-sm uppercase tracking-tighter">{item.model}</p>
                         <p className="font-mono text-[10px] text-indigo-500 mt-1 uppercase tracking-tight">S/N: {item.sn}</p>
-                      </td>
-                      <td className="py-4 text-center">
-                        <div className="inline-flex flex-col items-center">
-                           <span className="px-2 py-0.5 bg-slate-100 rounded text-[9px] font-black uppercase tracking-tighter whitespace-nowrap">Valid Until:</span>
-                           <span className="text-[10px] font-bold text-slate-900 mt-1">{item.warrantyExpiry}</span>
-                        </div>
                       </td>
                       <td className="py-4 text-right tabular-nums font-black text-sm">
                         {formatIDR(item.price)}
@@ -457,13 +589,6 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
             {/* Totals & Footer */}
             <div className="px-6 lg:px-8 py-8 pt-0 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-10">
               <div className="flex-1 w-full sm:w-auto">
-                 {/* Barcode representation */}
-                 <div className="flex space-x-0.5 items-end mb-1 opacity-50">
-                   {[...Array(30)].map((_, i) => (
-                     <div key={i} className={`bg-slate-900 w-0.5 h-${i % 3 === 0 ? '6' : i % 2 === 0 ? '4' : '3'}`}></div>
-                   ))}
-                 </div>
-                 <p className="text-[8px] font-mono text-slate-400 uppercase">Verification Auth: {lastSale.id.split('-')[1]}</p>
                  <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-4 italic max-w-xs">Barang yang sudah dibeli tidak dapat ditukar atau dikembalikan.</p>
               </div>
               <div className="w-full sm:w-64 space-y-3">
@@ -497,12 +622,6 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
                         <td style="padding: 12px 0; border-bottom: 1px solid #f1f5f9;">
                           <div style="font-weight: 800; font-size: 14px; text-transform: uppercase; letter-spacing: -0.02em;">${item.model}</div>
                           <div style="font-family: monospace; font-size: 10px; color: #6366f1; margin-top: 4px; text-transform: uppercase;">S/N: ${item.sn}</div>
-                        </td>
-                        <td style="padding: 12px 0; border-bottom: 1px solid #f1f5f9; text-align: center;">
-                          <div style="display: inline-flex; flex-direction: column; align-items: center;">
-                            <span style="padding: 2px 6px; background: #f8fafc; border-radius: 4px; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: -0.02em;">Valid Until:</span>
-                            <span style="font-size: 10px; font-weight: 700; color: #0f172a; margin-top: 4px;">${item.warrantyExpiry}</span>
-                          </div>
                         </td>
                         <td style="padding: 12px 0; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 800; font-size: 14px;">
                           ${formatIDR(item.price)}
@@ -580,8 +699,7 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
       font-size: 8px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; 
       padding: 8px 0; border-bottom: 2px solid #1e293b; text-align: left; 
     }
-    th:nth-child(2) { text-align: center; }
-    th:nth-child(3) { text-align: right; }
+    th:nth-child(2) { text-align: right; }
     
     .totals-section { 
       display: flex; 
@@ -591,9 +709,6 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
       padding-top: 16px; 
     }
     .footer-section { flex: 1; }
-    .barcode { display: flex; gap: 2px; align-items: flex-end; opacity: 0.5; margin-bottom: 4px; }
-    .barcode span { background: #0f172a; width: 2px; }
-    .verification { font-size: 8px; font-family: monospace; color: #64748b; text-transform: uppercase; }
     .disclaimer { font-size: 9px; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 16px; font-style: italic; max-width: 200px; }
     
     .totals { width: 160px; }
@@ -649,7 +764,6 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
     <thead>
       <tr>
         <th>Description / Serial Number</th>
-        <th>Warranty</th>
         <th>Total</th>
       </tr>
     </thead>
@@ -660,10 +774,6 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
   
   <div class="totals-section">
     <div class="footer-section">
-      <div class="barcode">
-        ${Array(30).fill(0).map((_, i) => `<span style="height: ${[6, 4, 3][i % 3]}px"></span>`).join('')}
-      </div>
-      <div class="verification">Verification Auth: ${lastSale.id.split('-')[1]}</div>
       <div class="disclaimer">Barang yang sudah dibeli tidak dapat ditukar atau dikembalikan.</div>
     </div>
     <div class="totals">

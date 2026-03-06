@@ -13,10 +13,11 @@ interface InventoryProps {
   onAddProduct: (product: Product, serials: string[]) => void;
   onEditProduct?: (id: string, data: Partial<Product>) => Promise<void>;
   onDeleteProduct?: (id: string) => Promise<void>;
+  onRestoreProduct?: (id: string) => Promise<void>;
   onToggleHidden?: (id: string, hidden: boolean) => Promise<void>;
 }
 
-const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, canViewSensitive, onManualAdjust, onAddProduct, onEditProduct, onDeleteProduct, onToggleHidden }) => {
+const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, canViewSensitive, onManualAdjust, onAddProduct, onEditProduct, onDeleteProduct, onRestoreProduct, onToggleHidden }) => {
   const [filter, setFilter] = useState('');
   const [adjustingProduct, setAdjustingProduct] = useState<Product | null>(null);
   const [historyProduct, setHistoryProduct] = useState<Product | null>(null);
@@ -29,6 +30,11 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, canViewS
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Product>>({});
+  
+  // Simple stock adjustment
+  const [simpleAdjustProduct, setSimpleAdjustProduct] = useState<Product | null>(null);
+  const [simpleAdjustAmount, setSimpleAdjustAmount] = useState(0);
+  const [simpleAdjustReason, setSimpleAdjustReason] = useState('');
   
   // SN-based stock operations
   const [addingSNProduct, setAddingSNProduct] = useState<Product | null>(null);
@@ -59,6 +65,20 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, canViewS
     onManualAdjust(adjustingProduct.id, newStockVal, adjustReason);
     setAdjustingProduct(null);
     setAdjustReason('');
+  };
+
+  const handleSimpleAdjust = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!simpleAdjustProduct || simpleAdjustAmount === 0 || !simpleAdjustReason) return;
+    const newStock = simpleAdjustProduct.stock + simpleAdjustAmount;
+    if (newStock < 0) {
+      alert('Stok tidak bisa negatif!');
+      return;
+    }
+    onManualAdjust(simpleAdjustProduct.id, newStock, simpleAdjustReason);
+    setSimpleAdjustProduct(null);
+    setSimpleAdjustAmount(0);
+    setSimpleAdjustReason('');
   };
 
   const handleAddSN = async (e: React.FormEvent) => {
@@ -207,17 +227,10 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, canViewS
                 <tr key={p.id} className={`transition-colors group ${p.hidden ? 'opacity-50 bg-slate-50/50' : 'hover:bg-slate-50'}`}>
                   <td className="px-8 py-6">
                     <div className="flex flex-col">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded w-fit text-xs mb-2 tracking-tighter">{p.id}</span>
-                        {p.hidden === 1 && (
-                          <span className="bg-slate-200 text-slate-500 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest">Hidden</span>
-                        )}
-                      </div>
-                      <div className="flex h-3 space-x-0.5 items-end opacity-40">
-                         {[...Array(15)].map((_, i) => (
-                           <div key={i} className={`bg-slate-900 w-0.5 h-${(i * 37) % 3 === 0 ? 'full' : (i * 11) % 2 === 0 ? '3/4' : '1/2'}`}></div>
-                         ))}
-                      </div>
+                      <span className="font-mono font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded w-fit text-xs mb-2 tracking-tighter">{p.id}</span>
+                      {p.hidden === 1 && (
+                        <span className="bg-slate-200 text-slate-500 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest">Hidden</span>
+                      )}
                     </div>
                   </td>
                   <td className="px-8 py-6">
@@ -263,6 +276,7 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, canViewS
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                         </button>
                       )}
+                      {/* TODO: Re-enable SN-based stock operations when needed
                       <button 
                         onClick={() => { setAddingSNProduct(p); setNewSNInput(''); setSNOperationReason(''); }}
                         className="text-green-600 hover:bg-green-50 p-2 rounded-lg text-xs font-bold transition-all"
@@ -276,6 +290,14 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, canViewS
                         title="Kurangi via SN"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 12H4" /></svg>
+                      </button>
+                      */}
+                      <button 
+                        onClick={() => { setSimpleAdjustProduct(p); setSimpleAdjustAmount(0); setSimpleAdjustReason(''); }}
+                        className="text-blue-600 hover:bg-blue-50 p-2 rounded-lg text-xs font-bold transition-all"
+                        title="Sesuaikan Stok"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                       </button>
                       <button 
                         onClick={() => setHistoryProduct(p)}
@@ -652,18 +674,6 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, canViewS
                 <p className="text-lg font-black text-slate-900 uppercase tracking-tighter">{deletingProduct.brand} {deletingProduct.model}</p>
                 <p className="text-xs text-slate-500 font-mono mt-1">{deletingProduct.id}</p>
               </div>
-              
-              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4">
-                <div className="flex items-start space-x-3">
-                  <svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                  <div>
-                    <p className="text-sm font-black text-amber-800 uppercase tracking-tighter">Peringatan!</p>
-                    <p className="text-xs text-amber-700 mt-1">
-                      Produk ini memiliki <span className="font-bold">{sns.filter(sn => sn.productId === deletingProduct.id && sn.status === 'In Stock').length}</span> nomor seri terkait yang belum terjual. 
-                    </p>
-                  </div>
-                </div>
-              </div>
 
               {deleteError && (
                 <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-4">
@@ -703,39 +713,80 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, canViewS
                     'Hapus Produk'
                   )}
                 </button>
-                {onToggleHidden && (
-                  <button 
-                    onClick={async () => {
-                      if (!onToggleHidden) return;
-                      try {
-                        await onToggleHidden(deletingProduct.id, true);
-                        setDeletingProduct(null);
-                        setDeleteError(null);
-                      } catch (error: any) {
-                        setDeleteError(error.message || 'Gagal menyembunyikan produk');
-                      }
-                    }}
-                    disabled={isDeleting}
-                    className="w-full py-4 bg-orange-500 text-white font-black rounded-2xl text-xs uppercase tracking-widest shadow-lg hover:bg-orange-600 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
-                    Sembunyikan Produk
-                  </button>
-                )}
-                <button 
-                  onClick={() => { setDeletingProduct(null); setDeleteError(null); }} 
-                  disabled={isDeleting}
-                  className="w-full py-4 bg-white border border-slate-200 text-slate-700 font-black rounded-2xl text-xs uppercase tracking-widest disabled:opacity-50"
-                >
-                  Batal
-                </button>
               </div>
             </div>
           </div>
+          </div>
+        )}
+
+      {/* Simple Stock Adjustment Modal */}
+      {simpleAdjustProduct && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-xl flex items-center justify-center z-[100] p-4">
+          <div className="bg-white rounded-[32px] lg:rounded-[40px] shadow-2xl max-w-md w-full overflow-hidden border border-indigo-100 animate-in zoom-in-95 duration-200">
+            <div className="p-6 lg:p-8 border-b border-indigo-100 bg-indigo-50/50 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-black text-indigo-800 uppercase tracking-tighter">Sesuaikan Stok</h2>
+                <p className="text-[10px] text-indigo-600 font-bold uppercase mt-2">{simpleAdjustProduct.brand} {simpleAdjustProduct.model}</p>
+                <p className="text-[10px] text-indigo-500 font-medium mt-1">Stok saat ini: {simpleAdjustProduct.stock} unit</p>
+              </div>
+              <button onClick={() => { setSimpleAdjustProduct(null); setSimpleAdjustAmount(0); setSimpleAdjustReason(''); }} className="text-slate-300 hover:text-slate-900 transition-colors">
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <form onSubmit={handleSimpleAdjust} className="p-6 lg:p-8 space-y-6">
+              <div className="space-y-4">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Jumlah Penyesuaian</label>
+                <div className="flex items-center gap-4">
+                  <button 
+                    type="button"
+                    onClick={() => setSimpleAdjustAmount(simpleAdjustAmount - 1)}
+                    className="w-12 h-12 rounded-2xl bg-red-100 text-red-600 font-black text-xl hover:bg-red-200 flex items-center justify-center"
+                  >-</button>
+                  <input 
+                    type="number" 
+                    className="flex-1 px-6 py-4 rounded-2xl border border-slate-200 bg-slate-50 text-slate-900 text-xl font-black text-center outline-none"
+                    value={simpleAdjustAmount}
+                    onChange={(e) => setSimpleAdjustAmount(Number(e.target.value))}
+                    placeholder="0"
+                  />
+                  <button 
+                    type="button"
+                    onClick={() => setSimpleAdjustAmount(simpleAdjustAmount + 1)}
+                    className="w-12 h-12 rounded-2xl bg-green-100 text-green-600 font-black text-xl hover:bg-green-200 flex items-center justify-center"
+                  >+</button>
+                </div>
+                <p className="text-center text-sm font-bold">
+                  Stok baru: <span className="text-indigo-600">{Math.max(0, simpleAdjustProduct.stock + simpleAdjustAmount)}</span> unit
+                </p>
+              </div>
+              <div className="space-y-4">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Alasan</label>
+                <select 
+                  className="w-full px-6 py-4 rounded-2xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold focus:ring-4 focus:ring-indigo-500/10 outline-none appearance-none"
+                  value={simpleAdjustReason}
+                  onChange={(e) => setSimpleAdjustReason(e.target.value)}
+                  required
+                >
+                  <option value="">Pilih Alasan...</option>
+                  <option value="Restok Barang Baru">Restok Barang Baru</option>
+                  <option value="Barang Retur Customer">Barang Retur Customer</option>
+                  <option value="Penyesuaian Stok">Penyesuaian Stok</option>
+                  <option value="Koreksi Error">Koreksi Error</option>
+                  <option value="Barang Rusak">Barang Rusak</option>
+                </select>
+              </div>
+              <div className="flex gap-4 pt-6">
+                <button type="button" onClick={() => { setSimpleAdjustProduct(null); setSimpleAdjustAmount(0); setSimpleAdjustReason(''); }} className="flex-1 py-4 lg:py-5 bg-white border border-slate-200 text-slate-700 font-black rounded-3xl text-[10px] uppercase tracking-widest">Batal</button>
+                <button type="submit" className="flex-1 py-4 lg:py-5 bg-indigo-600 text-white font-black rounded-3xl text-[10px] uppercase tracking-widest shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95">
+                  Simpan
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
-    </div>
-  );
-};
+      </div>
+    );
+  };
 
-export default InventoryView;
+  export default InventoryView;

@@ -155,9 +155,8 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
-  col1: { width: '50%' },
-  col2: { width: '25%', textAlign: 'center' },
-  col3: { width: '25%', textAlign: 'right' },
+  col1: { width: '65%' },
+  col3: { width: '35%', textAlign: 'right' },
   tableRow: {
     flexDirection: 'row',
     paddingVertical: 10,
@@ -203,22 +202,6 @@ const styles = StyleSheet.create({
   },
   footerSection: {
     flex: 1,
-  },
-  barcode: {
-    flexDirection: 'row',
-    gap: 2,
-    marginBottom: 4,
-    opacity: 0.5,
-  },
-  barcodeBar: {
-    width: 2,
-    backgroundColor: '#0f172a',
-  },
-  verification: {
-    fontSize: 6,
-    fontFamily: 'Courier',
-    color: '#64748b',
-    textTransform: 'uppercase',
   },
   disclaimer: {
     fontSize: 7,
@@ -266,6 +249,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 900,
     letterSpacing: -0.5,
+    textAlign: 'right',
   },
 });
 
@@ -351,7 +335,6 @@ export const InvoiceDocument: React.FC<{ data: InvoiceData }> = ({ data }) => (
       <View style={styles.table}>
         <View style={styles.tableHeader}>
           <Text style={[styles.tableHeaderText, styles.col1]}>Description / Serial Number</Text>
-          <Text style={[styles.tableHeaderText, styles.col2]}>Warranty</Text>
           <Text style={[styles.tableHeaderText, styles.col3]}>Total</Text>
         </View>
         {data.items.map((item, index) => (
@@ -359,10 +342,6 @@ export const InvoiceDocument: React.FC<{ data: InvoiceData }> = ({ data }) => (
             <View style={styles.col1}>
               <Text style={styles.itemModel}>{item.model}</Text>
               <Text style={styles.itemSn}>S/N: {item.sn}</Text>
-            </View>
-            <View style={[styles.col2, styles.warrantyBox]}>
-              <Text style={styles.warrantyLabel}>Valid Until:</Text>
-              <Text style={styles.warrantyDate}>{item.warrantyExpiry || '-'}</Text>
             </View>
             <View style={styles.col3}>
               <Text style={[styles.tableRowText, { textAlign: 'right', fontWeight: 800, fontSize: 11 }]}>
@@ -376,18 +355,6 @@ export const InvoiceDocument: React.FC<{ data: InvoiceData }> = ({ data }) => (
       {/* Totals Section */}
       <View style={styles.totalsSection}>
         <View style={styles.footerSection}>
-          <View style={styles.barcode}>
-            {[...Array(20)].map((_, i) => (
-              <View
-                key={i}
-                style={[
-                  styles.barcodeBar,
-                  { height: [6, 4, 3][i % 3] * 2 },
-                ]}
-              />
-            ))}
-          </View>
-          <Text style={styles.verification}>Verification Auth: {data.invoiceNumber.split('-')[1]}</Text>
           <Text style={styles.disclaimer}>Barang yang sudah dibeli tidak dapat ditukar atau dikembalikan.</Text>
         </View>
         <View style={styles.totals}>

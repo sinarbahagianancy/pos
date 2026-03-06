@@ -108,6 +108,20 @@ export default function apiServerPlugin() {
             return;
           }
           
+          if (path.startsWith('products/') && path.includes('/restore') && req.method === 'POST') {
+            const productId = path.replace('products/', '').replace('/restore', '');
+            const { restoreProduct } = await import('./products.js');
+            try {
+              const product = await restoreProduct(productId);
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify(product));
+            } catch (error) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ error: String(error) }));
+            }
+            return;
+          }
+          
           if (path === 'serial-numbers' && req.method === 'GET') {
             const { getAllSerialNumbers } = await import('./products.js');
             try {
