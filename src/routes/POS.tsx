@@ -2,7 +2,8 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { Product, SerialNumber, Customer, Sale, PaymentMethod, SaleItem, StoreConfig } from '../../app/types';
 import { formatIDR, calculateWarrantyExpiry, formatDate } from '../../app/utils/formatters';
-import { generateInvoicePdf } from '../../app/services/product.service';
+import { pdf } from '@react-pdf/renderer';
+import { InvoiceDocument } from '../../app/components/InvoicePDF';
 
 interface POSProps {
   products: Product[];
@@ -683,7 +684,29 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
 </body>
 </html>`;
                     setPrintModalHtml(htmlContent);
-                    const pdfBlob = await generateInvoicePdf(htmlContent);
+                    const saleCustomer = customers.find(c => c.id === lastSale.customerId) || customers[0];
+                    const pdfBlob = await pdf(
+                      <InvoiceDocument
+                        data={{
+                          storeName: storeConfig.storeName,
+                          address: storeConfig.address,
+                          invoiceNumber: lastSale.id,
+                          date: formatDate(lastSale.timestamp),
+                          customerName: lastSale.customerName,
+                          customerPhone: saleCustomer?.phone,
+                          items: lastSale.items.map(item => ({
+                            model: item.model,
+                            sn: item.sn,
+                            price: item.price,
+                          })),
+                          subtotal: lastSale.subtotal,
+                          tax: lastSale.tax,
+                          total: lastSale.total,
+                          staffName: lastSale.staffName,
+                          paymentMethod: lastSale.paymentMethod,
+                        }}
+                      />
+                    ).toBlob();
                     const pdfUrl = URL.createObjectURL(pdfBlob);
                     setPrintPdfUrl(pdfUrl);
                   } catch (error) {

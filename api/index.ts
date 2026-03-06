@@ -1,8 +1,7 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { VercelRequest, VercelResponse} from '@vercel/node';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { eq } from 'drizzle-orm';
-import { generateInvoicePdf } from './pdf-generator';
 
 const connectionString = process.env.DATABASE_URL || '';
 
@@ -1143,27 +1142,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
       );
       return res.status(200).json(logs);
-    }
-
-    // POST /api/generate-invoice-pdf
-    if (method === 'POST' && url === '/api/generate-invoice-pdf') {
-      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-      const { html } = input;
-
-      if (!html) {
-        return res.status(400).json({ error: 'HTML content is required' });
-      }
-
-      try {
-        const pdfBuffer = await generateInvoicePdf(html);
-        
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', 'inline; filename="invoice.pdf"');
-        return res.status(200).send(pdfBuffer);
-      } catch (error) {
-        console.error('PDF Generation Error:', error);
-        return res.status(500).json({ error: 'Failed to generate PDF' });
-      }
     }
 
     return res.status(404).json({ error: 'Not found' });
