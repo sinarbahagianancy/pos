@@ -4,7 +4,7 @@ export type PaymentMethod = 'Cash' | 'Debit' | 'QRIS' | 'Credit';
 export type WarrantyType = 'Official Sony Indonesia' | 'Official Canon Indonesia' | 'Official Fujifilm Indonesia' | 'Distributor' | 'Store Warranty';
 export type ClaimStatus = 'Received' | 'Sent to HQ' | 'Repairing' | 'Ready for Pickup' | 'Completed';
 export type ProductCategory = 'Body' | 'Lens' | 'Accessory';
-export type AuditAction = 'Stock Addition' | 'Sales Deduction' | 'Manual Correction' | 'General' | 'Settings Update';
+export type AuditAction = 'Stock Addition' | 'Sales Deduction' | 'Manual Correction' | 'General' | 'Settings Update' | 'Product Update';
 
 export interface Product {
   id: string;
@@ -18,12 +18,14 @@ export interface Product {
   warrantyMonths: number;
   warrantyType: WarrantyType;
   stock: number;
+  hidden?: number;
 }
 
 export interface SerialNumber {
   sn: string;
   productId: string;
-  status: 'In Stock' | 'Sold' | 'Claimed';
+  status: 'In Stock' | 'Sold' | 'Claimed' | 'Damaged';
+  createdAt?: string;
 }
 
 export interface Customer {
@@ -34,6 +36,7 @@ export interface Customer {
   address?: string;
   npwp?: string;
   loyaltyPoints: number;
+  deleted?: boolean;
 }
 
 export interface SaleItem {

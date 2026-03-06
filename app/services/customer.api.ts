@@ -51,6 +51,7 @@ export const updateCustomer = async (
     address?: string;
     npwp?: string;
     loyaltyPoints?: number;
+    staffName?: string;
   }
 ): Promise<Customer> => {
   const response = await fetch(`${API_BASE}/customers/${id}`, {
@@ -65,9 +66,11 @@ export const updateCustomer = async (
   return response.json();
 };
 
-export const deleteCustomer = async (id: string): Promise<void> => {
+export const deleteCustomer = async (id: string, staffName: string = 'System'): Promise<void> => {
   const response = await fetch(`${API_BASE}/customers/${id}`, {
     method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ staffName }),
   });
   if (!response.ok) {
     const error = await response.json();

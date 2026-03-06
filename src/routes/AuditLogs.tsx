@@ -14,6 +14,8 @@ const AuditLogView: React.FC<AuditLogProps> = ({ logs }) => {
     'Stock Addition',
     'Sales Deduction',
     'Manual Correction',
+    'Product Update',
+    'Settings Update',
     'General'
   ];
 
@@ -76,6 +78,8 @@ const AuditLogView: React.FC<AuditLogProps> = ({ logs }) => {
                       log.action === 'Stock Addition' ? 'bg-green-50 text-green-700 border-green-100' :
                       log.action === 'Sales Deduction' ? 'bg-amber-50 text-amber-700 border-amber-100' :
                       log.action === 'Manual Correction' ? 'bg-red-50 text-red-700 border-red-100' :
+                      log.action === 'Product Update' ? 'bg-indigo-50 text-indigo-700 border-indigo-100' :
+                      log.action === 'Settings Update' ? 'bg-purple-50 text-purple-700 border-purple-100' :
                       'bg-slate-50 text-slate-600 border-slate-100'
                     }`}>
                       {log.action}

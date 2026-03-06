@@ -1,7 +1,8 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { Product, SerialNumber, Customer, Sale, PaymentMethod, SaleItem, StoreConfig } from '../../app/types';
 import { formatIDR, calculateWarrantyExpiry, formatDate } from '../../app/utils/formatters';
+import { generateInvoicePdf } from '../../app/services/product.service';
 
 interface POSProps {
   products: Product[];
@@ -20,10 +21,27 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash');
   const [showInvoice, setShowInvoice] = useState(false);
   const [lastSale, setLastSale] = useState<Sale | null>(null);
+  const [isPrinting, setIsPrinting] = useState(false);
+  const [printModalHtml, setPrintModalHtml] = useState('');
+  const [printPdfUrl, setPrintPdfUrl] = useState<string | null>(null);
+
+  // Filter out hidden products
+  const visibleProducts = useMemo(() => {
+    return products.filter(p => !p.hidden);
+  }, [products]);
+
+  // Filter out hidden products' serial numbers
+  const visibleProductIds = useMemo(() => {
+    return new Set(visibleProducts.map(p => p.id));
+  }, [visibleProducts]);
 
   const availableSNs = useMemo(() => {
-    return sns.filter(sn => sn.status === 'In Stock' && !cart.some(c => c.sn === sn.sn));
-  }, [sns, cart]);
+    return sns.filter(sn => 
+      sn.status === 'In Stock' && 
+      !cart.some(c => c.sn === sn.sn) &&
+      visibleProductIds.has(sn.productId)
+    );
+  }, [sns, cart, visibleProductIds]);
 
   const fuzzyMatch = (text: string, query: string): boolean => {
     const textLower = text.toLowerCase();
@@ -42,29 +60,28 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
     if (!search || search.length < 2) return { products: [], serialNumbers: [] };
     const query = search.toLowerCase();
 
-    const matchedProducts = products.filter(p => {
+    const matchedProducts = visibleProducts.filter(p => {
       return fuzzyMatch(p.id, query) || fuzzyMatch(p.model, query) || fuzzyMatch(p.brand, query);
     });
 
     const matchedSNs = availableSNs.filter(sn => {
       if (!sn.productId) return fuzzyMatch(sn.sn, query);
-      const product = products.find(p => p.id === sn.productId);
+      const product = visibleProducts.find(p => p.id === sn.productId);
       if (!product) return fuzzyMatch(sn.sn, query);
       return fuzzyMatch(sn.sn, query);
     });
 
     return { products: matchedProducts, serialNumbers: matchedSNs };
-  }, [search, products, availableSNs]);
+  }, [search, visibleProducts, availableSNs]);
 
   const addToCartByProduct = (product: Product) => {
-    // First try to find an available SN for this product
-    let snToUse: string;
     const availableSN = availableSNs.find(sn => sn.productId === product.id);
+    let snToUse: string;
     
     if (availableSN) {
       snToUse = availableSN.sn;
     } else {
-      // Generate placeholder SN if none available
+      // Generate placeholder SN for products without serial numbers (e.g., from manual stock audit)
       snToUse = `NOSN-${product.id.substring(0, 8)}-${Date.now()}`;
     }
     
@@ -185,18 +202,22 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
                   </div>
                   {filteredResults.products.slice(0, 10).map(product => {
                     const availableCount = availableSNs.filter(sn => sn.productId === product.id).length;
+                    const hasNoSN = product.stock > 0 && availableCount === 0;
+                    const isOutOfStock = product.stock === 0;
                     return (
                       <button 
                         key={product.id}
                         onClick={() => addToCartByProduct(product)}
-                        className="w-full p-4 flex items-center justify-between hover:bg-indigo-50 text-left transition-colors group"
+                        disabled={isOutOfStock}
+                        className={`w-full p-4 flex items-center justify-between text-left transition-colors group ${isOutOfStock ? 'opacity-50 cursor-not-allowed bg-slate-50' : 'hover:bg-indigo-50'}`}
                       >
                         <div>
                           <div className="flex items-center space-x-2">
                             <span className="text-[10px] font-black text-indigo-500 uppercase">{product.brand}</span>
                             <p className="font-bold text-slate-900 truncate text-sm">{product.model}</p>
+                            {hasNoSN && <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[8px] font-black uppercase rounded">NO SN</span>}
                           </div>
-                          <p className="text-[10px] text-slate-500 mt-1 font-mono uppercase tracking-tighter">ID: {product.id} • <span className={availableCount > 0 ? "text-green-600" : "text-red-500"} font-bold>{availableCount} available</span></p>
+                          <p className="text-[10px] text-slate-500 mt-1 font-mono uppercase tracking-tighter">ID: {product.id} • <span className={isOutOfStock ? "text-red-500" : hasNoSN ? "text-amber-600" : "text-green-600"} font-bold>{isOutOfStock ? 'OUT OF STOCK' : hasNoSN ? `${product.stock} unit (tanpa SN)` : `${availableCount} available`}</span></p>
                         </div>
                         <p className="text-indigo-600 font-black text-sm">{formatIDR(product.price)}</p>
                       </button>
@@ -213,18 +234,20 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
                   {filteredResults.serialNumbers.slice(0, 10).map(sn => {
                     const product = products.find(p => p.id === sn.productId);
                     if (!product) return null;
+                    const inCart = cart.some(c => c.sn === sn.sn);
                     return (
                       <button 
                         key={sn.sn}
-                        onClick={() => addToCart(sn)}
-                        className="w-full p-4 flex items-center justify-between hover:bg-indigo-50 text-left transition-colors group"
+                        onClick={() => !inCart && addToCart(sn)}
+                        disabled={inCart}
+                        className={`w-full p-4 flex items-center justify-between text-left transition-colors group ${inCart ? 'opacity-50 cursor-not-allowed bg-slate-50' : 'hover:bg-indigo-50'}`}
                       >
                         <div>
                           <div className="flex items-center space-x-2">
                             <span className="text-[10px] font-black text-indigo-500 uppercase">{product.brand}</span>
                             <p className="font-bold text-slate-900 truncate text-sm">{product.model}</p>
                           </div>
-                          <p className="text-[10px] text-slate-500 mt-1 font-mono uppercase tracking-tighter">Barcode ID: {product.id} • S/N: <span className="font-bold text-slate-700">{sn.sn}</span></p>
+                          <p className="text-[10px] text-slate-500 mt-1 font-mono uppercase tracking-tighter">Barcode ID: {product.id} • S/N: <span className="font-bold text-slate-700">{sn.sn}</span>{inCart && <span className="text-amber-500 ml-1">(DI KERANJANG)</span>}</p>
                         </div>
                         <p className="text-indigo-600 font-black text-sm">{formatIDR(product.price)}</p>
                       </button>
@@ -460,11 +483,294 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
 
             <div className="p-6 bg-slate-900 flex flex-col sm:flex-row gap-4 no-print shrink-0">
               <button onClick={() => setShowInvoice(false)} className="flex-1 py-4 bg-slate-800 text-slate-300 font-black rounded-3xl text-[10px] uppercase tracking-widest hover:text-white transition-all order-2 sm:order-1">Close</button>
-              <button onClick={() => window.print()} className="flex-1 py-4 bg-white text-slate-900 font-black rounded-3xl text-[10px] uppercase tracking-widest hover:bg-slate-100 shadow-xl shadow-white/5 transition-all active:scale-95 order-1 sm:order-2">Print Invoice (A5)</button>
+              <button 
+                onClick={async () => {
+                  if (!lastSale) return;
+                  setIsPrinting(true);
+                  try {
+                    const customer = customers.find(c => c.id === lastSale.customerId) || customers[0];
+                    const taxRatePercent = (taxRate * 100).toFixed(0);
+                    
+                    const itemsHtml = lastSale.items.map(item => `
+                      <tr>
+                        <td style="padding: 12px 0; border-bottom: 1px solid #f1f5f9;">
+                          <div style="font-weight: 800; font-size: 14px; text-transform: uppercase; letter-spacing: -0.02em;">${item.model}</div>
+                          <div style="font-family: monospace; font-size: 10px; color: #6366f1; margin-top: 4px; text-transform: uppercase;">S/N: ${item.sn}</div>
+                        </td>
+                        <td style="padding: 12px 0; border-bottom: 1px solid #f1f5f9; text-align: center;">
+                          <div style="display: inline-flex; flex-direction: column; align-items: center;">
+                            <span style="padding: 2px 6px; background: #f8fafc; border-radius: 4px; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: -0.02em;">Valid Until:</span>
+                            <span style="font-size: 10px; font-weight: 700; color: #0f172a; margin-top: 4px;">${item.warrantyExpiry}</span>
+                          </div>
+                        </td>
+                        <td style="padding: 12px 0; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 800; font-size: 14px;">
+                          ${formatIDR(item.price)}
+                        </td>
+                      </tr>
+                    `).join('');
+
+                    const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Invoice - ${lastSale.id}</title>
+  <style>
+    @page { size: A5; margin: 0; }
+    @media print {
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+      color: #0f172a; 
+      font-size: 12px;
+      line-height: 1.5;
+      width: 148mm;
+      min-height: 210mm;
+      padding: 10mm;
+    }
+    .header { 
+      display: flex; 
+      justify-content: space-between; 
+      align-items: flex-start; 
+      padding-bottom: 16px; 
+      border-bottom: 1px solid #f1f5f9; 
+      margin-bottom: 16px;
+    }
+    .logo-section { display: flex; align-items: center; gap: 12px; }
+    .logo { 
+      width: 48px; height: 48px; 
+      background: #4f46e5; border-radius: 12px; 
+      display: flex; align-items: center; justify-content: center;
+      color: white;
+    }
+    .store-name { font-size: 20px; font-weight: 900; text-transform: uppercase; letter-spacing: -0.03em; }
+    .store-tagline { font-size: 9px; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+    .store-address { font-size: 9px; color: #94a3b8; margin-top: 2px; }
+    .invoice-info { text-align: right; }
+    .invoice-label { font-size: 9px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; }
+    .invoice-id { font-size: 16px; font-weight: 900; margin-top: 2px; }
+    .invoice-date { font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+    
+    .customer-section { 
+      display: grid; 
+      grid-template-columns: 1fr 1fr; 
+      gap: 24px; 
+      padding: 16px; 
+      background: #f8fafc; 
+      border-radius: 12px; 
+      margin-bottom: 16px; 
+    }
+    .section-label { font-size: 8px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+    .customer-name { font-size: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: -0.02em; }
+    .customer-detail { font-size: 11px; color: #475569; margin-top: 2px; }
+    .customer-npwp { font-family: monospace; font-size: 11px; font-weight: 800; }
+    .no-npwp { font-style: italic; color: #94a3b8; }
+    .payment-badge { 
+      display: inline-block; padding: 4px 10px; 
+      background: white; border: 1px solid #e2e8f0; border-radius: 6px; 
+      font-size: 10px; font-weight: 800; text-transform: uppercase; 
+      color: #4f46e5; 
+    }
+    
+    table { width: 100%; border-collapse: collapse; }
+    th { 
+      font-size: 8px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; 
+      padding: 8px 0; border-bottom: 2px solid #1e293b; text-align: left; 
+    }
+    th:nth-child(2) { text-align: center; }
+    th:nth-child(3) { text-align: right; }
+    
+    .totals-section { 
+      display: flex; 
+      justify-content: space-between; 
+      align-items: flex-start; 
+      margin-top: 24px; 
+      padding-top: 16px; 
+    }
+    .footer-section { flex: 1; }
+    .barcode { display: flex; gap: 2px; align-items: flex-end; opacity: 0.5; margin-bottom: 4px; }
+    .barcode span { background: #0f172a; width: 2px; }
+    .verification { font-size: 8px; font-family: monospace; color: #64748b; text-transform: uppercase; }
+    .disclaimer { font-size: 9px; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 16px; font-style: italic; max-width: 200px; }
+    
+    .totals { width: 160px; }
+    .total-row { display: flex; justify-content: space-between; font-size: 10px; }
+    .total-label { font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+    .total-value { font-weight: 700; }
+    .grand-total { 
+      display: flex; justify-content: space-between; 
+      padding-top: 12px; margin-top: 8px; 
+      border-top: 2px solid #0f172a; 
+    }
+    .grand-total-label { font-size: 14px; font-weight: 800; text-transform: uppercase; }
+    .grand-total-value { font-size: 24px; font-weight: 900; letter-spacing: -0.03em; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo-section">
+      <div class="logo">
+        <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+      </div>
+      <div>
+        <div class="store-name">${storeConfig.storeName}</div>
+        <div class="store-tagline">Premium Imaging Solution</div>
+        <div class="store-address">${storeConfig.address}</div>
+      </div>
+    </div>
+    <div class="invoice-info">
+      <div class="invoice-label">Faktur Penjualan</div>
+      <div class="invoice-id">${lastSale.id}</div>
+      <div class="invoice-date">${formatDate(lastSale.timestamp)}</div>
+    </div>
+  </div>
+  
+  <div class="customer-section">
+    <div>
+      <div class="section-label">Bill To / Penerima</div>
+      <div class="customer-name">${lastSale.customerName}</div>
+      <div class="customer-detail">${customer?.address || '-'}</div>
+      <div class="customer-detail">Telp: ${customer?.phone || '-'}</div>
+    </div>
+    <div style="text-align: right;">
+      <div class="section-label">Tax Registration</div>
+      ${customer?.npwp ? `<div class="customer-npwp">${customer.npwp}</div>` : '<div class="no-npwp">No NPWP Provided</div>'}
+      <div style="margin-top: 16px;">
+        <div class="section-label">Payment Method</div>
+        <span class="payment-badge">${lastSale.paymentMethod === 'Credit' ? 'ORG UTANG (BON)' : lastSale.paymentMethod}</span>
+      </div>
+    </div>
+  </div>
+  
+  <table>
+    <thead>
+      <tr>
+        <th>Description / Serial Number</th>
+        <th>Warranty</th>
+        <th>Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${itemsHtml}
+    </tbody>
+  </table>
+  
+  <div class="totals-section">
+    <div class="footer-section">
+      <div class="barcode">
+        ${Array(30).fill(0).map((_, i) => `<span style="height: ${[6, 4, 3][i % 3]}px"></span>`).join('')}
+      </div>
+      <div class="verification">Verification Auth: ${lastSale.id.split('-')[1]}</div>
+      <div class="disclaimer">Barang yang sudah dibeli tidak dapat ditukar atau dikembalikan.</div>
+    </div>
+    <div class="totals">
+      <div class="total-row">
+        <span class="total-label">Subtotal</span>
+        <span class="total-value">${formatIDR(lastSale.subtotal)}</span>
+      </div>
+      <div class="total-row">
+        <span class="total-label">Tax (${taxRatePercent}% PPN)</span>
+        <span class="total-value">${formatIDR(lastSale.tax)}</span>
+      </div>
+      <div class="grand-total">
+        <span class="grand-total-label">Grand Total</span>
+        <span class="grand-total-value">${formatIDR(lastSale.total)}</span>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+                    setPrintModalHtml(htmlContent);
+                    const pdfBlob = await generateInvoicePdf(htmlContent);
+                    const pdfUrl = URL.createObjectURL(pdfBlob);
+                    setPrintPdfUrl(pdfUrl);
+                  } catch (error) {
+                    console.error('Failed to generate PDF:', error);
+                    alert('Failed to generate PDF. Please try again.');
+                  } finally {
+                    setIsPrinting(false);
+                  }
+                }}
+                disabled={isPrinting}
+                className="flex-1 py-4 bg-white text-slate-900 font-black rounded-3xl text-[10px] uppercase tracking-widest hover:bg-slate-100 shadow-xl shadow-white/5 transition-all active:scale-95 order-1 sm:order-2 disabled:opacity-50"
+              >
+                {isPrinting ? 'Preparing...' : 'Print Invoice (A5)'}
+              </button>
             </div>
           </div>
         </div>
       )}
+      
+      {(printModalHtml || printPdfUrl) && (
+        <PrintModal 
+          html={printModalHtml} 
+          pdfUrl={printPdfUrl} 
+          onClose={() => {
+            setPrintModalHtml('');
+            if (printPdfUrl) {
+              URL.revokeObjectURL(printPdfUrl);
+              setPrintPdfUrl(null);
+            }
+          }} 
+        />
+      )}
+    </div>
+  );
+};
+
+interface PrintModalProps {
+  html: string;
+  pdfUrl: string | null;
+  onClose: () => void;
+}
+
+const PrintModal: React.FC<PrintModalProps> = ({ html, pdfUrl, onClose }) => {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  const handlePrint = () => {
+    const iframe = iframeRef.current;
+    if (iframe?.contentWindow) {
+      iframe.contentWindow.print();
+    } else {
+      window.print();
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-[158mm] max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="p-4 border-b border-slate-200 flex items-center justify-between shrink-0">
+          <h3 className="font-black text-slate-800 text-sm">Print Invoice</h3>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+            <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <div className="flex-1 overflow-auto bg-slate-100 p-4">
+          {pdfUrl ? (
+            <iframe 
+              ref={iframeRef}
+              src={pdfUrl} 
+              className="mx-auto bg-white shadow-lg"
+              style={{ width: '148mm', height: '210mm' }}
+              title="Invoice PDF"
+            />
+          ) : (
+            <div 
+              className="bg-white shadow-lg mx-auto"
+              style={{ width: '148mm', minHeight: '210mm' }}
+              dangerouslySetInnerHTML={{ __html: html }} 
+            />
+          )}
+        </div>
+        <div className="p-4 border-t border-slate-200 flex gap-3 shrink-0">
+          <button onClick={onClose} className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors">Cancel</button>
+          <button onClick={handlePrint} className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors" disabled={!pdfUrl}>
+            Print Now
+          </button>
+        </div>
+      </div>
     </div>
   );
 };

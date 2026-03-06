@@ -138,6 +138,26 @@ export const deleteStaffHandler = async (id: string) => {
   await client.unsafe('DELETE FROM staff_members WHERE id = $1', [id]);
 };
 
+export const updateStaffHandler = async (id: string, data: { name?: string; role?: 'Admin' | 'Staff'; password?: string }) => {
+  await initializeDatabase();
+  
+  const [current] = await client.unsafe('SELECT * FROM staff_members WHERE id = $1', [id]);
+  if (!current) {
+    throw new Error('Staff not found');
+  }
+  
+  const name = data.name ?? current.name;
+  const role = data.role ?? current.role;
+  const passwordHash = data.password ? btoa(data.password) : current.password_hash;
+  
+  const result = await client.unsafe(
+    'UPDATE staff_members SET name = $1, role = $2, password_hash = $3 WHERE id = $4 RETURNING id, name, role, created_at',
+    [name, role, passwordHash, id]
+  );
+  
+  return parseDbStaffMember(result[0]);
+};
+
 // Store config handlers
 export const getStoreConfigHandler = async () => {
   await initializeDatabase();

@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { eq } from 'drizzle-orm';
+import { generateInvoicePdf } from './pdf-generator';
 
 const connectionString = process.env.DATABASE_URL || '';
 
@@ -79,6 +80,32 @@ const salesTable = {
   }
 };
 
+const warrantyClaimsTable = {
+  tableName: 'warranty_claims',
+  columns: {
+    id: { name: 'id' },
+    sn: { name: 'sn' },
+    productModel: { name: 'product_model' },
+    issue: { name: 'issue' },
+    status: { name: 'status' },
+    createdAt: { name: 'created_at' },
+  }
+};
+
+const saleItemsTable = {
+  tableName: 'sale_items',
+  columns: {
+    id: { name: 'id' },
+    saleId: { name: 'sale_id' },
+    productId: { name: 'product_id' },
+    model: { name: 'model' },
+    sn: { name: 'sn' },
+    price: { name: 'price' },
+    cogs: { name: 'cogs' },
+    warrantyExpiry: { name: 'warranty_expiry' },
+  }
+};
+
 type ProductCategory = 'Body' | 'Lens' | 'Accessory';
 type ConditionType = 'New' | 'Used';
 type WarrantyType = 'Official Sony Indonesia' | 'Official Canon Indonesia' | 'Official Fujifilm Indonesia' | 'Distributor' | 'Store Warranty';
@@ -97,6 +124,7 @@ interface Product {
   warrantyMonths: number;
   warrantyType: WarrantyType;
   stock: number;
+  hidden?: number;
 }
 
 interface SerialNumber {
@@ -140,6 +168,28 @@ interface Sale {
   timestamp: string;
 }
 
+type ClaimStatus = 'Pending' | 'Ongoing' | 'Repairing' | 'Ready for Pickup' | 'Completed';
+
+interface WarrantyClaim {
+  id: string;
+  sn: string;
+  productModel: string;
+  issue: string;
+  status: ClaimStatus;
+  createdAt: string;
+}
+
+interface SaleItem {
+  id: string;
+  saleId: string;
+  productId: string;
+  model: string;
+  sn: string;
+  price: number;
+  cogs: number;
+  warrantyExpiry: string;
+}
+
 const parseDbProduct = (row: Record<string, unknown>): Product => ({
   id: row.id as string,
   brand: row.brand as string,
@@ -152,6 +202,7 @@ const parseDbProduct = (row: Record<string, unknown>): Product => ({
   warrantyMonths: row.warranty_months as number,
   warrantyType: row.warranty_type as WarrantyType,
   stock: row.stock as number,
+  hidden: row.hidden as number | undefined,
 });
 
 const parseDbSerialNumber = (row: Record<string, unknown>): SerialNumber => ({
@@ -183,6 +234,26 @@ const parseDbSale = (row: Record<string, unknown>): Sale => ({
   paymentMethod: row.payment_method as PaymentMethod,
   staffName: row.staff_name as string,
   timestamp: row.timestamp as string,
+});
+
+const parseDbWarrantyClaim = (row: Record<string, unknown>): WarrantyClaim => ({
+  id: row.id as string,
+  sn: row.sn as string,
+  productModel: row.product_model as string,
+  issue: row.issue as string,
+  status: row.status as ClaimStatus,
+  createdAt: row.created_at as string,
+});
+
+const parseDbSaleItem = (row: Record<string, unknown>): SaleItem => ({
+  id: row.id as string,
+  saleId: row.sale_id as string,
+  productId: row.product_id as string,
+  model: row.model as string,
+  sn: row.sn as string,
+  price: typeof row.price === 'string' ? parseFloat(row.price) : (row.price as number),
+  cogs: typeof row.cogs === 'string' ? parseFloat(row.cogs) : (row.cogs as number),
+  warrantyExpiry: row.warranty_expiry as string,
 });
 
 // Staff and Store Config types
@@ -457,13 +528,70 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (method === 'PUT' && url?.startsWith('/api/products/')) {
       const productId = url.replace('/api/products/', '');
       const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-      const validated = validateUpdateProductInput(input);
+      const { staffName = 'System', ...productInput } = input;
+      const validated = validateUpdateProductInput(productInput);
       
-      const updateData: Record<string, unknown> = { ...validated };
-      if (validated.price !== undefined) updateData.price = validated.price.toString();
-      if (validated.cogs !== undefined) updateData.cogs = validated.cogs.toString();
-      if (validated.warrantyMonths !== undefined) { updateData.warranty_months = validated.warrantyMonths; delete updateData.warrantyMonths; }
-      if (validated.warrantyType !== undefined) { updateData.warranty_type = validated.warrantyType; delete updateData.warrantyType; }
+      // Get old product for audit logging
+      const [oldProduct] = await db.select('products', ['*'], { column: 'id', value: productId });
+      if (!oldProduct) {
+        return res.status(404).json({ error: 'Product not found' });
+      }
+      
+      const updateData: Record<string, unknown> = { updated_at: new Date() };
+      const changes: string[] = [];
+      
+      if (validated.brand !== undefined && validated.brand !== oldProduct.brand) {
+        updateData.brand = validated.brand;
+        changes.push(`brand: ${oldProduct.brand} -> ${validated.brand}`);
+      }
+      if (validated.model !== undefined && validated.model !== oldProduct.model) {
+        updateData.model = validated.model;
+        changes.push(`model: ${oldProduct.model} -> ${validated.model}`);
+      }
+      if (validated.category !== undefined && validated.category !== oldProduct.category) {
+        updateData.category = validated.category;
+        changes.push(`category: ${oldProduct.category} -> ${validated.category}`);
+      }
+      if (validated.mount !== undefined && validated.mount !== oldProduct.mount) {
+        updateData.mount = validated.mount;
+        changes.push(`mount: ${oldProduct.mount} -> ${validated.mount}`);
+      }
+      if (validated.condition !== undefined && validated.condition !== oldProduct.condition) {
+        updateData.condition = validated.condition;
+        changes.push(`condition: ${oldProduct.condition} -> ${validated.condition}`);
+      }
+      if (validated.price !== undefined) {
+        const newPrice = validated.price.toString();
+        if (newPrice !== oldProduct.price) {
+          updateData.price = newPrice;
+          changes.push(`price: ${oldProduct.price} -> ${newPrice}`);
+        }
+      }
+      if (validated.cogs !== undefined) {
+        const newCogs = validated.cogs.toString();
+        if (newCogs !== oldProduct.cogs) {
+          updateData.cogs = newCogs;
+          changes.push(`cogs: ${oldProduct.cogs} -> ${newCogs}`);
+        }
+      }
+      if (validated.warrantyMonths !== undefined && validated.warrantyMonths !== oldProduct.warranty_months) {
+        updateData.warranty_months = validated.warrantyMonths;
+        changes.push(`warrantyMonths: ${oldProduct.warranty_months} -> ${validated.warrantyMonths}`);
+      }
+      if (validated.warrantyType !== undefined && validated.warrantyType !== oldProduct.warranty_type) {
+        updateData.warranty_type = validated.warrantyType;
+        changes.push(`warrantyType: ${oldProduct.warranty_type} -> ${validated.warrantyType}`);
+      }
+      
+      if (changes.length > 0) {
+        await db.insert('audit_logs', [{
+          id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          staff_name: staffName,
+          action: 'Product Update',
+          details: `Updated ${oldProduct.brand} ${oldProduct.model}: ${changes.join(', ')}`,
+          related_id: productId,
+        }]);
+      }
       
       const result = await db.update('products', updateData, { column: 'id', value: productId });
       
@@ -504,8 +632,51 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // DELETE /api/products/:id
     if (method === 'DELETE' && url?.startsWith('/api/products/')) {
       const productId = url.replace('/api/products/', '');
+      
+      // Check if there are In Stock serial numbers
+      const sns = await client.unsafe('SELECT id FROM serial_numbers WHERE product_id = $1 AND status = $2', [productId, 'In Stock']);
+      if (sns.length > 0) {
+        return res.status(400).json({ error: `Produk memiliki ${sns.length} nomor seri yang belum terjual. Hapus atau jual nomor seri tersebut terlebih dahulu.` });
+      }
+      
+      // Check for NOSN stock (stock without serial numbers)
+      const product = await client.unsafe('SELECT stock FROM products WHERE id = $1', [productId]);
+      if (product.length > 0) {
+        const stock = Number(product[0].stock);
+        const totalSNs = await client.unsafe('SELECT COUNT(*) as count FROM serial_numbers WHERE product_id = $1', [productId]);
+        const trackedStock = Number(totalSNs[0]?.count || 0);
+        const nosnStock = stock - trackedStock;
+        
+        if (nosnStock > 0) {
+          return res.status(400).json({ error: `Produk memiliki ${nosnStock} unit stok tanpa nomor seri (NOSN). Kurangi stok terlebih dahulu sebelum menghapus produk.` });
+        }
+      }
+      
       await db.delete('products', { column: 'id', value: productId });
       return res.status(204).send(null);
+    }
+
+    // POST /api/products/:id/toggle-hidden
+    if (method === 'POST' && url?.startsWith('/api/products/') && url.includes('/toggle-hidden')) {
+      const productId = url.replace('/api/products/', '').replace('/toggle-hidden', '');
+      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const { hidden } = input;
+      
+      try {
+        await db.update('products', { hidden: hidden ? 1 : 0 }, { column: 'id', value: productId });
+      } catch (err) {
+        // Column might not exist, try to add it first
+        try {
+          await client.unsafe('ALTER TABLE products ADD COLUMN IF NOT EXISTS hidden INTEGER DEFAULT 0');
+          await db.update('products', { hidden: hidden ? 1 : 0 }, { column: 'id', value: productId });
+        } catch (addErr) {
+          console.error('Failed to toggle hidden:', addErr);
+          return res.status(500).json({ error: 'Failed to toggle product visibility' });
+        }
+      }
+      
+      const result = await client.unsafe('SELECT * FROM products WHERE id = $1', [productId]);
+      return res.status(200).json(parseDbProduct(result[0]));
     }
 
     // GET /api/serial-numbers
@@ -615,6 +786,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(204).send(null);
     }
 
+    // PUT /api/staff/:id
+    if (method === 'PUT' && url?.startsWith('/api/staff/')) {
+      const staffId = url.replace('/api/staff/', '');
+      await initializeDatabase();
+      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const { name, role, password } = input;
+      
+      const [current] = await client.unsafe('SELECT * FROM staff_members WHERE id = $1', [staffId]);
+      if (!current) {
+        return res.status(404).json({ error: 'Staff not found' });
+      }
+      
+      const newName = name ?? current.name;
+      const newRole = role ?? current.role;
+      const newPasswordHash = password ? btoa(password) : current.password_hash;
+      
+      const result = await client.unsafe(
+        'UPDATE staff_members SET name = $1, role = $2, password_hash = $3 WHERE id = $4 RETURNING id, name, role, created_at',
+        [newName, newRole, newPasswordHash, staffId]
+      );
+      
+      return res.status(200).json({
+        id: result[0].id,
+        name: result[0].name,
+        role: result[0].role,
+        createdAt: result[0].created_at,
+      });
+    }
+
     // === STORE CONFIG ROUTES ===
     
     // GET /api/store-config
@@ -646,7 +846,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // GET /api/customers
     if (method === 'GET' && url === '/api/customers') {
       await initializeDatabase();
-      const result = await client.unsafe('SELECT * FROM customers ORDER BY name');
+      const result = await client.unsafe('SELECT * FROM customers WHERE deleted = false ORDER BY name');
       return res.status(200).json(result.map(parseDbCustomer));
     }
 
@@ -684,33 +884,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const customerId = url.replace('/api/customers/', '');
       await initializeDatabase();
       const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-      const { name, phone, email, address, npwp, loyaltyPoints } = input;
+      const { name, phone, email, address, npwp, loyaltyPoints, staffName = 'System' } = input;
+
+      // Get old customer for audit logging
+      const [oldCustomer] = await client.unsafe('SELECT * FROM customers WHERE id = $1', [customerId]);
+      if (!oldCustomer) {
+        return res.status(404).json({ error: 'Customer not found' });
+      }
 
       const updates: string[] = [];
       const values: unknown[] = [];
       let paramIndex = 1;
 
-      if (name !== undefined) {
+      if (name !== undefined && name !== oldCustomer.name) {
         updates.push(`name = $${paramIndex++}`);
         values.push(name);
       }
-      if (phone !== undefined) {
+      if (phone !== undefined && phone !== oldCustomer.phone) {
         updates.push(`phone = $${paramIndex++}`);
         values.push(phone);
       }
-      if (email !== undefined) {
+      if (email !== undefined && email !== oldCustomer.email) {
         updates.push(`email = $${paramIndex++}`);
         values.push(email);
       }
-      if (address !== undefined) {
+      if (address !== undefined && address !== oldCustomer.address) {
         updates.push(`address = $${paramIndex++}`);
         values.push(address);
       }
-      if (npwp !== undefined) {
+      if (npwp !== undefined && npwp !== oldCustomer.npwp) {
         updates.push(`npwp = $${paramIndex++}`);
         values.push(npwp);
       }
-      if (loyaltyPoints !== undefined) {
+      if (loyaltyPoints !== undefined && loyaltyPoints !== parseInt(oldCustomer.loyalty_points || '0')) {
         updates.push(`loyalty_points = $${paramIndex++}`);
         values.push(loyaltyPoints);
       }
@@ -731,6 +937,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(404).json({ error: 'Customer not found' });
       }
 
+      // Audit log for customer update
+      const changes = updates.filter(u => !u.includes('updated_at')).join(', ');
+      await client.unsafe(
+        'INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())',
+        [`LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`, staffName, 'General', `Updated customer: ${changes}`, customerId]
+      );
+
       return res.status(200).json(parseDbCustomer(result[0]));
     }
 
@@ -738,13 +951,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (method === 'DELETE' && url?.startsWith('/api/customers/')) {
       const customerId = url.replace('/api/customers/', '');
       await initializeDatabase();
+      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const { staffName = 'System' } = input || {};
       
-      const hasSales = await client.unsafe('SELECT 1 FROM sales WHERE customer_id = $1 LIMIT 1', [customerId]);
-      if (hasSales && hasSales.length > 0) {
-        return res.status(400).json({ error: 'Cannot delete customer with existing sales' });
+      // Get customer name for audit logging
+      const [customer] = await client.unsafe('SELECT name FROM customers WHERE id = $1', [customerId]);
+      if (!customer) {
+        return res.status(404).json({ error: 'Customer not found' });
       }
       
-      await client.unsafe('DELETE FROM customers WHERE id = $1', [customerId]);
+      // Soft delete - set deleted = true
+      await client.unsafe('UPDATE customers SET deleted = true, updated_at = NOW() WHERE id = $1', [customerId]);
+      
+      // Audit log for customer deletion
+      await client.unsafe(
+        'INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())',
+        [`LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`, staffName, 'General', `Deleted customer: ${customer.name}`, customerId]
+      );
+      
       return res.status(204).send(null);
     }
 
@@ -785,19 +1009,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           [id, customerId, customerName, String(subtotal), String(tax), String(total), paymentMethod, staffName]
         );
 
-        // Insert sale items and update serial numbers
+        // Insert sale items, update serial numbers, deduct stock
         for (const item of items) {
           await client.unsafe(
             'INSERT INTO sale_items (sale_id, product_id, model, sn, price, cogs, warranty_expiry) VALUES ($1, $2, $3, $4, $5, $6, $7)',
             [id, item.productId, item.model, item.sn, String(item.price), String(item.cogs), item.warrantyExpiry]
           );
 
-          // Update serial number status to Sold
+          // Only update SN status if it's a real serial number (not NOSN-xxx)
+          if (!item.sn.startsWith('NOSN-')) {
+            await client.unsafe(
+              'UPDATE serial_numbers SET status = $1 WHERE sn = $2',
+              ['Sold', item.sn]
+            );
+          }
+
+          // Deduct stock
           await client.unsafe(
-            'UPDATE serial_numbers SET status = $1 WHERE sn = $2',
-            ['Sold', item.sn]
+            'UPDATE products SET stock = stock - 1 WHERE id = $1',
+            [item.productId]
+          );
+
+          // Audit log - differentiate between SN and non-SN items
+          const snLabel = item.sn.startsWith('NOSN-') ? 'tanpa SN' : `SN: ${item.sn}`;
+          await client.unsafe(
+            'INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())',
+            [`LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`, staffName, 'Stock Deduction', `Sold 1 unit of ${item.model} (${snLabel}) to ${customerName}`, item.productId]
           );
         }
+
+        // Audit log for sale
+        await client.unsafe(
+          'INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())',
+          [`LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`, staffName, 'Sale Created', `Sale ${id} - ${items.length} item(s), Total: ${total}, Customer: ${customerName}`, id]
+        );
 
         // Update customer loyalty points (1 point per 1000 IDR)
         const pointsEarned = Math.floor(total / 1000);
@@ -812,6 +1057,112 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } catch (err) {
         console.error('Sale error:', err);
         return res.status(500).json({ error: 'Failed to create sale' });
+      }
+    }
+
+    // === SALE ITEMS ROUTES ===
+
+    // GET /api/sale-items
+    if (method === 'GET' && url === '/api/sale-items') {
+      await initializeDatabase();
+      const result = await client.unsafe('SELECT * FROM sale_items ORDER BY id DESC');
+      return res.status(200).json(result.map(parseDbSaleItem));
+    }
+
+    // GET /api/sale-items/:saleId
+    if (method === 'GET' && url?.startsWith('/api/sale-items/')) {
+      const saleId = url.replace('/api/sale-items/', '');
+      await initializeDatabase();
+      const result = await client.unsafe('SELECT * FROM sale_items WHERE sale_id = $1', [saleId]);
+      return res.status(200).json(result.map(parseDbSaleItem));
+    }
+
+    // === WARRANTY CLAIMS ROUTES ===
+
+    // GET /api/warranty-claims
+    if (method === 'GET' && url === '/api/warranty-claims') {
+      await initializeDatabase();
+      const result = await client.unsafe('SELECT * FROM warranty_claims ORDER BY created_at DESC');
+      return res.status(200).json(result.map(parseDbWarrantyClaim));
+    }
+
+    // POST /api/warranty-claims
+    if (method === 'POST' && url === '/api/warranty-claims') {
+      await initializeDatabase();
+      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const { id, sn, productModel, issue, status = 'Pending' } = input;
+
+      if (!id || !sn || !productModel || !issue) {
+        return res.status(400).json({ error: 'Missing required fields' });
+      }
+
+      const result = await client.unsafe(
+        'INSERT INTO warranty_claims (id, sn, product_model, issue, status) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+        [id, sn, productModel, issue, status]
+      );
+
+      return res.status(201).json(parseDbWarrantyClaim(result[0]));
+    }
+
+    // PUT /api/warranty-claims/:id
+    if (method === 'PUT' && url?.startsWith('/api/warranty-claims/')) {
+      const claimId = url.replace('/api/warranty-claims/', '');
+      await initializeDatabase();
+      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const { status } = input;
+
+      if (!status) {
+        return res.status(400).json({ error: 'Status is required' });
+      }
+
+      const result = await client.unsafe(
+        'UPDATE warranty_claims SET status = $1 WHERE id = $2 RETURNING *',
+        [status, claimId]
+      );
+
+      if (!result || result.length === 0) {
+        return res.status(404).json({ error: 'Claim not found' });
+      }
+
+      return res.status(200).json(parseDbWarrantyClaim(result[0]));
+    }
+
+    // GET /api/audit-logs
+    if (method === 'GET' && url === '/api/audit-logs') {
+      await initializeDatabase();
+      const result = await db.select('audit_logs');
+      const logs = result.map((row: Record<string, unknown>) => ({
+        id: String(row.id),
+        staffName: String(row.staff_name),
+        action: String(row.action),
+        details: String(row.details),
+        relatedId: row.related_id ? String(row.related_id) : undefined,
+        timestamp: String(row.timestamp),
+      }));
+      logs.sort((a, b) => 
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      );
+      return res.status(200).json(logs);
+    }
+
+    // POST /api/generate-invoice-pdf
+    if (method === 'POST' && url === '/api/generate-invoice-pdf') {
+      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const { html } = input;
+
+      if (!html) {
+        return res.status(400).json({ error: 'HTML content is required' });
+      }
+
+      try {
+        const pdfBuffer = await generateInvoicePdf(html);
+        
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'inline; filename="invoice.pdf"');
+        return res.status(200).send(pdfBuffer);
+      } catch (error) {
+        console.error('PDF Generation Error:', error);
+        return res.status(500).json({ error: 'Failed to generate PDF' });
       }
     }
 

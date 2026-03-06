@@ -28,7 +28,7 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       rollupOptions: {
-        external: ['postgres', 'drizzle-orm/postgres-js']
+        external: ['postgres', 'drizzle-orm/postgres-js', 'playwright']
       }
     },
     define: {

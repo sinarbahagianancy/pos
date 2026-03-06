@@ -75,6 +75,39 @@ export default function apiServerPlugin() {
             return;
           }
           
+          if (path.startsWith('products/') && req.method === 'DELETE') {
+            const productId = path.replace('products/', '');
+            const { deleteProduct } = await import('./products.js');
+            try {
+              await deleteProduct(productId);
+              res.statusCode = 204;
+              res.end();
+            } catch (error) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ error: String(error) }));
+            }
+            return;
+          }
+          
+          if (path.startsWith('products/') && path.includes('/toggle-hidden') && req.method === 'POST') {
+            const productId = path.replace('products/', '').replace('/toggle-hidden', '');
+            const { toggleProductHidden } = await import('./products.js');
+            let body = '';
+            req.on('data', chunk => body += chunk);
+            req.on('end', async () => {
+              try {
+                const data = JSON.parse(body);
+                const product = await toggleProductHidden(productId, data.hidden);
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify(product));
+              } catch (error) {
+                res.statusCode = 500;
+                res.end(JSON.stringify({ error: String(error) }));
+              }
+            });
+            return;
+          }
+          
           if (path === 'serial-numbers' && req.method === 'GET') {
             const { getAllSerialNumbers } = await import('./products.js');
             try {
@@ -170,6 +203,25 @@ export default function apiServerPlugin() {
             return;
           }
           
+          if (path.startsWith('staff/') && req.method === 'PUT') {
+            const { updateStaffHandler } = await import('./auth.js');
+            const staffId = path.replace('staff/', '');
+            let body = '';
+            req.on('data', chunk => body += chunk);
+            req.on('end', async () => {
+              try {
+                const data = JSON.parse(body);
+                const result = await updateStaffHandler(staffId, data);
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify(result));
+              } catch (error) {
+                res.statusCode = 500;
+                res.end(JSON.stringify({ error: String(error) }));
+              }
+            });
+            return;
+          }
+          
           if (path === 'store-config' && req.method === 'GET') {
             const { getStoreConfigHandler } = await import('./auth.js');
             try {
@@ -255,14 +307,19 @@ export default function apiServerPlugin() {
           if (path.startsWith('customers/') && req.method === 'DELETE') {
             const customerId = path.replace('customers/', '');
             const { deleteCustomerHandler } = await import('./customers.js');
-            try {
-              await deleteCustomerHandler(customerId);
-              res.statusCode = 204;
-              res.end();
-            } catch (error) {
-              res.statusCode = 400;
-              res.end(JSON.stringify({ error: String(error) }));
-            }
+            let body = '';
+            req.on('data', chunk => body += chunk);
+            req.on('end', async () => {
+              try {
+                const data = body ? JSON.parse(body) : {};
+                await deleteCustomerHandler(customerId, data.staffName);
+                res.statusCode = 204;
+                res.end();
+              } catch (error) {
+                res.statusCode = 400;
+                res.end(JSON.stringify({ error: String(error) }));
+              }
+            });
             return;
           }
           
@@ -309,6 +366,124 @@ export default function apiServerPlugin() {
               res.statusCode = 500;
               res.end(JSON.stringify({ error: String(error) }));
             }
+            return;
+          }
+          
+          if (path === 'sale-items' && req.method === 'GET') {
+            const { getAllSaleItemsHandler } = await import('./customers.js');
+            try {
+              const result = await getAllSaleItemsHandler();
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify(result));
+            } catch (error) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ error: String(error) }));
+            }
+            return;
+          }
+          
+          if (path.startsWith('sale-items/') && req.method === 'GET') {
+            const saleId = path.replace('sale-items/', '');
+            const { getSaleItemsBySaleIdHandler } = await import('./customers.js');
+            try {
+              const result = await getSaleItemsBySaleIdHandler(saleId);
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify(result));
+            } catch (error) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ error: String(error) }));
+            }
+            return;
+          }
+          
+          if (path === 'warranty-claims' && req.method === 'GET') {
+            const { getAllWarrantyClaimsHandler } = await import('./customers.js');
+            try {
+              const result = await getAllWarrantyClaimsHandler();
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify(result));
+            } catch (error) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ error: String(error) }));
+            }
+            return;
+          }
+          
+          if (path === 'warranty-claims' && req.method === 'POST') {
+            const { createWarrantyClaimHandler } = await import('./customers.js');
+            let body = '';
+            req.on('data', chunk => body += chunk);
+            req.on('end', async () => {
+              try {
+                const data = JSON.parse(body);
+                const result = await createWarrantyClaimHandler(data);
+                res.setHeader('Content-Type', 'application/json');
+                res.statusCode = 201;
+                res.end(JSON.stringify(result));
+              } catch (error) {
+                res.statusCode = 400;
+                res.end(JSON.stringify({ error: String(error) }));
+              }
+            });
+            return;
+          }
+          
+          if (path.startsWith('warranty-claims/') && req.method === 'PUT') {
+            const claimId = path.replace('warranty-claims/', '');
+            const { updateWarrantyClaimHandler } = await import('./customers.js');
+            let body = '';
+            req.on('data', chunk => body += chunk);
+            req.on('end', async () => {
+              try {
+                const data = JSON.parse(body);
+                const result = await updateWarrantyClaimHandler(claimId, data.status);
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify(result));
+              } catch (error) {
+                res.statusCode = 500;
+                res.end(JSON.stringify({ error: String(error) }));
+              }
+            });
+            return;
+          }
+          
+          if (path === 'audit-logs' && req.method === 'GET') {
+            const { getAllAuditLogs } = await import('./products.js');
+            try {
+              const result = await getAllAuditLogs();
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify(result));
+              return;
+            } catch (error) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ error: String(error) }));
+              return;
+            }
+          }
+          
+          if (path === 'generate-invoice-pdf' && req.method === 'POST') {
+            const { generateInvoicePdf } = await import('./pdf-generator.js');
+            let body = '';
+            req.on('data', chunk => body += chunk);
+            req.on('end', async () => {
+              try {
+                const data = JSON.parse(body);
+                const { html } = data;
+                if (!html) {
+                  res.statusCode = 400;
+                  res.end(JSON.stringify({ error: 'HTML content is required' }));
+                  return;
+                }
+                const pdfBuffer = await generateInvoicePdf(html);
+                res.setHeader('Content-Type', 'application/pdf');
+                res.setHeader('Content-Disposition', 'inline; filename="invoice.pdf"');
+                res.end(pdfBuffer);
+              } catch (error) {
+                console.error('PDF Generation Error:', error);
+                res.statusCode = 500;
+                res.end(JSON.stringify({ error: 'Failed to generate PDF' }));
+              }
+            });
             return;
           }
         }

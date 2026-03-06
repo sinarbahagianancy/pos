@@ -8,6 +8,7 @@ interface SettingsProps {
   onUpdateStoreConfig: (config: StoreConfigType) => Promise<void>;
   staffList: StaffMember[];
   onAddStaff: (name: string, password: string, role: 'Admin' | 'Staff') => Promise<void>;
+  onUpdateStaff?: (id: string, data: { name?: string; role?: 'Admin' | 'Staff'; password?: string }) => Promise<void>;
   onDeleteStaff: (id: string) => Promise<void>;
   isAdmin: boolean;
   onReset: () => void;
@@ -18,16 +19,22 @@ const SettingsView: React.FC<SettingsProps> = ({
   onUpdateStoreConfig, 
   staffList, 
   onAddStaff,
+  onUpdateStaff,
   onDeleteStaff,
   isAdmin,
   onReset
 }) => {
   const [localConfig, setLocalConfig] = useState<StoreConfigType>(storeConfig);
   const [showAddStaffModal, setShowAddStaffModal] = useState(false);
+  const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
+  const [editStaffName, setEditStaffName] = useState('');
+  const [editStaffRole, setEditStaffRole] = useState<'Admin' | 'Staff'>('Staff');
+  const [editStaffPassword, setEditStaffPassword] = useState('');
   const [newStaffName, setNewStaffName] = useState('');
   const [newStaffPassword, setNewStaffPassword] = useState('');
   const [newStaffRole, setNewStaffRole] = useState<'Admin' | 'Staff'>('Staff');
   const [saving, setSaving] = useState(false);
+  const [isUpdatingStaff, setIsUpdatingStaff] = useState(false);
 
   useEffect(() => {
     setLocalConfig(storeConfig);
@@ -183,12 +190,28 @@ const SettingsView: React.FC<SettingsProps> = ({
                   </div>
                 </div>
                 {isAdmin && (
-                  <button 
-                    onClick={() => handleDeleteStaff(staff.id, staff.name)}
-                    className="text-slate-300 hover:text-red-500 transition-colors p-1"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                  </button>
+                  <div className="flex items-center gap-1">
+                    {onUpdateStaff && (
+                      <button 
+                        onClick={() => {
+                          setEditingStaff(staff);
+                          setEditStaffName(staff.name);
+                          setEditStaffRole(staff.role);
+                          setEditStaffPassword('');
+                        }}
+                        className="text-slate-300 hover:text-indigo-500 transition-colors p-1"
+                        title="Edit"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                      </button>
+                    )}
+                    <button 
+                      onClick={() => handleDeleteStaff(staff.id, staff.name)}
+                      className="text-slate-300 hover:text-red-500 transition-colors p-1"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                    </button>
+                  </div>
                 )}
               </div>
             ))}
@@ -251,6 +274,75 @@ const SettingsView: React.FC<SettingsProps> = ({
               <div className="flex gap-4">
                 <button type="button" onClick={() => setShowAddStaffModal(false)} className="flex-1 py-4 bg-white border border-slate-200 text-slate-700 font-black rounded-2xl text-xs uppercase tracking-widest hover:bg-slate-50 transition-all">Batal</button>
                 <button type="submit" disabled={!newStaffName.trim() || !newStaffPassword} className={`flex-1 py-4 rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg transition-all ${!newStaffName.trim() || !newStaffPassword ? 'bg-slate-300 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white shadow-indigo-100 hover:bg-indigo-700'}`}>Simpan</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Staff Modal */}
+      {editingStaff && onUpdateStaff && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-[150] p-4">
+          <div className="bg-white rounded-[32px] shadow-2xl max-w-md w-full overflow-hidden border border-slate-100 animate-in zoom-in duration-200">
+            <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+              <h2 className="text-lg font-black text-slate-900 uppercase tracking-tighter">Edit Staff</h2>
+              <button onClick={() => setEditingStaff(null)} className="text-slate-400 hover:text-slate-600"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+            </div>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              setIsUpdatingStaff(true);
+              try {
+                await onUpdateStaff(editingStaff.id, {
+                  name: editStaffName,
+                  role: editStaffRole,
+                  password: editStaffPassword || undefined
+                });
+                setEditingStaff(null);
+              } catch (error) {
+                console.error('Failed to update staff:', error);
+                alert(error instanceof Error ? error.message : 'Failed to update staff');
+              } finally {
+                setIsUpdatingStaff(false);
+              }
+            }} className="p-6 lg:p-8 space-y-6">
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Nama Panggilan</label>
+                <input 
+                  type="text" 
+                  required
+                  className="w-full px-5 py-3 rounded-2xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all placeholder-slate-400"
+                  placeholder="Contoh: Rudi"
+                  value={editStaffName}
+                  onChange={(e) => setEditStaffName(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Role</label>
+                <select 
+                  className="w-full px-5 py-3 rounded-2xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all appearance-none cursor-pointer"
+                  value={editStaffRole}
+                  onChange={(e) => setEditStaffRole(e.target.value as 'Admin' | 'Staff')}
+                >
+                  <option value="Staff">Staff</option>
+                  <option value="Admin">Admin</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Password Baru (Opsional)</label>
+                <input 
+                  type="password" 
+                  minLength={3}
+                  className="w-full px-5 py-3 rounded-2xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all placeholder-slate-400"
+                  placeholder="Kosongkan jika tidak ingin mengubah"
+                  value={editStaffPassword}
+                  onChange={(e) => setEditStaffPassword(e.target.value)}
+                />
+              </div>
+              <div className="flex gap-4">
+                <button type="button" onClick={() => setEditingStaff(null)} className="flex-1 py-4 bg-white border border-slate-200 text-slate-700 font-black rounded-2xl text-xs uppercase tracking-widest hover:bg-slate-50 transition-all">Batal</button>
+                <button type="submit" disabled={isUpdatingStaff || !editStaffName.trim()} className="flex-1 py-4 bg-indigo-600 text-white font-black rounded-2xl text-xs uppercase tracking-widest shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all disabled:opacity-50">
+                  {isUpdatingStaff ? 'Menyimpan...' : 'Simpan'}
+                </button>
               </div>
             </form>
           </div>

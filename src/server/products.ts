@@ -58,16 +58,69 @@ export const createProduct = async (input: unknown) => {
   return parseDbProduct(result[0]);
 };
 
-export const updateProduct = async (id: string, input: unknown) => {
+export const updateProduct = async (id: string, input: unknown, staffName: string = 'System') => {
   const validated = validateUpdateProductInput(input);
   
-  const updateData: Record<string, unknown> = { ...validated, updatedAt: new Date() };
+  // Get old product for audit logging
+  const [oldProduct] = await db.select().from(products).where(eq(products.id, id));
+  if (!oldProduct) {
+    throw new Error('Product not found');
+  }
   
+  const updateData: Record<string, unknown> = { updatedAt: new Date() };
+  const changes: string[] = [];
+  
+  if (validated.brand !== undefined && validated.brand !== oldProduct.brand) {
+    updateData.brand = validated.brand;
+    changes.push(`brand: ${oldProduct.brand} -> ${validated.brand}`);
+  }
+  if (validated.model !== undefined && validated.model !== oldProduct.model) {
+    updateData.model = validated.model;
+    changes.push(`model: ${oldProduct.model} -> ${validated.model}`);
+  }
+  if (validated.category !== undefined && validated.category !== oldProduct.category) {
+    updateData.category = validated.category;
+    changes.push(`category: ${oldProduct.category} -> ${validated.category}`);
+  }
+  if (validated.mount !== undefined && validated.mount !== oldProduct.mount) {
+    updateData.mount = validated.mount;
+    changes.push(`mount: ${oldProduct.mount} -> ${validated.mount}`);
+  }
+  if (validated.condition !== undefined && validated.condition !== oldProduct.condition) {
+    updateData.condition = validated.condition;
+    changes.push(`condition: ${oldProduct.condition} -> ${validated.condition}`);
+  }
   if (validated.price !== undefined) {
-    updateData.price = validated.price.toString();
+    const newPrice = validated.price.toString();
+    if (newPrice !== oldProduct.price) {
+      updateData.price = newPrice;
+      changes.push(`price: ${oldProduct.price} -> ${newPrice}`);
+    }
   }
   if (validated.cogs !== undefined) {
-    updateData.cogs = validated.cogs.toString();
+    const newCogs = validated.cogs.toString();
+    if (newCogs !== oldProduct.cogs) {
+      updateData.cogs = newCogs;
+      changes.push(`cogs: ${oldProduct.cogs} -> ${newCogs}`);
+    }
+  }
+  if (validated.warrantyMonths !== undefined && validated.warrantyMonths !== oldProduct.warrantyMonths) {
+    updateData.warrantyMonths = validated.warrantyMonths;
+    changes.push(`warrantyMonths: ${oldProduct.warrantyMonths} -> ${validated.warrantyMonths}`);
+  }
+  if (validated.warrantyType !== undefined && validated.warrantyType !== oldProduct.warrantyType) {
+    updateData.warrantyType = validated.warrantyType;
+    changes.push(`warrantyType: ${oldProduct.warrantyType} -> ${validated.warrantyType}`);
+  }
+  
+  if (changes.length > 0) {
+    await db.insert(auditLogs).values({
+      id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      staffName,
+      action: 'Product Update',
+      details: `Updated ${oldProduct.brand} ${oldProduct.model}: ${changes.join(', ')}`,
+      relatedId: id,
+    });
   }
   
   const result = await db.update(products).set(updateData).where(eq(products.id, id)).returning();
@@ -110,7 +163,32 @@ export const adjustStock = async (
 };
 
 export const deleteProduct = async (id: string) => {
+  const inStockSNs = await db.select().from(serialNumbers).where(
+    eq(serialNumbers.productId, id) && eq(serialNumbers.status, 'In Stock')
+  );
+  
+  const productResult = await db.select().from(products).where(eq(products.id, id));
+  const product = productResult[0];
+  
+  if (inStockSNs.length > 0) {
+    throw new Error(`Produk memiliki ${inStockSNs.length} nomor seri yang belum terjual. Hapus atau jual nomor seri tersebut terlebih dahulu.`);
+  }
+  
+  // Check for NOSN stock (stock without serial numbers)
+  const totalSNs = await db.select().from(serialNumbers).where(eq(serialNumbers.productId, id));
+  const trackedStock = totalSNs.length;
+  const nosnStock = product ? (Number(product.stock) - trackedStock) : 0;
+  
+  if (nosnStock > 0) {
+    throw new Error(`Produk memiliki ${nosnStock} unit stok tanpa nomor seri (NOSN). Kurangi stok terlebih dahulu sebelum menghapus produk.`);
+  }
+  
   await db.delete(products).where(eq(products.id, id));
+};
+
+export const toggleProductHidden = async (id: string, hidden: boolean) => {
+  const result = await db.update(products).set({ hidden: hidden ? 1 : 0 }).where(eq(products.id, id)).returning();
+  return result[0] ? parseDbProduct(result[0]) : null;
 };
 
 export const getAllSerialNumbers = async () => {
@@ -177,6 +255,22 @@ export const getAuditLogsByProduct = async (productId: string) => {
     .select()
     .from(auditLogs)
     .where(eq(auditLogs.relatedId, productId))
+    .orderBy(desc(auditLogs.timestamp));
+  
+  return result.map(r => ({
+    id: r.id,
+    staffName: r.staffName,
+    action: r.action,
+    details: r.details,
+    timestamp: r.timestamp ?? null,
+    relatedId: r.relatedId,
+  }));
+};
+
+export const getAllAuditLogs = async () => {
+  const result = await db
+    .select()
+    .from(auditLogs)
     .orderBy(desc(auditLogs.timestamp));
   
   return result.map(r => ({

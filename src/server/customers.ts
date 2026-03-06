@@ -1,6 +1,6 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import { customers, sales, saleItems, serialNumbers } from '../db/schema';
+import { customers, sales, saleItems, serialNumbers, auditLogs, products } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import dotenv from 'dotenv';
 
@@ -13,7 +13,7 @@ if (!connectionString) {
 }
 
 const client = postgres(connectionString, { prepare: false });
-const db = drizzle(client, { schema: { customers, sales, saleItems, serialNumbers } });
+const db = drizzle(client, { schema: { customers, sales, saleItems, serialNumbers, auditLogs } });
 
 const parseDbCustomer = (row: Record<string, unknown>) => ({
   id: row.id as string,
@@ -23,6 +23,7 @@ const parseDbCustomer = (row: Record<string, unknown>) => ({
   address: row.address as string | undefined,
   npwp: row.npwp as string | undefined,
   loyaltyPoints: typeof row.loyalty_points === 'string' ? parseInt(row.loyalty_points) : (row.loyalty_points as number),
+  deleted: row.deleted as boolean | undefined,
   createdAt: row.created_at as string,
   updatedAt: row.updated_at as string,
 });
@@ -41,7 +42,7 @@ const parseDbSale = (row: Record<string, unknown>) => ({
 });
 
 export const getAllCustomersHandler = async () => {
-  const result = await client.unsafe('SELECT * FROM customers ORDER BY name');
+  const result = await client.unsafe('SELECT * FROM customers WHERE deleted = false ORDER BY name');
   return result.map(parseDbCustomer);
 };
 
@@ -74,32 +75,39 @@ export const updateCustomerHandler = async (id: string, data: {
   address?: string;
   npwp?: string;
   loyaltyPoints?: number;
+  staffName?: string;
 }) => {
+  // Get old customer for audit logging
+  const [oldCustomer] = await client.unsafe('SELECT * FROM customers WHERE id = $1', [id]);
+  if (!oldCustomer) {
+    throw new Error('Customer not found');
+  }
+
   const updates: string[] = [];
   const values: (string | number | null)[] = [];
   let paramIndex = 1;
 
-  if (data.name !== undefined) {
+  if (data.name !== undefined && data.name !== oldCustomer.name) {
     updates.push(`name = $${paramIndex++}`);
     values.push(data.name);
   }
-  if (data.phone !== undefined) {
+  if (data.phone !== undefined && data.phone !== oldCustomer.phone) {
     updates.push(`phone = $${paramIndex++}`);
     values.push(data.phone);
   }
-  if (data.email !== undefined) {
+  if (data.email !== undefined && data.email !== oldCustomer.email) {
     updates.push(`email = $${paramIndex++}`);
     values.push(data.email);
   }
-  if (data.address !== undefined) {
+  if (data.address !== undefined && data.address !== oldCustomer.address) {
     updates.push(`address = $${paramIndex++}`);
     values.push(data.address);
   }
-  if (data.npwp !== undefined) {
+  if (data.npwp !== undefined && data.npwp !== oldCustomer.npwp) {
     updates.push(`npwp = $${paramIndex++}`);
     values.push(data.npwp);
   }
-  if (data.loyaltyPoints !== undefined) {
+  if (data.loyaltyPoints !== undefined && data.loyaltyPoints !== parseInt(oldCustomer.loyalty_points || '0')) {
     updates.push(`loyalty_points = $${paramIndex++}`);
     values.push(data.loyaltyPoints);
   }
@@ -120,15 +128,31 @@ export const updateCustomerHandler = async (id: string, data: {
     throw new Error('Customer not found');
   }
 
+  // Audit log for customer update
+  const staffName = data.staffName || 'System';
+  await client.unsafe(
+    'INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())',
+    [`LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`, staffName, 'General', `Updated customer: ${updates.filter(u => !u.includes('updated_at')).join(', ')}`, id]
+  );
+
   return parseDbCustomer(result[0]);
 };
 
-export const deleteCustomerHandler = async (id: string) => {
-  const hasSales = await client.unsafe('SELECT 1 FROM sales WHERE customer_id = $1 LIMIT 1', [id]);
-  if (hasSales.length > 0) {
-    throw new Error('Cannot delete customer with existing sales');
+export const deleteCustomerHandler = async (id: string, staffName: string = 'System') => {
+  // Get customer name for audit logging
+  const [customer] = await client.unsafe('SELECT name FROM customers WHERE id = $1', [id]);
+  if (!customer) {
+    throw new Error('Customer not found');
   }
-  await client.unsafe('DELETE FROM customers WHERE id = $1', [id]);
+  
+  // Soft delete - set deleted = true
+  await client.unsafe('UPDATE customers SET deleted = true, updated_at = NOW() WHERE id = $1', [id]);
+  
+  // Audit log for customer deletion
+  await client.unsafe(
+    'INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())',
+    [`LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`, staffName, 'General', `Deleted customer: ${customer.name}`, id]
+  );
 };
 
 export const getAllSalesHandler = async () => {
@@ -174,11 +198,32 @@ export const createSaleHandler = async (data: {
         [data.id, item.productId, item.model, item.sn, String(item.price), String(item.cogs), item.warrantyExpiry]
       );
 
+      // Only update SN status if it's a real serial number (not NOSN-xxx)
+      if (!item.sn.startsWith('NOSN-')) {
+        await client.unsafe(
+          'UPDATE serial_numbers SET status = $1 WHERE sn = $2',
+          ['Sold', item.sn]
+        );
+      }
+
+      // Always deduct stock
       await client.unsafe(
-        'UPDATE serial_numbers SET status = $1 WHERE sn = $2',
-        ['Sold', item.sn]
+        'UPDATE products SET stock = stock - 1 WHERE id = $1',
+        [item.productId]
+      );
+
+      // Audit log - differentiate between SN and non-SN items
+      const snLabel = item.sn.startsWith('NOSN-') ? 'tanpa SN' : `SN: ${item.sn}`;
+      await client.unsafe(
+        'INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())',
+        [`LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`, data.staffName, 'Stock Deduction', `Sold 1 unit of ${item.model} (${snLabel}) to ${data.customerName}`, item.productId]
       );
     }
+
+    await client.unsafe(
+      'INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())',
+      [`LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`, data.staffName, 'Sale Created', `Sale ${data.id} - ${data.items.length} item(s), Total: ${data.total}, Customer: ${data.customerName}`, data.id]
+    );
 
     const pointsEarned = Math.floor(data.total / 1000);
     await client.unsafe(
@@ -192,4 +237,83 @@ export const createSaleHandler = async (data: {
     console.error('Sale creation failed:', err);
     throw err;
   }
+};
+
+export const getAllSaleItemsHandler = async () => {
+  const result = await client.unsafe('SELECT * FROM sale_items ORDER BY id DESC');
+  return result.map((row: Record<string, unknown>) => ({
+    id: row.id as string,
+    saleId: row.sale_id as string,
+    productId: row.product_id as string,
+    model: row.model as string,
+    sn: row.sn as string,
+    price: typeof row.price === 'string' ? parseFloat(row.price) : (row.price as number),
+    cogs: typeof row.cogs === 'string' ? parseFloat(row.cogs) : (row.cogs as number),
+    warrantyExpiry: row.warranty_expiry as string,
+  }));
+};
+
+export const getSaleItemsBySaleIdHandler = async (saleId: string) => {
+  const result = await client.unsafe('SELECT * FROM sale_items WHERE sale_id = $1', [saleId]);
+  return result.map((row: Record<string, unknown>) => ({
+    id: row.id as string,
+    saleId: row.sale_id as string,
+    productId: row.product_id as string,
+    model: row.model as string,
+    sn: row.sn as string,
+    price: typeof row.price === 'string' ? parseFloat(row.price) : (row.price as number),
+    cogs: typeof row.cogs === 'string' ? parseFloat(row.cogs) : (row.cogs as number),
+    warrantyExpiry: row.warranty_expiry as string,
+  }));
+};
+
+export const getAllWarrantyClaimsHandler = async () => {
+  const result = await client.unsafe('SELECT * FROM warranty_claims ORDER BY created_at DESC');
+  return result.map((row: Record<string, unknown>) => ({
+    id: row.id as string,
+    sn: row.sn as string,
+    productModel: row.product_model as string,
+    issue: row.issue as string,
+    status: row.status as string,
+    createdAt: row.created_at as string,
+  }));
+};
+
+export const createWarrantyClaimHandler = async (data: {
+  id: string;
+  sn: string;
+  productModel: string;
+  issue: string;
+  status?: string;
+}) => {
+  const result = await client.unsafe(
+    'INSERT INTO warranty_claims (id, sn, product_model, issue, status) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+    [data.id, data.sn, data.productModel, data.issue, data.status || 'Pending']
+  );
+  return {
+    id: result[0].id as string,
+    sn: result[0].sn as string,
+    productModel: result[0].product_model as string,
+    issue: result[0].issue as string,
+    status: result[0].status as string,
+    createdAt: result[0].created_at as string,
+  };
+};
+
+export const updateWarrantyClaimHandler = async (id: string, status: string) => {
+  const result = await client.unsafe(
+    'UPDATE warranty_claims SET status = $1 WHERE id = $2 RETURNING *',
+    [status, id]
+  );
+  if (result.length === 0) {
+    throw new Error('Claim not found');
+  }
+  return {
+    id: result[0].id as string,
+    sn: result[0].sn as string,
+    productModel: result[0].product_model as string,
+    issue: result[0].issue as string,
+    status: result[0].status as string,
+    createdAt: result[0].created_at as string,
+  };
 };

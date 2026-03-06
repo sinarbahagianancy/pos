@@ -95,6 +95,20 @@ export const deleteStaff = async (id: string): Promise<void> => {
   }
 };
 
+export const updateStaff = async (id: string, data: { name?: string; role?: 'Admin' | 'Staff'; password?: string }): Promise<StaffMember> => {
+  const response = await fetch(`${API_BASE}/staff/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to update staff');
+  }
+  return response.json();
+};
+
 export const getStoreConfig = async (): Promise<StoreConfig> => {
   const response = await fetch(`${API_BASE}/store-config`);
   if (!response.ok) {

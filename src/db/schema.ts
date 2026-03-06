@@ -6,6 +6,7 @@ import {
   integer,
   uuid,
   pgEnum,
+  boolean,
 } from 'drizzle-orm/pg-core';
 
 export const mountTypeEnum = pgEnum('mount_type', [
@@ -54,6 +55,7 @@ export const auditActionEnum = pgEnum('audit_action', [
   'Manual Correction',
   'General',
   'Settings Update',
+  'Product Update',
 ]);
 
 export const currencyTypeEnum = pgEnum('currency_type', ['IDR', 'USD']);
@@ -92,6 +94,7 @@ export const products = pgTable('products', {
   warrantyMonths: integer('warranty_months').notNull().default(12),
   warrantyType: warrantyTypeEnum('warranty_type').notNull(),
   stock: integer('stock').notNull().default(0),
+  hidden: integer('hidden').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });
@@ -113,6 +116,7 @@ export const customers = pgTable('customers', {
   address: text('address'),
   npwp: text('npwp'),
   loyaltyPoints: integer('loyalty_points').default(0),
+  deleted: boolean('deleted').default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 });

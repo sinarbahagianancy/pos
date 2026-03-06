@@ -14,7 +14,11 @@ import {
   getAllSerialNumbers, 
   createProduct as dbCreateProduct,
   adjustStock as dbAdjustStock,
-  createSerialNumbersBulk
+  createSerialNumbersBulk,
+  deleteProduct as dbDeleteProduct,
+  toggleProductHidden,
+  updateProduct as dbUpdateProduct,
+  getAllAuditLogs
 } from '../app/services/product.service';
 import { 
   login as authLogin, 
@@ -24,6 +28,7 @@ import {
   addStaff, 
   deleteStaff, 
   updateStoreConfig,
+  updateStaff,
   StaffMember,
   StoreConfig as StoreConfigType,
   getCurrentUser
@@ -36,6 +41,8 @@ import {
   deleteCustomer as apiDeleteCustomer
 } from '../app/services/customer.api';
 import { getAllSales, createSale as apiCreateSale } from '../app/services/sales.api';
+import { getAllWarrantyClaims } from '../app/services/reports.api';
+import type { WarrantyClaim } from '../app/types';
 
 const useAuthCheck = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -262,6 +269,45 @@ const InventoryComponent = () => {
     }
   };
 
+  const user = getCurrentUser();
+  const staffName = user?.name || 'System';
+
+  const handleEditProduct = async (id: string, data: Partial<Product>) => {
+    try {
+      const updated = await dbUpdateProduct(id, data, staffName);
+      if (updated) {
+        setProducts(prev => prev.map(p => p.id === id ? updated : p));
+      }
+    } catch (error) {
+      console.error('Failed to edit product:', error);
+      throw error;
+    }
+  };
+
+  const handleDeleteProduct = async (id: string) => {
+    try {
+      await dbDeleteProduct(id);
+      setProducts(prev => prev.filter(p => p.id !== id));
+      const snsData = await getAllSerialNumbers();
+      setSns(snsData);
+    } catch (error) {
+      console.error('Failed to delete product:', error);
+      throw error;
+    }
+  };
+
+  const handleToggleHidden = async (id: string, hidden: boolean) => {
+    try {
+      const updated = await toggleProductHidden(id, hidden);
+      if (updated) {
+        setProducts(prev => prev.map(p => p.id === id ? updated : p));
+      }
+    } catch (error) {
+      console.error('Failed to toggle product visibility:', error);
+      throw error;
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -279,6 +325,9 @@ const InventoryComponent = () => {
       canViewSensitive={true}
       onManualAdjust={handleManualAdjust}
       onAddProduct={handleAddProduct}
+      onEditProduct={handleEditProduct}
+      onDeleteProduct={handleDeleteProduct}
+      onToggleHidden={handleToggleHidden}
     />
   );
 };
@@ -288,6 +337,9 @@ const CustomersComponent = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const user = getCurrentUser();
+  const staffName = user?.name || 'System';
 
   useEffect(() => {
     const loadData = async () => {
@@ -333,7 +385,7 @@ const CustomersComponent = () => {
 
   const handleUpdateCustomer = async (id: string, data: Partial<Customer>) => {
     try {
-      const updated = await apiUpdateCustomer(id, data);
+      const updated = await apiUpdateCustomer(id, { ...data, staffName });
       setCustomers(prev => prev.map(c => c.id === id ? updated : c));
       notify('Data pelanggan berhasil diperbarui.', 'success');
     } catch (error) {
@@ -345,7 +397,7 @@ const CustomersComponent = () => {
 
   const handleDeleteCustomer = async (id: string) => {
     try {
-      await apiDeleteCustomer(id);
+      await apiDeleteCustomer(id, staffName);
       setCustomers(prev => prev.filter(c => c.id !== id));
       notify('Pelanggan berhasil dihapus.', 'success');
     } catch (error) {
@@ -369,22 +421,160 @@ const CustomersComponent = () => {
       setCustomers={setCustomers}
       notify={notify}
       onAddCustomer={handleAddCustomer}
+      onUpdateCustomer={handleUpdateCustomer}
+      onDeleteCustomer={handleDeleteCustomer}
     />
   );
 };
 
 // Warranty
-const WarrantyComponent = () => (
-  <WarrantyTrackerView sns={[]} sales={[]} claims={[]} onAddClaim={() => {}} onUpdateStatus={() => {}} notify={() => {}} />
-);
+const WarrantyComponent = () => {
+  const [sns, setSns] = useState<SerialNumber[]>([]);
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [claims, setClaims] = useState<WarrantyClaim[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [snsData, salesData, claimsData] = await Promise.all([
+          getAllSerialNumbers(),
+          getAllSales(),
+          getAllWarrantyClaims()
+        ]);
+        setSns(snsData);
+        setSales(salesData);
+        setClaims(claimsData);
+      } catch (error) {
+        console.error('Failed to load warranty data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadData();
+  }, []);
+
+  const notify = (message: string, type: 'success' | 'error' | 'info') => {
+    console.log(`[${type}] ${message}`);
+  };
+
+  const handleAddClaim = async (claim: WarrantyClaim) => {
+    const { createWarrantyClaim } = await import('../app/services/reports.api');
+    try {
+      const newClaim = await createWarrantyClaim({
+        id: claim.id,
+        sn: claim.sn,
+        productModel: claim.productModel,
+        issue: claim.issue,
+        status: claim.status
+      });
+      setClaims(prev => [newClaim, ...prev]);
+      notify('Klaim garansi berhasil diajukan.', 'success');
+    } catch (error) {
+      console.error('Failed to add claim:', error);
+      notify('Gagal mengajukan klaim garansi', 'error');
+      throw error;
+    }
+  };
+
+  const handleUpdateStatus = async (id: string, status: string) => {
+    const { updateWarrantyClaim } = await import('../app/services/reports.api');
+    try {
+      const updated = await updateWarrantyClaim(id, status);
+      setClaims(prev => prev.map(c => c.id === id ? updated : c));
+      notify('Status klaim diperbarui.', 'success');
+    } catch (error) {
+      console.error('Failed to update claim:', error);
+      notify('Gagal memperbarui status klaim', 'error');
+      throw error;
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+      </div>
+    );
+  }
+
+  return (
+    <WarrantyTrackerView sns={sns} sales={sales} claims={claims} onAddClaim={handleAddClaim} onUpdateStatus={handleUpdateStatus} notify={notify} />
+  );
+};
 
 // Reports
-const ReportsComponent = () => (
-  <ReportsView sales={[]} products={[]} sns={[]} claims={[]} canViewSensitive={true} />
-);
+const ReportsComponent = () => {
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [sns, setSns] = useState<SerialNumber[]>([]);
+  const [claims, setClaims] = useState<WarrantyClaim[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [salesData, productsData, snsData, claimsData] = await Promise.all([
+          getAllSales(),
+          getAllProducts(),
+          getAllSerialNumbers(),
+          getAllWarrantyClaims()
+        ]);
+        setSales(salesData);
+        setProducts(productsData);
+        setSns(snsData);
+        setClaims(claimsData);
+      } catch (error) {
+        console.error('Failed to load reports data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+      </div>
+    );
+  }
+
+  return (
+    <ReportsView sales={sales} products={products} sns={sns} claims={claims} canViewSensitive={true} />
+  );
+};
 
 // Audit
-const AuditComponent = () => <AuditLogsView logs={[]} />;
+const AuditComponent = () => {
+  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const logsData = await getAllAuditLogs();
+        setLogs(logsData);
+      } catch (error) {
+        console.error('Failed to load audit logs:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+      </div>
+    );
+  }
+
+  return <AuditLogsView logs={logs} />;
+};
 
 // Settings
 const SettingsComponent = () => {
@@ -444,6 +634,16 @@ const SettingsComponent = () => {
     }
   };
 
+  const handleUpdateStaff = async (id: string, data: { name?: string; role?: 'Admin' | 'Staff'; password?: string }) => {
+    try {
+      const updated = await updateStaff(id, data);
+      setStaffList(prev => prev.map(s => s.id === id ? updated : s));
+    } catch (error) {
+      console.error('Failed to update staff:', error);
+      throw error;
+    }
+  };
+
   if (loading || !storeConfig) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -459,6 +659,7 @@ const SettingsComponent = () => {
       staffList={staffList}
       onAddStaff={handleAddStaff}
       onDeleteStaff={handleDeleteStaff}
+      onUpdateStaff={handleUpdateStaff}
       isAdmin={isAdmin}
       onReset={() => {
         if (window.confirm('WARNING: This will reset all data. Continue?')) {

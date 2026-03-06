@@ -22,6 +22,7 @@ export interface Product {
   warrantyMonths: number;
   warrantyType: WarrantyType;
   stock: number;
+  hidden?: number;
 }
 
 export interface CreateProductInput {
@@ -273,6 +274,7 @@ export function parseDbProduct(row: Record<string, unknown>): Product {
     warrantyMonths: row.warranty_months as number,
     warrantyType: row.warranty_type as WarrantyType,
     stock: row.stock as number,
+    hidden: row.hidden as number | undefined,
   };
 }
 
