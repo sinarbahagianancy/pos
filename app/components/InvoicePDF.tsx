@@ -1,137 +1,271 @@
 import React from 'react';
-import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/renderer';
-
-Font.register({
-  family: 'Inter',
-  fonts: [
-    { src: 'https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff2', fontWeight: 400 },
-    { src: 'https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuI6fAZ9hjp-Ek-_EeA.woff2', fontWeight: 600 },
-    { src: 'https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuFuYAZ9hjp-Ek-_EeA.woff2', fontWeight: 700 },
-  ],
-});
+import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
 
 const styles = StyleSheet.create({
   page: {
     padding: 20,
-    fontFamily: 'Inter',
+    fontFamily: 'Helvetica',
     fontSize: 10,
-    color: '#1e293b',
+    color: '#0f172a',
+    lineHeight: 1.5,
   },
   header: {
-    marginBottom: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-    paddingBottom: 8,
+    borderBottomColor: '#f1f5f9',
+    marginBottom: 16,
+  },
+  logoSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  logo: {
+    width: 36,
+    height: 36,
+    backgroundColor: '#4f46e5',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  storeInfo: {
+    marginLeft: 10,
   },
   storeName: {
-    fontSize: 16,
-    fontWeight: 700,
+    fontSize: 14,
+    fontWeight: 900,
+    textTransform: 'uppercase',
+    letterSpacing: -0.5,
   },
-  address: {
-    fontSize: 8,
+  storeTagline: {
+    fontSize: 7,
     color: '#64748b',
+    fontWeight: 700,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: 1,
+  },
+  storeAddress: {
+    fontSize: 7,
+    color: '#94a3b8',
+    marginTop: 1,
+  },
+  invoiceInfo: {
+    alignItems: 'flex-end',
+  },
+  invoiceLabel: {
+    fontSize: 7,
+    fontWeight: 800,
+    color: '#94a3b8',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  invoiceId: {
+    fontSize: 12,
+    fontWeight: 900,
     marginTop: 2,
   },
-  invoiceTitle: {
-    fontSize: 14,
-    fontWeight: 600,
-    marginTop: 8,
-  },
-  invoiceNumber: {
+  invoiceDate: {
     fontSize: 8,
     color: '#64748b',
+    fontWeight: 700,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
     marginTop: 2,
   },
   customerSection: {
-    marginBottom: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 12,
+    backgroundColor: '#f8fafc',
+    borderRadius: 8,
+    marginBottom: 12,
   },
-  label: {
+  customerLeft: {
+    flex: 1,
+  },
+  customerRight: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  sectionLabel: {
+    fontSize: 6,
+    fontWeight: 800,
+    color: '#94a3b8',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 3,
+  },
+  customerName: {
+    fontSize: 11,
+    fontWeight: 800,
+    textTransform: 'uppercase',
+    letterSpacing: -0.2,
+  },
+  customerDetail: {
     fontSize: 8,
-    color: '#64748b',
-    fontWeight: 600,
+    color: '#475569',
+    marginTop: 1,
   },
-  value: {
-    fontSize: 10,
-    marginTop: 2,
+  customerNpwp: {
+    fontSize: 9,
+    fontWeight: 800,
+    fontFamily: 'Courier',
+  },
+  noNpwp: {
+    fontSize: 8,
+    fontStyle: 'italic',
+    color: '#94a3b8',
+  },
+  paymentBadge: {
+    marginTop: 12,
+    padding: '3 8',
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 4,
+  },
+  paymentText: {
+    fontSize: 8,
+    fontWeight: 800,
+    textTransform: 'uppercase',
+    color: '#4f46e5',
   },
   table: {
-    marginBottom: 16,
+    marginBottom: 12,
   },
   tableHeader: {
     flexDirection: 'row',
-    backgroundColor: '#f1f5f9',
-    padding: 6,
-    borderRadius: 4,
+    paddingBottom: 8,
+    borderBottomWidth: 2,
+    borderBottomColor: '#1e293b',
   },
   tableHeaderText: {
-    fontSize: 8,
-    fontWeight: 600,
-    color: '#475569',
+    fontSize: 6,
+    fontWeight: 800,
+    color: '#94a3b8',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
-  col1: { width: '40%' },
-  col2: { width: '15%', textAlign: 'center' },
-  col3: { width: '15%', textAlign: 'right' },
-  col4: { width: '15%', textAlign: 'right' },
-  col5: { width: '15%', textAlign: 'right' },
+  col1: { width: '50%' },
+  col2: { width: '25%', textAlign: 'center' },
+  col3: { width: '25%', textAlign: 'right' },
   tableRow: {
     flexDirection: 'row',
-    padding: 6,
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#f1f5f9',
   },
   tableRowText: {
     fontSize: 9,
   },
-  summary: {
-    marginBottom: 16,
-    alignItems: 'flex-end',
+  itemModel: {
+    fontWeight: 800,
+    textTransform: 'uppercase',
+    letterSpacing: -0.2,
   },
-  summaryRow: {
+  itemSn: {
+    fontSize: 7,
+    fontFamily: 'Courier',
+    color: '#6366f1',
+    marginTop: 2,
+    textTransform: 'uppercase',
+  },
+  warrantyBox: {
+    alignItems: 'center',
+  },
+  warrantyLabel: {
+    fontSize: 5,
+    padding: '2 4',
+    backgroundColor: '#f8fafc',
+    borderRadius: 3,
+    fontWeight: 800,
+    textTransform: 'uppercase',
+  },
+  warrantyDate: {
+    fontSize: 7,
+    fontWeight: 700,
+    marginTop: 2,
+  },
+  totalsSection: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    width: 150,
+    paddingTop: 12,
+    marginTop: 8,
+  },
+  footerSection: {
+    flex: 1,
+  },
+  barcode: {
+    flexDirection: 'row',
+    gap: 2,
     marginBottom: 4,
+    opacity: 0.5,
   },
-  summaryLabel: {
-    fontSize: 9,
+  barcodeBar: {
+    width: 2,
+    backgroundColor: '#0f172a',
+  },
+  verification: {
+    fontSize: 6,
+    fontFamily: 'Courier',
     color: '#64748b',
+    textTransform: 'uppercase',
   },
-  summaryValue: {
-    fontSize: 9,
-    fontWeight: 600,
+  disclaimer: {
+    fontSize: 7,
+    color: '#64748b',
+    fontWeight: 700,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: 12,
+    fontStyle: 'italic',
+    maxWidth: 180,
+  },
+  totals: {
+    width: 120,
   },
   totalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    width: 150,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#1e293b',
+    marginBottom: 3,
   },
   totalLabel: {
-    fontSize: 11,
-    fontWeight: 700,
+    fontSize: 8,
+    fontWeight: 800,
+    color: '#64748b',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   totalValue: {
-    fontSize: 11,
+    fontSize: 8,
     fontWeight: 700,
   },
-  footer: {
-    marginTop: 'auto',
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#e2e8f0',
+  grandTotalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingTop: 8,
+    marginTop: 5,
+    borderTopWidth: 2,
+    borderTopColor: '#0f172a',
   },
-  footerText: {
-    fontSize: 8,
-    color: '#64748b',
-    textAlign: 'center',
+  grandTotalLabel: {
+    fontSize: 12,
+    fontWeight: 800,
+    textTransform: 'uppercase',
   },
-  staffInfo: {
-    marginTop: 4,
-    fontSize: 8,
-    color: '#64748b',
-    textAlign: 'center',
+  grandTotalValue: {
+    fontSize: 18,
+    fontWeight: 900,
+    letterSpacing: -0.5,
   },
 });
 
@@ -139,6 +273,7 @@ interface InvoiceItem {
   model: string;
   sn: string;
   price: number;
+  warrantyExpiry?: string;
 }
 
 interface InvoiceData {
@@ -148,69 +283,127 @@ interface InvoiceData {
   date: string;
   customerName: string;
   customerPhone?: string;
+  customerAddress?: string;
+  customerNpwp?: string;
   items: InvoiceItem[];
   subtotal: number;
   tax: number;
+  taxRate?: number;
   total: number;
   staffName: string;
   paymentMethod: string;
 }
 
+const formatCurrency = (amount: number): string => {
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    minimumFractionDigits: 0,
+  }).format(amount);
+};
+
 export const InvoiceDocument: React.FC<{ data: InvoiceData }> = ({ data }) => (
   <Document>
     <Page size="A5" style={styles.page}>
+      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.storeName}>{data.storeName}</Text>
-        <Text style={styles.address}>{data.address}</Text>
-        <Text style={styles.invoiceTitle}>INVOICE</Text>
-        <Text style={styles.invoiceNumber}>{data.invoiceNumber} • {data.date}</Text>
+        <View style={styles.logoSection}>
+          <View style={styles.logo}>
+            <Text style={styles.logoText}>SB</Text>
+          </View>
+          <View style={styles.storeInfo}>
+            <Text style={styles.storeName}>{data.storeName}</Text>
+            <Text style={styles.storeTagline}>Premium Imaging Solution</Text>
+            <Text style={styles.storeAddress}>{data.address}</Text>
+          </View>
+        </View>
+        <View style={styles.invoiceInfo}>
+          <Text style={styles.invoiceLabel}>Faktur Penjualan</Text>
+          <Text style={styles.invoiceId}>{data.invoiceNumber}</Text>
+          <Text style={styles.invoiceDate}>{data.date}</Text>
+        </View>
       </View>
 
+      {/* Customer Section */}
       <View style={styles.customerSection}>
-        <Text style={styles.label}>PELANGGAN</Text>
-        <Text style={styles.value}>{data.customerName}</Text>
-        {data.customerPhone && (
-          <Text style={styles.value}>{data.customerPhone}</Text>
-        )}
+        <View style={styles.customerLeft}>
+          <Text style={styles.sectionLabel}>Bill To / Penerima</Text>
+          <Text style={styles.customerName}>{data.customerName}</Text>
+          <Text style={styles.customerDetail}>{data.customerAddress || '-'}</Text>
+          <Text style={styles.customerDetail}>Telp: {data.customerPhone || '-'}</Text>
+        </View>
+        <View style={styles.customerRight}>
+          <Text style={styles.sectionLabel}>Tax Registration</Text>
+          {data.customerNpwp ? (
+            <Text style={styles.customerNpwp}>{data.customerNpwp}</Text>
+          ) : (
+            <Text style={styles.noNpwp}>No NPWP Provided</Text>
+          )}
+          <View style={styles.paymentBadge}>
+            <Text style={styles.paymentText}>
+              {data.paymentMethod === 'Credit' ? 'ORG UTANG (BON)' : data.paymentMethod}
+            </Text>
+          </View>
+        </View>
       </View>
 
+      {/* Table */}
       <View style={styles.table}>
         <View style={styles.tableHeader}>
-          <Text style={[styles.tableHeaderText, styles.col1]}>ITEM</Text>
-          <Text style={[styles.tableHeaderText, styles.col2]}>SN</Text>
-          <Text style={[styles.tableHeaderText, styles.col3]}>QTY</Text>
-          <Text style={[styles.tableHeaderText, styles.col4]}>HARGA</Text>
-          <Text style={[styles.tableHeaderText, styles.col5]}>TOTAL</Text>
+          <Text style={[styles.tableHeaderText, styles.col1]}>Description / Serial Number</Text>
+          <Text style={[styles.tableHeaderText, styles.col2]}>Warranty</Text>
+          <Text style={[styles.tableHeaderText, styles.col3]}>Total</Text>
         </View>
         {data.items.map((item, index) => (
           <View key={index} style={styles.tableRow}>
-            <Text style={[styles.tableRowText, styles.col1]}>{item.model}</Text>
-            <Text style={[styles.tableRowText, styles.col2]}>{item.sn}</Text>
-            <Text style={[styles.tableRowText, styles.col3]}>1</Text>
-            <Text style={[styles.tableRowText, styles.col4]}>{item.price.toLocaleString('id-ID')}</Text>
-            <Text style={[styles.tableRowText, styles.col5]}>{item.price.toLocaleString('id-ID')}</Text>
+            <View style={styles.col1}>
+              <Text style={styles.itemModel}>{item.model}</Text>
+              <Text style={styles.itemSn}>S/N: {item.sn}</Text>
+            </View>
+            <View style={[styles.col2, styles.warrantyBox]}>
+              <Text style={styles.warrantyLabel}>Valid Until:</Text>
+              <Text style={styles.warrantyDate}>{item.warrantyExpiry || '-'}</Text>
+            </View>
+            <View style={styles.col3}>
+              <Text style={[styles.tableRowText, { textAlign: 'right', fontWeight: 800, fontSize: 11 }]}>
+                {formatCurrency(item.price)}
+              </Text>
+            </View>
           </View>
         ))}
       </View>
 
-      <View style={styles.summary}>
-        <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>Subtotal</Text>
-          <Text style={styles.summaryValue}>{data.subtotal.toLocaleString('id-ID')}</Text>
+      {/* Totals Section */}
+      <View style={styles.totalsSection}>
+        <View style={styles.footerSection}>
+          <View style={styles.barcode}>
+            {[...Array(20)].map((_, i) => (
+              <View
+                key={i}
+                style={[
+                  styles.barcodeBar,
+                  { height: [6, 4, 3][i % 3] * 2 },
+                ]}
+              />
+            ))}
+          </View>
+          <Text style={styles.verification}>Verification Auth: {data.invoiceNumber.split('-')[1]}</Text>
+          <Text style={styles.disclaimer}>Barang yang sudah dibeli tidak dapat ditukar atau dikembalikan.</Text>
         </View>
-        <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>PPN ({data.tax > 0 ? '11%' : '0%'})</Text>
-          <Text style={styles.summaryValue}>{data.tax.toLocaleString('id-ID')}</Text>
+        <View style={styles.totals}>
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Subtotal</Text>
+            <Text style={styles.totalValue}>{formatCurrency(data.subtotal)}</Text>
+          </View>
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Tax ({data.taxRate || 11}% PPN)</Text>
+            <Text style={styles.totalValue}>{formatCurrency(data.tax)}</Text>
+          </View>
+          <View style={styles.grandTotalRow}>
+            {/* <Text style={styles.grandTotalLabel}>Grand Total</Text> */}
+            <Text style={styles.grandTotalValue}>{formatCurrency(data.total)}</Text>
+          </View>
         </View>
-        <View style={styles.totalRow}>
-          <Text style={styles.totalLabel}>TOTAL</Text>
-          <Text style={styles.totalValue}>{data.total.toLocaleString('id-ID')}</Text>
-        </View>
-      </View>
-
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>Terima kasih telah berbelanja di {data.storeName}</Text>
-        <Text style={styles.staffInfo}>Kasir: {data.staffName} • {data.paymentMethod}</Text>
       </View>
     </Page>
   </Document>

@@ -218,7 +218,7 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
                             <p className="font-bold text-slate-900 truncate text-sm">{product.model}</p>
                             {hasNoSN && <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[8px] font-black uppercase rounded">NO SN</span>}
                           </div>
-                          <p className="text-[10px] text-slate-500 mt-1 font-mono uppercase tracking-tighter">ID: {product.id} • <span className={isOutOfStock ? "text-red-500" : hasNoSN ? "text-amber-600" : "text-green-600"} font-bold>{isOutOfStock ? 'OUT OF STOCK' : hasNoSN ? `${product.stock} unit (tanpa SN)` : `${availableCount} available`}</span></p>
+                          <p className="text-[10px] text-slate-500 mt-1 font-mono uppercase tracking-tighter">ID: {product.id} • <span className={`${isOutOfStock ? "text-red-500" : hasNoSN ? "text-amber-600" : "text-green-600"} font-bold`}>{isOutOfStock ? 'OUT OF STOCK' : hasNoSN ? `${product.stock} unit (tanpa SN)` : `${availableCount} available`}</span></p>
                         </div>
                         <p className="text-indigo-600 font-black text-sm">{formatIDR(product.price)}</p>
                       </button>
@@ -694,13 +694,17 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
                           date: formatDate(lastSale.timestamp),
                           customerName: lastSale.customerName,
                           customerPhone: saleCustomer?.phone,
+                          customerAddress: saleCustomer?.address,
+                          customerNpwp: saleCustomer?.npwp,
                           items: lastSale.items.map(item => ({
                             model: item.model,
                             sn: item.sn,
                             price: item.price,
+                            warrantyExpiry: item.warrantyExpiry,
                           })),
                           subtotal: lastSale.subtotal,
                           tax: lastSale.tax,
+                          taxRate: taxRate * 100,
                           total: lastSale.total,
                           staffName: lastSale.staffName,
                           paymentMethod: lastSale.paymentMethod,
