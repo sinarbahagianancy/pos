@@ -264,6 +264,9 @@ const InventoryComponent = () => {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const user = getCurrentUser();
+  const staffName = user?.name || 'System';
+
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -284,7 +287,7 @@ const InventoryComponent = () => {
 
   const handleManualAdjust = async (productId: string, newStock: number, reason: string) => {
     try {
-      await dbAdjustStock(productId, newStock, reason, 'Admin');
+      await dbAdjustStock(productId, newStock, reason, staffName);
       setProducts(prev => prev.map(p => 
         p.id === productId ? { ...p, stock: newStock } : p
       ));
@@ -309,9 +312,6 @@ const InventoryComponent = () => {
       console.error('Failed to add product:', error);
     }
   };
-
-  const user = getCurrentUser();
-  const staffName = user?.name || 'System';
 
   const handleEditProduct = async (id: string, data: Partial<Product>) => {
     try {
@@ -778,7 +778,7 @@ const POSComponent = () => {
   const [loading, setLoading] = useState(true);
 
   const user = getCurrentUser();
-  const staffName = user?.name || '';
+  const staffName = user?.name || 'System';
 
   useEffect(() => {
     const loadData = async () => {

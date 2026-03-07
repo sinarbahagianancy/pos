@@ -245,7 +245,7 @@ export const createSaleHandler = async (data: {
       const snLabel = item.sn.startsWith('NOSN-') ? 'tanpa SN' : `SN: ${item.sn}`;
       await client.unsafe(
         'INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())',
-        [`LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`, data.staffName, 'Stock Deduction', `Sold 1 unit of ${item.model} (${snLabel}) to ${data.customerName}`, item.productId]
+        [`LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`, data.staffName, 'Sales Deduction', `Sold 1 unit of ${item.model} (${snLabel}) to ${data.customerName}`, item.productId]
       );
     }
 

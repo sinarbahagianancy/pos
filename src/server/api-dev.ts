@@ -46,7 +46,8 @@ export default function apiServerPlugin() {
             req.on('end', async () => {
               try {
                 const data = JSON.parse(body);
-                const product = await updateProduct(productId, data);
+                const { staffName, ...productInput } = data;
+                const product = await updateProduct(productId, productInput, staffName);
                 res.setHeader('Content-Type', 'application/json');
                 res.end(JSON.stringify(product));
               } catch (error) {

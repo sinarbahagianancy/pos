@@ -398,7 +398,7 @@ const validateCreateProductInput = (input: unknown): CreateProductInput => {
     brand: obj.brand as string,
     model: obj.model as string,
     category: obj.category as ProductCategory,
-    mount: obj.mount as MountType,
+    mount: obj.mount === '' || obj.mount === null ? undefined : obj.mount as MountType,
     condition: obj.condition as ConditionType,
     price: obj.price as number,
     cogs: obj.cogs as number,
@@ -416,7 +416,11 @@ const validateUpdateProductInput = (input: unknown): UpdateProductInput => {
   if (obj.brand !== undefined) result.brand = obj.brand as string;
   if (obj.model !== undefined) result.model = obj.model as string;
   if (obj.category !== undefined) result.category = obj.category as ProductCategory;
-  if (obj.mount !== undefined) result.mount = obj.mount as MountType;
+  if (obj.mount !== undefined) {
+    // Allow empty string to be treated as undefined (no mount)
+    const mountVal = obj.mount;
+    result.mount = (mountVal === '' || mountVal === null) ? undefined : mountVal as MountType;
+  }
   if (obj.condition !== undefined) result.condition = obj.condition as ConditionType;
   if (obj.price !== undefined) result.price = obj.price as number;
   if (obj.cogs !== undefined) result.cogs = obj.cogs as number;
@@ -1055,7 +1059,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const snLabel = item.sn.startsWith('NOSN-') ? 'tanpa SN' : `SN: ${item.sn}`;
           await client.unsafe(
             'INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())',
-            [`LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`, staffName, 'Stock Deduction', `Sold 1 unit of ${item.model} (${snLabel}) to ${customerName}`, item.productId]
+            [`LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`, staffName, 'Sales Deduction', `Sold 1 unit of ${item.model} (${snLabel}) to ${customerName}`, item.productId]
           );
         }
 
