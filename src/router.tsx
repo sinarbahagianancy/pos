@@ -824,6 +824,10 @@ const POSComponent = () => {
       setSns(prev => prev.map(sn => 
         soldSNs.includes(sn.sn) ? { ...sn, status: 'Sold' as const } : sn
       ));
+
+      // Refresh products to get updated stock
+      const updatedProducts = await getAllProducts();
+      setProducts(updatedProducts);
     } catch (error) {
       console.error('Failed to complete sale:', error);
       throw error;
