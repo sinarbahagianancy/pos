@@ -538,7 +538,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(404).json({ error: 'Product not found' });
       }
       
-      const updateData: Record<string, unknown> = { updated_at: new Date() };
+      const updateData: Record<string, unknown> = {};
       const changes: string[] = [];
       
       if (validated.brand !== undefined && validated.brand !== oldProduct.brand) {
