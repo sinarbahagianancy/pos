@@ -273,6 +273,7 @@ interface InvoiceData {
   subtotal: number;
   tax: number;
   taxRate?: number;
+  taxEnabled?: boolean;
   total: number;
   staffName: string;
   paymentMethod: string;
@@ -357,13 +358,13 @@ export const InvoiceDocument: React.FC<{ data: InvoiceData }> = ({ data }) => (
         <View style={styles.footerSection}>
           <Text style={styles.disclaimer}>Barang yang sudah dibeli tidak dapat ditukar atau dikembalikan.</Text>
         </View>
-        <View style={styles.totals}>
+          <View style={styles.totals}>
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>Subtotal</Text>
             <Text style={styles.totalValue}>{formatCurrency(data.subtotal)}</Text>
           </View>
           <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>Tax ({data.taxRate || 11}% PPN)</Text>
+            <Text style={styles.totalLabel}>Tax ({data.taxEnabled === false ? 0 : (data.taxRate || 11)}% PPN)</Text>
             <Text style={styles.totalValue}>{formatCurrency(data.tax)}</Text>
           </View>
           <View style={styles.grandTotalRow}>

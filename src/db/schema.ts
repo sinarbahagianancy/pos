@@ -97,10 +97,22 @@ export const products = pgTable('products', {
   warrantyMonths: integer('warranty_months').notNull().default(12),
   warrantyType: warrantyTypeEnum('warranty_type').notNull(),
   stock: integer('stock').notNull().default(0),
+  hasSerialNumber: boolean('has_serial_number').notNull().default(true),
+  supplier: text('supplier'),
+  dateRestocked: timestamp('date_restocked'),
   hidden: integer('hidden').notNull().default(0),
   deleted: boolean('deleted').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+export const suppliers = pgTable('suppliers', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  name: text('name').notNull().unique(),
+  phone: text('phone'),
+  address: text('address'),
+  deleted: boolean('deleted').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
 
 export const serialNumbers = pgTable('serial_numbers', {
@@ -133,9 +145,11 @@ export const sales = pgTable('sales', {
   customerName: text('customer_name').notNull(),
   subtotal: numeric('subtotal', { precision: 15, scale: 2 }).notNull(),
   tax: numeric('tax', { precision: 15, scale: 2 }).notNull(),
+  taxEnabled: boolean('tax_enabled').notNull().default(true),
   total: numeric('total', { precision: 15, scale: 2 }).notNull(),
   paymentMethod: paymentMethodEnum('payment_method').notNull(),
   staffName: text('staff_name').notNull(),
+  notes: text('notes'),
   timestamp: timestamp('timestamp', { withTimezone: true }).defaultNow(),
 });
 

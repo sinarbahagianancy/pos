@@ -1,12 +1,13 @@
 
 import React, { useState } from 'react';
-import { Product, SerialNumber, AuditLog } from '../../app/types';
+import { Product, SerialNumber, AuditLog, Supplier } from '../../app/types';
 import { formatIDR } from '../../app/utils/formatters';
 
 interface InventoryProps {
   products: Product[];
   sns: SerialNumber[];
   logs: AuditLog[];
+  suppliers: Supplier[];
   setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
   canViewSensitive: boolean;
   onManualAdjust: (productId: string, newStock: number, reason: string) => void;
@@ -17,7 +18,7 @@ interface InventoryProps {
   onToggleHidden?: (id: string, hidden: boolean) => Promise<void>;
 }
 
-const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, canViewSensitive, onManualAdjust, onAddProduct, onEditProduct, onDeleteProduct, onRestoreProduct, onToggleHidden }) => {
+const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, suppliers, setProducts, canViewSensitive, onManualAdjust, onAddProduct, onEditProduct, onDeleteProduct, onRestoreProduct, onToggleHidden }) => {
   const [filter, setFilter] = useState('');
   const [adjustingProduct, setAdjustingProduct] = useState<Product | null>(null);
   const [historyProduct, setHistoryProduct] = useState<Product | null>(null);
@@ -41,6 +42,8 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, canViewS
   const [removingSNProduct, setRemovingSNProduct] = useState<Product | null>(null);
   const [newSNInput, setNewSNInput] = useState('');
   const [snOperationReason, setSNOperationReason] = useState('');
+  const [snOperationSupplier, setSNOperationSupplier] = useState('');
+  const [snOperationDate, setSNOperationDate] = useState(new Date().toISOString().split('T')[0]);
   const [isProcessingSN, setIsProcessingSN] = useState(false);
 
   // New Product State
@@ -48,6 +51,10 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, canViewS
     brand: '', model: '', category: 'Body', condition: 'New', price: 0, cogs: 0, warrantyMonths: 12, warrantyType: 'Official Sony Indonesia'
   });
   const [newSerials, setNewSerials] = useState('');
+  const [newProductHasSN, setNewProductHasSN] = useState(true);
+  const [newProductQuantity, setNewProductQuantity] = useState(1);
+  const [newProductSupplier, setNewProductSupplier] = useState('');
+  const [newProductDate, setNewProductDate] = useState(new Date().toISOString().split('T')[0]);
 
   const filteredProducts = products.filter(p => 
     p.model.toLowerCase().includes(filter.toLowerCase()) || 
@@ -216,9 +223,12 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, canViewS
               <tr>
                 <th className="px-8 py-6">Barcode / System ID</th>
                 <th className="px-8 py-6">Produk</th>
+                <th className="px-8 py-6 text-center">Has SN</th>
                 <th className="px-8 py-6 text-right">Retail Price</th>
                 {canViewSensitive && <th className="px-8 py-6 text-right text-indigo-400">Capital Price (HPP)</th>}
                 <th className="px-8 py-6">Status Stok</th>
+                <th className="px-8 py-6">Supplier</th>
+                <th className="px-8 py-6">Last Restock</th>
                 <th className="px-8 py-6 text-center">Tindakan</th>
               </tr>
             </thead>
@@ -239,6 +249,13 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, canViewS
                       <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1">{p.category} • {p.condition} • {p.warrantyMonths / 12} Thn Garansi</span>
                     </div>
                   </td>
+                  <td className="px-8 py-6 text-center">
+                    {p.hasSerialNumber !== false ? (
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[9px] font-bold uppercase bg-green-100 text-green-700">Ya</span>
+                    ) : (
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[9px] font-bold uppercase bg-slate-100 text-slate-500">Tidak</span>
+                    )}
+                  </td>
                   <td className="px-8 py-6 text-right font-black text-slate-900 tracking-tighter">{formatIDR(p.price)}</td>
                   {canViewSensitive && <td className="px-8 py-6 text-right font-bold text-indigo-600 tracking-tighter tabular-nums">{formatIDR(p.cogs)}</td>}
                   <td className="px-8 py-6">
@@ -246,6 +263,14 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, canViewS
                       <div className={`w-2.5 h-2.5 rounded-full ${p.stock <= 2 ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]' : 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]'}`}></div>
                       <span className={`font-black text-xs uppercase tracking-widest ${p.stock <= 2 ? 'text-red-600' : 'text-slate-900'}`}>{p.stock} Unit</span>
                     </div>
+                  </td>
+                  <td className="px-8 py-6">
+                    <span className="text-xs font-medium text-slate-600">{p.supplier || '-'}</span>
+                  </td>
+                  <td className="px-8 py-6">
+                    <span className="text-xs font-medium text-slate-500">
+                      {p.dateRestocked ? new Date(p.dateRestocked).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
+                    </span>
                   </td>
                   <td className="px-8 py-6 text-center">
                     <div className="flex items-center justify-center gap-1">
@@ -364,6 +389,30 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, canViewS
                 <p className="text-[10px] text-slate-400">Masukkan 1 SN per baris. Setiap SN akan menambah 1 unit stok.</p>
               </div>
               <div className="space-y-4">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Supplier</label>
+                <select 
+                  className="w-full px-6 py-4 rounded-2xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold focus:ring-4 focus:ring-green-500/10 outline-none appearance-none"
+                  value={snOperationSupplier}
+                  onChange={(e) => setSNOperationSupplier(e.target.value)}
+                  required
+                >
+                  <option value="">Pilih Supplier...</option>
+                  {suppliers.map(s => (
+                    <option key={s.id} value={s.name}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-4">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Tanggal</label>
+                <input 
+                  type="date" 
+                  className="w-full px-6 py-4 rounded-2xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold focus:ring-4 focus:ring-green-500/10 outline-none"
+                  value={snOperationDate}
+                  onChange={(e) => setSNOperationDate(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-4">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Alasan Penambahan</label>
                 <select 
                   className="w-full px-6 py-4 rounded-2xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold focus:ring-4 focus:ring-green-500/10 outline-none appearance-none"
@@ -413,6 +462,16 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, canViewS
                   required
                 />
                 <p className="text-[10px] text-slate-400">Hanya SN dengan status "In Stock" dapat dihapus. SN akan ditandai sebagai "Damaged".</p>
+              </div>
+              <div className="space-y-4">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Tanggal</label>
+                <input 
+                  type="date" 
+                  className="w-full px-6 py-4 rounded-2xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold focus:ring-4 focus:ring-red-500/10 outline-none"
+                  value={snOperationDate}
+                  onChange={(e) => setSNOperationDate(e.target.value)}
+                  required
+                />
               </div>
               <div className="space-y-4">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Alasan Pengurangan</label>
@@ -508,6 +567,9 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, canViewS
               </button>
             </div>
             <form onSubmit={handleAddSubmit} className="p-6 lg:p-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="md:col-span-2">
+                <h3 className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-4">Produk Info</h3>
+              </div>
               <div className="space-y-4">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Merk & Model</label>
                 <div className="grid grid-cols-2 gap-2">
@@ -537,17 +599,73 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, canViewS
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Harga Modal (HPP)</label>
                 <input type="number" className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold outline-none" value={newP.cogs} onChange={e => setNewP({...newP, cogs: Number(e.target.value)})} required />
               </div>
-              <div className="md:col-span-2 space-y-4">
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Input Serial Numbers (Satu Per Baris)</label>
-                <textarea 
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 text-xs font-mono font-bold outline-none h-32 resize-none"
-                  placeholder="SN-12345&#10;SN-67890&#10;..."
-                  value={newSerials}
-                  onChange={e => setNewSerials(e.target.value)}
+              
+              <div className="md:col-span-2">
+                <div className="border-t border-slate-200 my-4"></div>
+                <h3 className="text-[10px] font-black text-green-600 uppercase tracking-widest mb-4">Stok Info</h3>
+              </div>
+              
+              <div className="md:col-span-2">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newProductHasSN}
+                    onChange={(e) => setNewProductHasSN(e.target.checked)}
+                    className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span className="text-sm font-bold text-slate-700">Produk ini memiliki Serial Number</span>
+                </label>
+              </div>
+              
+              {newProductHasSN ? (
+                <div className="md:col-span-2 space-y-4">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Serial Numbers (Satu Per Baris)</label>
+                  <textarea 
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 text-xs font-mono font-bold outline-none h-32 resize-none"
+                    placeholder="SN-12345&#10;SN-67890&#10;..."
+                    value={newSerials}
+                    onChange={e => setNewSerials(e.target.value)}
+                  />
+                  <p className="text-[10px] text-slate-400 italic">Otomatis menghitung jumlah stok berdasarkan S/N yang diinput.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Jumlah Stok</label>
+                  <input 
+                    type="number" 
+                    min="1"
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold outline-none"
+                    value={newProductQuantity}
+                    onChange={e => setNewProductQuantity(Number(e.target.value))}
+                  />
+                </div>
+              )}
+              
+              <div className="space-y-4">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Supplier</label>
+                <select 
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold outline-none"
+                  value={newProductSupplier}
+                  onChange={e => setNewProductSupplier(e.target.value)}
+                  required
+                >
+                  <option value="">Pilih Supplier...</option>
+                  {suppliers.map(s => (
+                    <option key={s.id} value={s.name}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-4">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Tanggal</label>
+                <input 
+                  type="date" 
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold outline-none"
+                  value={newProductDate}
+                  onChange={e => setNewProductDate(e.target.value)}
                   required
                 />
-                <p className="text-[10px] text-slate-400 italic">Otomatis menghitung jumlah stok berdasarkan S/N yang diinput.</p>
               </div>
+              
               <div className="md:col-span-2 flex gap-4 pt-4">
                 <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 py-5 bg-white border border-slate-200 text-slate-700 font-black rounded-3xl text-[10px] uppercase tracking-widest">Batal</button>
                 <button type="submit" className="flex-1 py-5 bg-indigo-600 text-white font-black rounded-3xl text-[10px] uppercase tracking-widest shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all">Simpan Aset</button>

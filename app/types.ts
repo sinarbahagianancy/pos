@@ -6,6 +6,15 @@ export type ClaimStatus = 'Received' | 'Sent to HQ' | 'Repairing' | 'Ready for P
 export type ProductCategory = 'Body' | 'Lens' | 'Accessory';
 export type AuditAction = 'Stock Addition' | 'Sales Deduction' | 'Manual Correction' | 'General' | 'Settings Update' | 'Product Update';
 
+export interface Supplier {
+  id: string;
+  name: string;
+  phone?: string;
+  address?: string;
+  deleted?: boolean;
+  createdAt?: string;
+}
+
 export interface Product {
   id: string;
   brand: string;
@@ -18,6 +27,9 @@ export interface Product {
   warrantyMonths: number;
   warrantyType: WarrantyType;
   stock: number;
+  hasSerialNumber?: boolean;
+  supplier?: string;
+  dateRestocked?: string;
   hidden?: number;
 }
 
@@ -55,9 +67,11 @@ export interface Sale {
   items: SaleItem[];
   subtotal: number;
   tax: number;
+  taxEnabled?: boolean;
   total: number;
   paymentMethod: PaymentMethod;
   staffName: string;
+  notes?: string;
   timestamp: string;
 }
 

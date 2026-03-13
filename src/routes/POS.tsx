@@ -26,6 +26,8 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [isRegistered, setIsRegistered] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash');
+  const [ppnEnabled, setPpnEnabled] = useState(true);
+  const [transactionNotes, setTransactionNotes] = useState('');
   const [showInvoice, setShowInvoice] = useState(false);
   const [lastSale, setLastSale] = useState<Sale | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
@@ -139,7 +141,7 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
   };
 
   const subtotal = cart.reduce((acc, item) => acc + item.price, 0);
-  const tax = subtotal * taxRate;
+  const tax = ppnEnabled ? subtotal * taxRate : 0;
   const total = subtotal + tax;
 
   const handleCheckout = async () => {
@@ -162,9 +164,10 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
       customerId: customer!.id,
       customerName: customer!.name,
       items: cart,
-      subtotal, tax, total,
+      subtotal, tax, taxEnabled: ppnEnabled, total,
       paymentMethod,
       staffName,
+      notes: transactionNotes,
       timestamp: new Date().toISOString()
     };
     onCompleteSale(sale);
@@ -175,6 +178,7 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
     setCustomerPhone('');
     setSelectedCustomer(null);
     setIsRegistered(false);
+    setTransactionNotes('');
   };
 
   // Customer search logic
@@ -479,13 +483,38 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
             </div>
           </div>
 
+          <div className="space-y-3">
+            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest">
+              Transaction Notes
+            </label>
+            <input
+              type="text"
+              value={transactionNotes}
+              onChange={(e) => setTransactionNotes(e.target.value)}
+              placeholder="e.g., New Buy, Addon, Tukar Tambah"
+              className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+            />
+          </div>
+
           <div className="mt-auto space-y-4 pt-8 border-t border-slate-800">
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="ppn-toggle"
+                checked={ppnEnabled}
+                onChange={(e) => setPpnEnabled(e.target.checked)}
+                className="w-5 h-5 rounded border-slate-600 text-indigo-600 focus:ring-indigo-500 bg-slate-800"
+              />
+              <label htmlFor="ppn-toggle" className="text-xs font-bold text-slate-400 uppercase">
+                Include PPN (11%)
+              </label>
+            </div>
             <div className="flex justify-between text-xs text-slate-500 font-bold">
               <span>Subtotal</span>
               <span className="tabular-nums text-slate-300">{formatIDR(subtotal)}</span>
             </div>
             <div className="flex justify-between text-xs text-slate-500 font-bold">
-              <span>Gov Tax ({(taxRate * 100).toFixed(0)}% PPN)</span>
+              <span>Gov Tax ({(ppnEnabled ? (taxRate * 100).toFixed(0) : 0)}% PPN)</span>
               <span className="tabular-nums text-slate-300">{formatIDR(tax)}</span>
             </div>
             <div className="flex justify-between items-end pt-6">
@@ -815,6 +844,7 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
                           subtotal: lastSale.subtotal,
                           tax: lastSale.tax,
                           taxRate: taxRate * 100,
+                          taxEnabled: lastSale.taxEnabled,
                           total: lastSale.total,
                           staffName: lastSale.staffName,
                           paymentMethod: lastSale.paymentMethod,

@@ -41,6 +41,11 @@ export const getProductById = async (id: string) => {
 export const createProduct = async (input: unknown) => {
   const validated = validateCreateProductInput(input);
   
+  const hasSerialNumber = validated.hasSerialNumber !== false;
+  const stockCount = hasSerialNumber 
+    ? (validated.serialNumbers?.length || 0) 
+    : (validated.quantity || 0);
+  
   const result = await db.insert(products).values({
     id: validated.id,
     brand: validated.brand,
@@ -52,10 +57,41 @@ export const createProduct = async (input: unknown) => {
     cogs: validated.cogs.toString(),
     warrantyMonths: validated.warrantyMonths,
     warrantyType: validated.warrantyType,
-    stock: validated.stock,
+    stock: stockCount,
+    hasSerialNumber: hasSerialNumber,
+    supplier: validated.supplier || null,
+    dateRestocked: validated.dateRestocked ? new Date(validated.dateRestocked) : new Date(),
   }).returning();
   
-  return parseDbProduct(result[0]);
+  const newProduct = result[0];
+  
+  if (hasSerialNumber && validated.serialNumbers && validated.serialNumbers.length > 0) {
+    for (const sn of validated.serialNumbers) {
+      await db.insert(serialNumbers).values({
+        sn: sn,
+        productId: newProduct.id,
+        status: 'In Stock',
+      });
+    }
+    
+    await db.insert(auditLogs).values({
+      id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      staffName: 'System',
+      action: 'Stock Addition',
+      details: `Created product ${validated.brand} ${validated.model} with ${validated.serialNumbers.length} serial numbers from supplier ${validated.supplier}`,
+      relatedId: newProduct.id,
+    });
+  } else if (!hasSerialNumber && validated.quantity && validated.quantity > 0) {
+    await db.insert(auditLogs).values({
+      id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      staffName: 'System',
+      action: 'Stock Addition',
+      details: `Created product ${validated.brand} ${validated.model} with ${validated.quantity} units from supplier ${validated.supplier}`,
+      relatedId: newProduct.id,
+    });
+  }
+  
+  return parseDbProduct(newProduct);
 };
 
 export const updateProduct = async (id: string, input: unknown, staffName: string = 'System') => {

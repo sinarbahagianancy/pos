@@ -299,6 +299,29 @@ const initializeDatabase = async () => {
     // Add password_hash column if not exists
     await client.unsafe(`ALTER TABLE staff_members ADD COLUMN IF NOT EXISTS password_hash TEXT`).catch(() => {});
     
+    // Create suppliers table if not exists
+    await client.unsafe(`
+      CREATE TABLE IF NOT EXISTS suppliers (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        name text NOT NULL UNIQUE,
+        phone text,
+        address text,
+        deleted boolean DEFAULT false,
+        created_at timestamp DEFAULT NOW()
+      )
+    `).catch(() => {});
+    
+    // Add new columns to products if not exists
+    await client.unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS has_serial_number boolean DEFAULT true`).catch(() => {});
+    await client.unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS supplier text`).catch(() => {});
+    await client.unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS date_restocked timestamp`).catch(() => {});
+    await client.unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS tax_enabled boolean DEFAULT true`).catch(() => {});
+    await client.unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS notes text`).catch(() => {});
+    
+    // Add new columns to sales if not exists
+    await client.unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS tax_enabled boolean DEFAULT true`).catch(() => {});
+    await client.unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS notes text`).catch(() => {});
+    
     // Create default admin accounts if they don't exist
     const defaultAdmins = [
       { name: 'Nancy', password: 'nancy123', role: 'Admin' },
@@ -864,6 +887,109 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       );
       
       return res.status(200).json(parseDbStoreConfig(result[0]));
+    }
+
+    // === SUPPLIER ROUTES ===
+
+    // GET /api/suppliers
+    if (method === 'GET' && url === '/api/suppliers') {
+      await initializeDatabase();
+      const result = await client.unsafe('SELECT * FROM suppliers WHERE deleted = false ORDER BY name');
+      return res.status(200).json(result.map((row: Record<string, unknown>) => ({
+        id: row.id,
+        name: row.name,
+        phone: row.phone,
+        address: row.address,
+        deleted: row.deleted,
+        createdAt: row.created_at,
+      })));
+    }
+
+    // POST /api/suppliers
+    if (method === 'POST' && url === '/api/suppliers') {
+      await initializeDatabase();
+      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const { name, phone, address } = input as { name: string; phone?: string; address?: string };
+      
+      if (!name) {
+        return res.status(400).json({ error: 'Name is required' });
+      }
+      
+      const id = `SUP-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+      
+      await client.unsafe(
+        'INSERT INTO suppliers (id, name, phone, address) VALUES ($1, $2, $3, $4)',
+        [id, name, phone || null, address || null]
+      );
+      
+      const result = await client.unsafe('SELECT * FROM suppliers WHERE id = $1', [id]);
+      return res.status(201).json({
+        id: result[0].id,
+        name: result[0].name,
+        phone: result[0].phone,
+        address: result[0].address,
+        deleted: result[0].deleted,
+        createdAt: result[0].created_at,
+      });
+    }
+
+    // PUT /api/suppliers/:id
+    if (method === 'PUT' && url?.startsWith('/api/suppliers/')) {
+      await initializeDatabase();
+      const supplierId = url.replace('/api/suppliers/', '');
+      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const { name, phone, address } = input as { name?: string; phone?: string; address?: string };
+      
+      const updates: string[] = [];
+      const values: unknown[] = [];
+      let paramIndex = 1;
+      
+      if (name !== undefined) {
+        updates.push(`name = $${paramIndex++}`);
+        values.push(name);
+      }
+      if (phone !== undefined) {
+        updates.push(`phone = $${paramIndex++}`);
+        values.push(phone);
+      }
+      if (address !== undefined) {
+        updates.push(`address = $${paramIndex++}`);
+        values.push(address);
+      }
+      
+      if (updates.length === 0) {
+        return res.status(400).json({ error: 'No fields to update' });
+      }
+      
+      values.push(supplierId);
+      
+      await client.unsafe(
+        `UPDATE suppliers SET ${updates.join(', ')} WHERE id = $${paramIndex}`,
+        values
+      );
+      
+      const result = await client.unsafe('SELECT * FROM suppliers WHERE id = $1', [supplierId]);
+      return res.status(200).json({
+        id: result[0].id,
+        name: result[0].name,
+        phone: result[0].phone,
+        address: result[0].address,
+        deleted: result[0].deleted,
+        createdAt: result[0].created_at,
+      });
+    }
+
+    // DELETE /api/suppliers/:id
+    if (method === 'DELETE' && url?.startsWith('/api/suppliers/')) {
+      await initializeDatabase();
+      const supplierId = url.replace('/api/suppliers/', '');
+      
+      await client.unsafe(
+        'UPDATE suppliers SET deleted = true WHERE id = $1',
+        [supplierId]
+      );
+      
+      return res.status(200).json({ success: true });
     }
 
     // === CUSTOMER ROUTES ===

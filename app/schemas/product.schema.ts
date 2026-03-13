@@ -22,6 +22,9 @@ export interface Product {
   warrantyMonths: number;
   warrantyType: WarrantyType;
   stock: number;
+  hasSerialNumber?: boolean;
+  supplier?: string;
+  dateRestocked?: string;
   hidden?: number;
 }
 
@@ -36,7 +39,11 @@ export interface CreateProductInput {
   cogs: number;
   warrantyMonths: number;
   warrantyType: WarrantyType;
-  stock: number;
+  hasSerialNumber?: boolean;
+  supplier?: string;
+  dateRestocked?: string;
+  serialNumbers?: string[];
+  quantity?: number;
 }
 
 export interface UpdateProductInput {
@@ -50,12 +57,37 @@ export interface UpdateProductInput {
   warrantyMonths?: number;
   warrantyType?: WarrantyType;
   stock?: number;
+  hasSerialNumber?: boolean;
+  supplier?: string;
+  dateRestocked?: string;
 }
 
 export interface StockAdjustmentInput {
   productId: string;
   newStock: number;
   reason: string;
+}
+
+export interface StockAddInput {
+  productId: string;
+  supplier: string;
+  dateRestocked: string;
+  reason: string;
+  staffName: string;
+  hasSerialNumber: boolean;
+  serialNumbers?: string[];
+  quantity?: number;
+}
+
+export interface StockReduceInput {
+  productId: string;
+  supplier?: string;
+  dateRestocked?: string;
+  reason: string;
+  staffName: string;
+  hasSerialNumber: boolean;
+  serialNumbers?: string[];
+  quantity?: number;
 }
 
 export interface SerialNumber {
@@ -126,8 +158,19 @@ export function validateCreateProductInput(input: unknown): CreateProductInput {
   if (!isWarrantyType(obj.warrantyType)) {
     throw new Error(`Invalid input: warrantyType must be one of ${WarrantyTypes.join(', ')}`);
   }
-  if (typeof obj.stock !== 'number' || obj.stock < 0) {
-    throw new Error('Invalid input: stock must be a non-negative number');
+  
+  const hasSerialNumber = obj.hasSerialNumber !== false;
+  
+  if (hasSerialNumber && (!obj.serialNumbers || !Array.isArray(obj.serialNumbers) || obj.serialNumbers.length === 0)) {
+    throw new Error('Invalid input: serialNumbers is required for products with serial numbers');
+  }
+  
+  if (!hasSerialNumber && (!obj.quantity || typeof obj.quantity !== 'number' || obj.quantity <= 0)) {
+    throw new Error('Invalid input: quantity is required for products without serial numbers');
+  }
+  
+  if (!obj.supplier) {
+    throw new Error('Invalid input: supplier is required');
   }
   
   return {
@@ -141,7 +184,11 @@ export function validateCreateProductInput(input: unknown): CreateProductInput {
     cogs: obj.cogs as number,
     warrantyMonths: obj.warrantyMonths as number,
     warrantyType: obj.warrantyType as WarrantyType,
-    stock: obj.stock as number,
+    hasSerialNumber,
+    supplier: obj.supplier as string,
+    dateRestocked: obj.dateRestocked as string,
+    serialNumbers: obj.serialNumbers as string[] | undefined,
+    quantity: obj.quantity as number | undefined,
   };
 }
 
@@ -274,6 +321,9 @@ export function parseDbProduct(row: Record<string, unknown>): Product {
     warrantyMonths: row.warranty_months as number,
     warrantyType: row.warranty_type as WarrantyType,
     stock: row.stock as number,
+    hasSerialNumber: row.has_serial_number as boolean | undefined,
+    supplier: row.supplier as string | undefined,
+    dateRestocked: row.date_restocked as string | undefined,
     hidden: row.hidden as number | undefined,
   };
 }

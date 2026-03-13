@@ -35,9 +35,11 @@ const parseDbSale = (row: Record<string, unknown>) => ({
   items: [],
   subtotal: typeof row.subtotal === 'string' ? parseFloat(row.subtotal) : (row.subtotal as number),
   tax: typeof row.tax === 'string' ? parseFloat(row.tax) : (row.tax as number),
+  taxEnabled: row.tax_enabled as boolean,
   total: typeof row.total === 'string' ? parseFloat(row.total) : (row.total as number),
   paymentMethod: row.payment_method as string,
   staffName: row.staff_name as string,
+  notes: row.notes as string | undefined,
   timestamp: row.timestamp as string,
 });
 
@@ -179,9 +181,11 @@ export const getAllSalesHandler = async () => {
       items,
       subtotal: typeof sale.subtotal === 'string' ? parseFloat(sale.subtotal) : (sale.subtotal as number),
       tax: typeof sale.tax === 'string' ? parseFloat(sale.tax) : (sale.tax as number),
+      taxEnabled: sale.tax_enabled as boolean,
       total: typeof sale.total === 'string' ? parseFloat(sale.total) : (sale.total as number),
       paymentMethod: sale.payment_method as string,
       staffName: sale.staff_name as string,
+      notes: sale.notes as string | undefined,
       timestamp: sale.timestamp as string,
     };
   }));
@@ -211,14 +215,16 @@ export const createSaleHandler = async (data: {
   }[];
   subtotal: number;
   tax: number;
+  taxEnabled: boolean;
   total: number;
   paymentMethod: string;
   staffName: string;
+  notes?: string;
 }) => {
   try {
     await client.unsafe(
-      'INSERT INTO sales (id, customer_id, customer_name, subtotal, tax, total, payment_method, staff_name) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-      [data.id, data.customerId, data.customerName, String(data.subtotal), String(data.tax), String(data.total), data.paymentMethod, data.staffName]
+      'INSERT INTO sales (id, customer_id, customer_name, subtotal, tax, tax_enabled, total, payment_method, staff_name, notes) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
+      [data.id, data.customerId, data.customerName, String(data.subtotal), String(data.tax), data.taxEnabled, String(data.total), data.paymentMethod, data.staffName, data.notes || null]
     );
 
     for (const item of data.items) {

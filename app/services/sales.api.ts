@@ -27,9 +27,11 @@ export const createSale = async (input: {
   items: SaleItem[];
   subtotal: number;
   tax: number;
+  taxEnabled: boolean;
   total: number;
   paymentMethod: string;
   staffName: string;
+  notes?: string;
 }): Promise<Sale> => {
   const response = await fetch(`${API_BASE}/sales`, {
     method: 'POST',

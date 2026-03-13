@@ -268,6 +268,70 @@ export default function apiServerPlugin() {
             return;
           }
           
+          if (path === 'suppliers' && req.method === 'GET') {
+            const { getAllSuppliers } = await import('./suppliers.js');
+            try {
+              const result = await getAllSuppliers();
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify(result));
+            } catch (error) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ error: String(error) }));
+            }
+            return;
+          }
+          
+          if (path === 'suppliers' && req.method === 'POST') {
+            const { createSupplier } = await import('./suppliers.js');
+            let body = '';
+            req.on('data', chunk => body += chunk);
+            req.on('end', async () => {
+              try {
+                const data = JSON.parse(body);
+                const supplier = await createSupplier(data);
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify(supplier));
+              } catch (error) {
+                res.statusCode = 500;
+                res.end(JSON.stringify({ error: String(error) }));
+              }
+            });
+            return;
+          }
+          
+          if (path.startsWith('suppliers/') && req.method === 'PUT') {
+            const supplierId = path.replace('suppliers/', '');
+            const { updateSupplier } = await import('./suppliers.js');
+            let body = '';
+            req.on('data', chunk => body += chunk);
+            req.on('end', async () => {
+              try {
+                const data = JSON.parse(body);
+                const supplier = await updateSupplier(supplierId, data);
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify(supplier));
+              } catch (error) {
+                res.statusCode = 500;
+                res.end(JSON.stringify({ error: String(error) }));
+              }
+            });
+            return;
+          }
+          
+          if (path.startsWith('suppliers/') && req.method === 'DELETE') {
+            const supplierId = path.replace('suppliers/', '');
+            const { deleteSupplier } = await import('./suppliers.js');
+            try {
+              await deleteSupplier(supplierId);
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: true }));
+            } catch (error) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ error: String(error) }));
+            }
+            return;
+          }
+          
           if (path === 'customers' && req.method === 'GET') {
             const { getAllCustomersHandler } = await import('./customers.js');
             try {
