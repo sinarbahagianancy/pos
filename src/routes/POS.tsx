@@ -258,6 +258,7 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
     };
     onCompleteSale(sale);
     setLastSale(sale);
+    setToast({ message: 'Transaksi berhasil!', type: 'success' });
     setShowInvoice(true);
     setCart([]);
     setCustomerSearch('');
@@ -784,9 +785,8 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
     .logo-section { display: flex; align-items: center; gap: 12px; }
     .logo { 
       width: 48px; height: 48px; 
-      background: #4f46e5; border-radius: 12px; 
-      display: flex; align-items: center; justify-content: center;
-      color: white;
+      border-radius: 12px; 
+      object-fit: contain;
     }
     .store-name { font-size: 20px; font-weight: 900; text-transform: uppercase; letter-spacing: -0.03em; }
     .store-tagline { font-size: 9px; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
@@ -849,10 +849,8 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
 </head>
 <body>
   <div class="header">
-    <div class="logo-section">
-      <div class="logo">
-        <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-      </div>
+  <div class="logo-section">
+      <img class="logo" src="https://pos-prototype-bay.vercel.app/logo.png" alt="Logo" />
       <div>
         <div class="store-name">${storeConfig.storeName}</div>
         <div class="store-tagline">Premium Imaging Solution</div>
