@@ -555,7 +555,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     // GET /api/products
     if (method === 'GET' && url === '/api/products') {
-      const result = await db.select('products');
+      const result = await client.unsafe('SELECT * FROM products WHERE deleted = false ORDER BY created_at DESC');
       return res.status(200).json(result.map(parseDbProduct));
     }
 
