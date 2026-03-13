@@ -214,7 +214,13 @@ export const restoreProduct = async (id: string) => {
 };
 
 export const getAllSerialNumbers = async () => {
-  const result = await db.select().from(serialNumbers);
+  const result = await db.select({
+    sn: serialNumbers.sn,
+    productId: serialNumbers.productId,
+    status: serialNumbers.status,
+    createdAt: serialNumbers.createdAt,
+  }).from(serialNumbers);
+  
   return result.map(parseDbSerialNumber);
 };
 
@@ -261,7 +267,7 @@ export const createSerialNumbersBulk = async (inputs: unknown[]) => {
 
 export const updateSerialNumberStatus = async (
   sn: string, 
-  status: 'In Stock' | 'Sold' | 'Claimed'
+  status: 'In Stock' | 'Sold' | 'Claimed' | 'Damaged'
 ) => {
   const [result] = await db
     .update(serialNumbers)

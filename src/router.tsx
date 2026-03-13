@@ -302,18 +302,41 @@ const InventoryComponent = () => {
     }
   };
 
+  const handleRefreshSNs = async () => {
+    try {
+      const snsData = await getAllSerialNumbers();
+      setSns(snsData);
+      
+      // Recalculate stock for all products based on In Stock SNs
+      const stockMap = new Map<string, number>();
+      snsData.forEach(sn => {
+        if (sn.status === 'In Stock') {
+          stockMap.set(sn.productId, (stockMap.get(sn.productId) || 0) + 1);
+        }
+      });
+      
+      // Update products with new stock counts
+      setProducts(prev => prev.map(p => {
+        const newStock = stockMap.get(p.id) ?? p.stock;
+        return { ...p, stock: newStock };
+      }));
+      
+      // Also sync to DB
+      for (const [productId, newStock] of stockMap) {
+        await dbAdjustStock(productId, newStock, 'SN Status Changed', staffName);
+      }
+    } catch (error) {
+      console.error('Failed to refresh SNs:', error);
+    }
+  };
+
   const handleAddProduct = async (product: Product, serials: string[]) => {
     try {
       const newProduct = await dbCreateProduct(product);
-      if (serials.length > 0) {
-        const snInputs = serials.map(sn => ({ sn, productId: product.id }));
-        await createSerialNumbersBulk(snInputs);
-      }
       setProducts(prev => [...prev, newProduct]);
-      if (serials.length > 0) {
-        const snsData = await getAllSerialNumbers();
-        setSns(snsData);
-      }
+      // Reload serial numbers to get the latest
+      const snsData = await getAllSerialNumbers();
+      setSns(snsData);
     } catch (error) {
       console.error('Failed to add product:', error);
     }
@@ -389,6 +412,7 @@ const InventoryComponent = () => {
       onDeleteProduct={handleDeleteProduct}
       onRestoreProduct={handleRestoreProduct}
       onToggleHidden={handleToggleHidden}
+      onRefreshSNs={handleRefreshSNs}
     />
   );
 };

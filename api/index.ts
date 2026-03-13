@@ -123,6 +123,9 @@ interface Product {
   warrantyMonths: number;
   warrantyType: WarrantyType;
   stock: number;
+  hasSerialNumber?: boolean;
+  supplier?: string;
+  dateRestocked?: string;
   hidden?: number;
 }
 
@@ -201,6 +204,9 @@ const parseDbProduct = (row: Record<string, unknown>): Product => ({
   warrantyMonths: row.warranty_months as number,
   warrantyType: row.warranty_type as WarrantyType,
   stock: row.stock as number,
+  hasSerialNumber: row.has_serial_number as boolean | undefined,
+  supplier: row.supplier as string | undefined,
+  dateRestocked: row.date_restocked as string | undefined,
   hidden: row.hidden as number | undefined,
 });
 
@@ -374,7 +380,11 @@ interface CreateProductInput {
   cogs: number;
   warrantyMonths: number;
   warrantyType: WarrantyType;
-  stock: number;
+  hasSerialNumber?: boolean;
+  supplier?: string;
+  dateRestocked?: string;
+  serialNumbers?: string[];
+  quantity?: number;
 }
 
 interface UpdateProductInput {
@@ -414,7 +424,20 @@ const validateCreateProductInput = (input: unknown): CreateProductInput => {
   if (typeof obj.cogs !== 'number' || obj.cogs < 0) throw new Error('Invalid cogs');
   if (typeof obj.warrantyMonths !== 'number' || obj.warrantyMonths < 0) throw new Error('Invalid warrantyMonths');
   if (!isWarrantyType(obj.warrantyType)) throw new Error('Invalid warrantyType');
-  if (typeof obj.stock !== 'number' || obj.stock < 0) throw new Error('Invalid stock');
+  
+  const hasSerialNumber = obj.hasSerialNumber !== false;
+  
+  if (hasSerialNumber && (!obj.serialNumbers || !Array.isArray(obj.serialNumbers) || obj.serialNumbers.length === 0)) {
+    throw new Error('serialNumbers is required for products with serial numbers');
+  }
+  
+  if (!hasSerialNumber && (!obj.quantity || typeof obj.quantity !== 'number' || obj.quantity <= 0)) {
+    throw new Error('quantity is required for products without serial numbers');
+  }
+  
+  if (!obj.supplier) {
+    throw new Error('supplier is required');
+  }
   
   return {
     id: obj.id as string,
@@ -427,7 +450,11 @@ const validateCreateProductInput = (input: unknown): CreateProductInput => {
     cogs: obj.cogs as number,
     warrantyMonths: obj.warrantyMonths as number,
     warrantyType: obj.warrantyType,
-    stock: obj.stock,
+    hasSerialNumber,
+    supplier: obj.supplier as string,
+    dateRestocked: obj.dateRestocked as string,
+    serialNumbers: obj.serialNumbers as string[] | undefined,
+    quantity: obj.quantity as number | undefined,
   };
 };
 
@@ -535,6 +562,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
       const validated = validateCreateProductInput(input);
       
+      const hasSerialNumber = validated.hasSerialNumber !== false;
+      const stockCount = hasSerialNumber 
+        ? (validated.serialNumbers?.length || 0) 
+        : (validated.quantity || 0);
+      
       const result = await db.insert('products', [{
         id: validated.id,
         brand: validated.brand,
@@ -546,10 +578,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         cogs: validated.cogs.toString(),
         warranty_months: validated.warrantyMonths,
         warranty_type: validated.warrantyType,
-        stock: validated.stock,
+        stock: stockCount,
+        has_serial_number: hasSerialNumber,
+        supplier: validated.supplier,
+        date_restocked: validated.dateRestocked ? new Date(validated.dateRestocked) : new Date(),
       }]);
       
-      return res.status(201).json(parseDbProduct(result[0]));
+      const newProduct = result[0];
+      
+      if (hasSerialNumber && validated.serialNumbers && validated.serialNumbers.length > 0) {
+        for (const sn of validated.serialNumbers) {
+          await db.insert('serial_numbers', [{
+            sn: sn,
+            product_id: newProduct.id,
+            status: 'In Stock',
+          }]);
+        }
+      }
+      
+      return res.status(201).json(parseDbProduct(newProduct));
     }
 
     // PUT /api/products/:id
@@ -729,7 +776,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // GET /api/serial-numbers
     if (method === 'GET' && url === '/api/serial-numbers') {
-      const result = await db.select('serial_numbers');
+      const result = await client.unsafe('SELECT * FROM serial_numbers');
       return res.status(200).json(result.map(parseDbSerialNumber));
     }
 
@@ -754,12 +801,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
       const { status } = input;
       
-      const [result] = await db.update('serial_numbers', { status }, { column: 'sn', value: sn });
+      console.log('=== DEBUG: Update SN status ===');
+      console.log('SN:', sn, 'Status:', status);
       
-      if (!result) {
+      const result = await client.unsafe(
+        'UPDATE serial_numbers SET status = $1 WHERE sn = $2 RETURNING *',
+        [status, sn]
+      );
+      console.log('Update result:', result);
+      
+      if (!result || result.length === 0) {
         return res.status(404).json({ error: 'Serial number not found' });
       }
-      return res.status(200).json(parseDbSerialNumber(result));
+      return res.status(200).json(parseDbSerialNumber(result[0]));
     }
 
     // === AUTH ROUTES ===
@@ -915,22 +969,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'Name is required' });
       }
       
-      const id = `SUP-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-      
-      await client.unsafe(
-        'INSERT INTO suppliers (id, name, phone, address) VALUES ($1, $2, $3, $4)',
-        [id, name, phone || null, address || null]
-      );
-      
-      const result = await client.unsafe('SELECT * FROM suppliers WHERE id = $1', [id]);
-      return res.status(201).json({
-        id: result[0].id,
-        name: result[0].name,
-        phone: result[0].phone,
-        address: result[0].address,
-        deleted: result[0].deleted,
-        createdAt: result[0].created_at,
-      });
+      try {
+        await client.unsafe(
+          'INSERT INTO suppliers (name, phone, address) VALUES ($1, $2, $3)',
+          [name, phone || null, address || null]
+        );
+        
+        const result = await client.unsafe('SELECT * FROM suppliers WHERE name = $1', [name]);
+        return res.status(201).json({
+          id: result[0].id,
+          name: result[0].name,
+          phone: result[0].phone,
+          address: result[0].address,
+          deleted: result[0].deleted,
+          createdAt: result[0].created_at,
+        });
+      } catch (err: unknown) {
+        console.error('Supplier insert error:', err);
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        return res.status(500).json({ error: errorMessage });
+      }
     }
 
     // PUT /api/suppliers/:id

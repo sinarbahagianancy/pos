@@ -155,6 +155,31 @@ export default function apiServerPlugin() {
             return;
           }
           
+          // PUT /api/serial-numbers/:sn/status
+          if (path.startsWith('serial-numbers/') && path.includes('/status') && req.method === 'PUT') {
+            const sn = path.replace('serial-numbers/', '').replace('/status', '');
+            const { updateSerialNumberStatus } = await import('./products.js');
+            let body = '';
+            req.on('data', chunk => body += chunk);
+            req.on('end', async () => {
+              try {
+                const data = JSON.parse(body);
+                const result = await updateSerialNumberStatus(sn, data.status);
+                res.setHeader('Content-Type', 'application/json');
+                if (result) {
+                  res.end(JSON.stringify(result));
+                } else {
+                  res.statusCode = 404;
+                  res.end(JSON.stringify({ error: 'Serial number not found' }));
+                }
+              } catch (error) {
+                res.statusCode = 500;
+                res.end(JSON.stringify({ error: String(error) }));
+              }
+            });
+            return;
+          }
+          
           if (path === 'auth/login' && req.method === 'POST') {
             const { loginHandler } = await import('./auth.js');
             let body = '';

@@ -331,7 +331,7 @@ export function parseDbProduct(row: Record<string, unknown>): Product {
 export function parseDbSerialNumber(row: Record<string, unknown>): SerialNumber {
   return {
     sn: row.sn as string,
-    productId: row.product_id as string,
+    productId: row.productId as string,
     status: row.status as SNStatus,
   };
 }

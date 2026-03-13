@@ -33,6 +33,7 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
   const [isPrinting, setIsPrinting] = useState(false);
   const [printModalHtml, setPrintModalHtml] = useState('');
   const [printPdfUrl, setPrintPdfUrl] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // Close customer suggestions when clicking outside
   useEffect(() => {
@@ -136,6 +137,31 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
     setSearch('');
   };
 
+  const handleBarcodeSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    
+    const query = search.trim();
+    if (!query) return;
+    
+    const matchedProduct = products.find(p => p.id === query && !p.hidden);
+    if (matchedProduct) {
+      if (matchedProduct.stock === 0) {
+        setToast({ message: 'Stok produk ini habis', type: 'error' });
+        setSearch('');
+        return;
+      }
+      addToCartByProduct(matchedProduct);
+      setToast({ message: `${matchedProduct.brand} ${matchedProduct.model} ditambahkan ke keranjang`, type: 'success' });
+      setSearch('');
+    } else {
+      setToast({ message: 'Produk tidak ditemukan', type: 'error' });
+      setSearch('');
+    }
+    
+    setTimeout(() => setToast(null), 3000);
+  };
+
   const removeFromCart = (index: number) => {
     setCart(cart.filter((_, i) => i !== index));
   };
@@ -234,6 +260,13 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
 
   return (
     <div className="flex flex-col lg:grid lg:grid-cols-12 gap-6 h-full pb-32 lg:pb-4 max-w-full mx-auto relative">
+      {toast && (
+        <div className={`fixed top-4 right-4 z-50 px-6 py-3 rounded-xl shadow-lg ${
+          toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'
+        } text-white font-bold text-sm animate-in slide-in-from-top-2`}>
+          {toast.message}
+        </div>
+      )}
       <style>
         {`
           @media print {
@@ -279,6 +312,7 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
               value={search}
               autoFocus
               onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={handleBarcodeSearch}
             />
             <svg className="w-6 h-6 absolute left-5 top-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
           </div>

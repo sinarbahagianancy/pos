@@ -40,10 +40,7 @@ export const createSupplier = async (data: {
   phone?: string;
   address?: string;
 }) => {
-  const id = `SUP-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-  
   const result = await db.insert(suppliers).values({
-    id,
     name: data.name,
     phone: data.phone,
     address: data.address,

@@ -60,7 +60,7 @@ export const auditActionEnum = pgEnum('audit_action', [
 
 export const currencyTypeEnum = pgEnum('currency_type', ['IDR', 'USD']);
 
-export const snStatusEnum = pgEnum('sn_status', ['In Stock', 'Sold', 'Claimed']);
+export const snStatusEnum = pgEnum('sn_status', ['In Stock', 'Sold', 'Claimed', 'Damaged']);
 
 export const storeConfig = pgTable('store_config', {
   id: integer('id').primaryKey().default(1),
