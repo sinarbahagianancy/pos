@@ -47,6 +47,28 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Global keyboard listener for barcode scanning (works even when search input is not focused)
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Only handle Enter key for barcode scanning
+      if (e.key !== 'Enter') return;
+      
+      // Don't trigger if user is typing in an input or textarea
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
+        return;
+      }
+      
+      // If there's a search query, process it (only if not already handled by the input's onKeyDown)
+      if (search.trim()) {
+        handleBarcodeSearch(e as unknown as React.KeyboardEvent<HTMLInputElement>);
+      }
+    };
+    
+    document.addEventListener('keydown', handleGlobalKeyDown);
+    return () => document.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [search, products, sns, cart]);
+
   // Filter out hidden products
 
   // Filter out hidden products
@@ -144,7 +166,33 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
     const query = search.trim();
     if (!query) return;
     
-    const matchedProduct = products.find(p => p.id === query && !p.hidden);
+    // First try to find by product ID
+    let matchedProduct = products.find(p => p.id === query && !p.hidden);
+    let snFound = false;
+    let snStatus = '';
+    
+    // If not found, try to find by serial number
+    if (!matchedProduct) {
+      const matchedSN = sns.find(sn => sn.sn === query);
+      if (matchedSN) {
+        snFound = true;
+        snStatus = matchedSN.status;
+        if (matchedSN.status === 'In Stock') {
+          matchedProduct = products.find(p => p.id === matchedSN.productId && !p.hidden);
+        }
+      }
+    }
+    
+    // Check if serial number is already in cart
+    if (snFound && query) {
+      const isInCart = cart.some(item => item.sn === query);
+      if (isInCart) {
+        setToast({ message: 'Serial number ini sudah ada di keranjang', type: 'error' });
+        setSearch('');
+        return;
+      }
+    }
+    
     if (matchedProduct) {
       if (matchedProduct.stock === 0) {
         setToast({ message: 'Stok produk ini habis', type: 'error' });
@@ -155,7 +203,19 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
       setToast({ message: `${matchedProduct.brand} ${matchedProduct.model} ditambahkan ke keranjang`, type: 'success' });
       setSearch('');
     } else {
-      setToast({ message: 'Produk tidak ditemukan', type: 'error' });
+      if (snFound) {
+        if (snStatus === 'Sold') {
+          setToast({ message: 'Serial number ini sudah terjual', type: 'error' });
+        } else if (snStatus === 'Damaged') {
+          setToast({ message: 'Serial number ini rusak/hilang', type: 'error' });
+        } else if (snStatus === 'Claimed') {
+          setToast({ message: 'Serial number ini sedang diklaim', type: 'error' });
+        } else {
+          setToast({ message: 'Serial number tidak tersedia', type: 'error' });
+        }
+      } else {
+        setToast({ message: 'Produk tidak ditemukan', type: 'error' });
+      }
       setSearch('');
     }
     
