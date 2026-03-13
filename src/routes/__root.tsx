@@ -5,7 +5,6 @@ const menuItems = [
   { id: 'dashboard', label: 'Dashboard', path: '/', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
   { id: 'pos', label: 'Cashier (POS)', path: '/pos', icon: 'M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z' },
   { id: 'inventory', label: 'Inventory', path: '/inventory', icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4' },
-  { id: 'warranty', label: 'Service Center', path: '/warranty', icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-7.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z' },
   { id: 'customers', label: 'CRM / Customers', path: '/customers', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z' },
   { id: 'reports', label: 'Financial Reports', path: '/reports', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
   { id: 'audit', label: 'Security Logs', path: '/audit', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
@@ -53,17 +52,6 @@ export function AppLayout() {
           ))}
         </nav>
 
-        <div className="p-6 shrink-0">
-          <div className="bg-slate-800/40 rounded-2xl p-5 border border-slate-700/30">
-            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Central Hub Surabaya</p>
-            <p className="text-[13px] text-slate-300 font-black tracking-tight leading-tight">Jl. Kramat Gantung No. 63</p>
-            <p className="text-[11px] text-slate-500 font-medium mt-1">Genteng, Surabaya 60174</p>
-            <div className="mt-4 pt-4 border-t border-slate-700/50 flex items-center justify-between">
-              <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">v2.5.2 Stable</span>
-              <span className="flex h-1.5 w-1.5 rounded-full bg-green-500"></span>
-            </div>
-          </div>
-        </div>
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0 ml-72">

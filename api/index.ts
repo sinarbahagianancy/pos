@@ -192,23 +192,25 @@ interface SaleItem {
   warrantyExpiry: string;
 }
 
-const parseDbProduct = (row: Record<string, unknown>): Product => ({
-  id: row.id as string,
-  brand: row.brand as string,
-  model: row.model as string,
-  category: row.category as ProductCategory,
-  mount: row.mount as MountType,
-  condition: row.condition as ConditionType,
-  price: typeof row.price === 'string' ? parseFloat(row.price) : (row.price as number),
-  cogs: typeof row.cogs === 'string' ? parseFloat(row.cogs) : (row.cogs as number),
-  warrantyMonths: row.warranty_months as number,
-  warrantyType: row.warranty_type as WarrantyType,
-  stock: row.stock as number,
-  hasSerialNumber: row.has_serial_number as boolean | undefined,
-  supplier: row.supplier as string | undefined,
-  dateRestocked: row.date_restocked as string | undefined,
-  hidden: row.hidden as number | undefined,
-});
+const parseDbProduct = (row: Record<string, unknown>): Product => {
+  return {
+    id: row.id as string,
+    brand: row.brand as string,
+    model: row.model as string,
+    category: row.category as ProductCategory,
+    mount: row.mount as MountType,
+    condition: row.condition as ConditionType,
+    price: typeof row.price === 'string' ? parseFloat(row.price) : (row.price as number),
+    cogs: typeof row.cogs === 'string' ? parseFloat(row.cogs) : (row.cogs as number),
+    warrantyMonths: row.warranty_months as number,
+    warrantyType: row.warranty_type as WarrantyType,
+    stock: row.stock as number,
+    hasSerialNumber: row.has_serial_number === true || row.has_serial_number === 1 || row.has_serial_number === 'true',
+    supplier: row.supplier as string | undefined,
+    dateRestocked: row.date_restocked as string | undefined,
+    hidden: row.hidden as number | undefined,
+  };
+};
 
 const parseDbSerialNumber = (row: Record<string, unknown>): SerialNumber => ({
   sn: row.sn as string,
@@ -425,7 +427,7 @@ const validateCreateProductInput = (input: unknown): CreateProductInput => {
   if (typeof obj.warrantyMonths !== 'number' || obj.warrantyMonths < 0) throw new Error('Invalid warrantyMonths');
   if (!isWarrantyType(obj.warrantyType)) throw new Error('Invalid warrantyType');
   
-  const hasSerialNumber = obj.hasSerialNumber !== false;
+  const hasSerialNumber = obj.hasSerialNumber === true;
   
   if (hasSerialNumber && (!obj.serialNumbers || !Array.isArray(obj.serialNumbers) || obj.serialNumbers.length === 0)) {
     throw new Error('serialNumbers is required for products with serial numbers');
@@ -562,7 +564,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
       const validated = validateCreateProductInput(input);
       
-      const hasSerialNumber = validated.hasSerialNumber !== false;
+      const hasSerialNumber = validated.hasSerialNumber === true;
       const stockCount = hasSerialNumber 
         ? (validated.serialNumbers?.length || 0) 
         : (validated.quantity || 0);

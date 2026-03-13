@@ -159,7 +159,7 @@ export function validateCreateProductInput(input: unknown): CreateProductInput {
     throw new Error(`Invalid input: warrantyType must be one of ${WarrantyTypes.join(', ')}`);
   }
   
-  const hasSerialNumber = obj.hasSerialNumber !== false;
+  const hasSerialNumber = obj.hasSerialNumber === true;
   
   if (hasSerialNumber && (!obj.serialNumbers || !Array.isArray(obj.serialNumbers) || obj.serialNumbers.length === 0)) {
     throw new Error('Invalid input: serialNumbers is required for products with serial numbers');
@@ -309,6 +309,7 @@ export function validateCreateSerialNumberInput(input: unknown): CreateSerialNum
 }
 
 export function parseDbProduct(row: Record<string, unknown>): Product {
+  const hasSN = row.has_serial_number;
   return {
     id: row.id as string,
     brand: row.brand as string,
@@ -321,7 +322,7 @@ export function parseDbProduct(row: Record<string, unknown>): Product {
     warrantyMonths: row.warranty_months as number,
     warrantyType: row.warranty_type as WarrantyType,
     stock: row.stock as number,
-    hasSerialNumber: row.has_serial_number as boolean | undefined,
+    hasSerialNumber: hasSN === true || hasSN === 1 || hasSN === 'true',
     supplier: row.supplier as string | undefined,
     dateRestocked: row.date_restocked as string | undefined,
     hidden: row.hidden as number | undefined,

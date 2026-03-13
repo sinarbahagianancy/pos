@@ -28,9 +28,39 @@ const db = drizzle(client, { schema: { products, serialNumbers, auditLogs } });
 
 console.log('Database client initialized');
 
+// Ensure has_serial_number column exists and fix all products based on actual serial numbers
+try {
+  await client.unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS has_serial_number boolean DEFAULT true`);
+  
+  // Fix ALL products based on whether they have serial numbers in the serial_numbers table
+  await client.unsafe(`
+    UPDATE products 
+    SET has_serial_number = true 
+    WHERE EXISTS (SELECT 1 FROM serial_numbers WHERE serial_numbers.product_id = products.id)
+  `);
+  
+  await client.unsafe(`
+    UPDATE products 
+    SET has_serial_number = false 
+    WHERE NOT EXISTS (SELECT 1 FROM serial_numbers WHERE serial_numbers.product_id = products.id)
+  `);
+} catch (e) {
+  console.log('Migration check (may be ok):', e);
+}
+
 export const getAllProducts = async () => {
-  const result = await db.select().from(products).where(eq(products.deleted, false));
-  return result.map(parseDbProduct);
+  // Use direct SQL to avoid any Drizzle ORM issues
+  const rawResult = await client.unsafe(`
+    SELECT 
+      p.id, p.brand, p.model, p.category, p.mount, p.condition,
+      p.price, p.cogs, p.warranty_months, p.warranty_type, p.stock,
+      p.has_serial_number, p.supplier, p.date_restocked, p.hidden, p.deleted,
+      (SELECT COUNT(*) FROM serial_numbers sn WHERE sn.product_id = p.id) as sn_count
+    FROM products p
+    WHERE p.deleted = false
+  `);
+  
+  return rawResult.map((row: any) => parseDbProduct(row));
 };
 
 export const getProductById = async (id: string) => {
@@ -41,7 +71,7 @@ export const getProductById = async (id: string) => {
 export const createProduct = async (input: unknown) => {
   const validated = validateCreateProductInput(input);
   
-  const hasSerialNumber = validated.hasSerialNumber !== false;
+  const hasSerialNumber = validated.hasSerialNumber === true;
   const stockCount = hasSerialNumber 
     ? (validated.serialNumbers?.length || 0) 
     : (validated.quantity || 0);
@@ -67,11 +97,22 @@ export const createProduct = async (input: unknown) => {
   
   if (hasSerialNumber && validated.serialNumbers && validated.serialNumbers.length > 0) {
     for (const sn of validated.serialNumbers) {
-      await db.insert(serialNumbers).values({
-        sn: sn,
-        productId: newProduct.id,
-        status: 'In Stock',
-      });
+      // Check if SN already exists
+      const existing = await db.select().from(serialNumbers).where(eq(serialNumbers.sn, sn));
+      if (existing.length > 0) {
+        console.error('SN already exists:', sn, 'belongs to product:', existing[0].productId);
+        throw new Error(`Serial number ${sn} already exists in the system`);
+      }
+      try {
+        await db.insert(serialNumbers).values({
+          sn: sn,
+          productId: newProduct.id,
+          status: 'In Stock',
+        });
+      } catch (err: any) {
+        console.error('Error inserting SN:', sn, err);
+        throw new Error(`Failed to insert serial number ${sn}: ${err.message}`);
+      }
     }
     
     await db.insert(auditLogs).values({

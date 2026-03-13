@@ -32,9 +32,12 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
   const [editError, setEditError] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Product>>({});
 
-  // Calculate stock dynamically from SNs with status "In Stock"
-  const getProductStock = (productId: string) => {
-    return sns.filter(sn => sn.productId === productId && sn.status === 'In Stock').length;
+  // Calculate stock dynamically from SNs with status "In Stock", or use stored stock for non-SN products
+  const getProductStock = (product: Product) => {
+    if (product.hasSerialNumber === true) {
+      return sns.filter(sn => sn.productId === product.id && sn.status === 'In Stock').length;
+    }
+    return product.stock;
   };
   
   // Simple stock adjustment
@@ -57,7 +60,7 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
     brand: '', model: '', category: 'Body', condition: 'New', price: 0, cogs: 0, warrantyMonths: 12, warrantyType: 'Official Sony Indonesia'
   });
   const [newSerials, setNewSerials] = useState('');
-  const [newProductHasSN, setNewProductHasSN] = useState(true);
+  const [newProductHasSN, setNewProductHasSN] = useState(false);
   const [newProductQuantity, setNewProductQuantity] = useState(1);
   const [newProductSupplier, setNewProductSupplier] = useState('');
   const [newProductDate, setNewProductDate] = useState(new Date().toISOString().split('T')[0]);
@@ -79,7 +82,7 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
   const handleSimpleAdjust = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!simpleAdjustProduct || simpleAdjustAmount === 0 || !simpleAdjustReason) return;
-    const currentStock = getProductStock(simpleAdjustProduct.id);
+    const currentStock = getProductStock(simpleAdjustProduct);
     const newStock = currentStock + simpleAdjustAmount;
     if (newStock < 0) {
       alert('Stok tidak bisa negatif!');
@@ -88,7 +91,7 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
     
     // For products with serial numbers, use onRefreshSNs
     // For products without serial numbers, use onManualAdjust
-    if (simpleAdjustProduct.hasSerialNumber !== false && onRefreshSNs) {
+    if (simpleAdjustProduct.hasSerialNumber === true && onRefreshSNs) {
       await onRefreshSNs();
     } else {
       onManualAdjust(simpleAdjustProduct.id, newStock, simpleAdjustReason);
@@ -247,7 +250,7 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
     setShowAddModal(false);
     setNewP({ brand: '', model: '', category: 'Body', condition: 'New', price: 0, cogs: 0, warrantyMonths: 12, warrantyType: 'Official Sony Indonesia' });
     setNewSerials('');
-    setNewProductHasSN(true);
+    setNewProductHasSN(false);
     setNewProductQuantity(1);
     setNewProductSupplier('');
     setNewProductDate(new Date().toISOString().split('T')[0]);
@@ -312,7 +315,7 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
                   </td>
                   <td className="px-8 py-6 text-center">
                     {(() => {
-                      const currentStock = getProductStock(p.id);
+                      const currentStock = getProductStock(p);
                       return (
                     <div className="flex items-center space-x-2.5">
                       <div className={`w-2.5 h-2.5 rounded-full ${currentStock <= 2 ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]' : 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]'}`}></div>
@@ -320,8 +323,8 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
                     </div>
                     );
                     })()}
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[9px] font-bold uppercase mt-1 ${p.hasSerialNumber !== false ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
-                      {p.hasSerialNumber !== false ? 'Serial Number' : 'Non Serial Number'}
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[9px] font-bold uppercase mt-1 ${p.hasSerialNumber === true ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                      {p.hasSerialNumber === true ? 'Serial Number' : 'Non Serial Number'}
                     </span>
                   </td>
                   <td className="px-8 py-6 text-right font-black text-slate-900 tracking-tighter">{formatIDR(p.price)}</td>
@@ -361,7 +364,7 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                         </button>
                       )}
-                      {p.hasSerialNumber !== false ? (
+                      {p.hasSerialNumber === true ? (
                         <>
                           <button 
                             onClick={() => { setAddingSNProduct(p); setNewSNInput(''); setSNOperationReason(''); setSNOperationSupplier(p.supplier || ''); }}
@@ -426,7 +429,7 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
               <div>
                 <h2 className="text-xl font-black text-green-800 uppercase tracking-tighter">Tambah via SN</h2>
                 <p className="text-[10px] text-green-600 font-bold uppercase mt-2">{addingSNProduct.brand} {addingSNProduct.model}</p>
-                <p className="text-[10px] text-green-500 font-medium mt-1">Stok saat ini: {getProductStock(addingSNProduct.id)} unit</p>
+                <p className="text-[10px] text-green-500 font-medium mt-1">Stok saat ini: {getProductStock(addingSNProduct)} unit</p>
               </div>
               <button onClick={() => setAddingSNProduct(null)} className="text-slate-300 hover:text-slate-900 transition-colors">
                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -510,7 +513,7 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
               <div>
                 <h2 className="text-xl font-black text-red-800 uppercase tracking-tighter">Kurangi via SN</h2>
                 <p className="text-[10px] text-red-600 font-bold uppercase mt-2">{removingSNProduct.brand} {removingSNProduct.model}</p>
-                <p className="text-[10px] text-red-500 font-medium mt-1">Stok saat ini: {getProductStock(removingSNProduct.id)} unit</p>
+                <p className="text-[10px] text-red-500 font-medium mt-1">Stok saat ini: {getProductStock(removingSNProduct)} unit</p>
               </div>
               <button onClick={() => { setRemovingSNProduct(null); setSelectedSNs([]); }} className="text-slate-300 hover:text-slate-900 transition-colors">
                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -623,8 +626,8 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
                 <label className="flex items-center gap-3 cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={newProductHasSN}
-                    onChange={(e) => setNewProductHasSN(e.target.checked)}
+                    checked={newProductHasSN === true}
+                    onChange={(e) => setNewProductHasSN(e.target.checked === true)}
                     className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                   />
                   <span className="text-sm font-bold text-slate-700">Produk ini memiliki Serial Number</span>
@@ -859,7 +862,7 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
               <div>
                 <h2 className="text-xl font-black text-indigo-800 uppercase tracking-tighter">Sesuaikan Stok</h2>
                 <p className="text-[10px] text-indigo-600 font-bold uppercase mt-2">{simpleAdjustProduct.brand} {simpleAdjustProduct.model}</p>
-                <p className="text-[10px] text-indigo-500 font-medium mt-1">Stok saat ini: {getProductStock(simpleAdjustProduct.id)} unit</p>
+                <p className="text-[10px] text-indigo-500 font-medium mt-1">Stok saat ini: {getProductStock(simpleAdjustProduct)} unit</p>
               </div>
               <button onClick={() => { setSimpleAdjustProduct(null); setSimpleAdjustAmount(0); setSimpleAdjustReason(''); }} className="text-slate-300 hover:text-slate-900 transition-colors">
                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
