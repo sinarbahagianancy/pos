@@ -1,5 +1,5 @@
 import React from 'react';
-import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
+import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
 
 const styles = StyleSheet.create({
   page: {
@@ -26,15 +26,8 @@ const styles = StyleSheet.create({
   logo: {
     width: 36,
     height: 36,
-    backgroundColor: '#4f46e5',
     borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logoText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
+    objectFit: 'contain',
   },
   storeInfo: {
     marginLeft: 10,
@@ -293,9 +286,7 @@ export const InvoiceDocument: React.FC<{ data: InvoiceData }> = ({ data }) => (
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.logoSection}>
-          <View style={styles.logo}>
-            <Text style={styles.logoText}>SB</Text>
-          </View>
+          <Image src="https://pos-prototype-bay.vercel.app/logo.png" style={styles.logo} />
           <View style={styles.storeInfo}>
             <Text style={styles.storeName}>{data.storeName}</Text>
             <Text style={styles.storeTagline}>Premium Imaging Solution</Text>

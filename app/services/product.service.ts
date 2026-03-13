@@ -167,11 +167,16 @@ export const createSerialNumber = async (input: unknown): Promise<SerialNumber> 
   return response.json();
 };
 
-export const createSerialNumbersBulk = async (inputs: unknown[]): Promise<SerialNumber[]> => {
+export const createSerialNumbersBulk = async (
+  inputs: unknown[],
+  supplier?: string,
+  date?: string,
+  reason?: string
+): Promise<SerialNumber[]> => {
   const response = await fetch(`${API_BASE}/serial-numbers/bulk`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(inputs),
+    body: JSON.stringify({ inputs, supplier, date, reason }),
   });
   if (!response.ok) {
     const error = await response.json();
@@ -184,12 +189,13 @@ export const addSerialNumbers = createSerialNumbersBulk;
 
 export const updateSerialNumberStatus = async (
   sn: string, 
-  status: 'In Stock' | 'Sold' | 'Claimed' | 'Damaged'
+  status: 'In Stock' | 'Sold' | 'Claimed' | 'Damaged',
+  reason?: string
 ): Promise<SerialNumber | null> => {
   const response = await fetch(`${API_BASE}/serial-numbers/${sn}/status`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status }),
+    body: JSON.stringify({ status, reason }),
   });
   if (!response.ok) {
     if (response.status === 404) return null;

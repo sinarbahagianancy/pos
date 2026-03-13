@@ -784,8 +784,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // POST /api/serial-numbers/bulk
     if (method === 'POST' && url === '/api/serial-numbers/bulk') {
-      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-      const validated = input.map((v: CreateSerialNumberInput) => validateCreateSerialNumberInput(v));
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const { inputs, supplier, date, reason } = body;
+      const validated = inputs.map((v: CreateSerialNumberInput) => validateCreateSerialNumberInput(v));
       
       const values = validated.map((v: CreateSerialNumberInput) => ({
         sn: v.sn,
@@ -794,6 +795,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }));
       
       const result = await db.insert('serial_numbers', values);
+      
+      // Create audit log with supplier, date, and reason info
+      if (validated.length > 0 && validated[0].productId) {
+        const [product] = await client.unsafe('SELECT brand, model FROM products WHERE id = $1', [validated[0].productId]);
+        const snList = validated.map((v: CreateSerialNumberInput) => v.sn).join(', ');
+        const supplierInfo = supplier || 'Unknown';
+        const dateInfo = date || new Date().toISOString().split('T')[0];
+        const reasonInfo = reason || 'Not specified';
+        
+        await client.unsafe(
+          `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) 
+           VALUES ($1, $2, $3, $4, $5, NOW())`,
+          [
+            `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            'System',
+            'Stock Addition',
+            `Added ${validated.length} serial number(s) to ${product?.brand || ''} ${product?.model || ''} from supplier ${supplierInfo} on ${dateInfo}, reason: ${reasonInfo}. SN: ${snList}`,
+            validated[0].productId
+          ]
+        );
+      }
+      
       return res.status(201).json(result.map(parseDbSerialNumber));
     }
 
@@ -801,10 +824,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (method === 'PUT' && url?.startsWith('/api/serial-numbers/') && url?.includes('/status')) {
       const sn = url.replace('/api/serial-numbers/', '').replace('/status', '');
       const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-      const { status } = input;
+      const { status, reason } = input;
       
       console.log('=== DEBUG: Update SN status ===');
       console.log('SN:', sn, 'Status:', status);
+      
+      // Get the SN to find product info before updating
+      const [existingSN] = await client.unsafe('SELECT product_id FROM serial_numbers WHERE sn = $1', [sn]);
       
       const result = await client.unsafe(
         'UPDATE serial_numbers SET status = $1 WHERE sn = $2 RETURNING *',
@@ -815,6 +841,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!result || result.length === 0) {
         return res.status(404).json({ error: 'Serial number not found' });
       }
+      
+      // Create audit log for status change
+      if (existingSN) {
+        const [product] = await client.unsafe('SELECT brand, model FROM products WHERE id = $1', [existingSN.product_id]);
+        const reasonInfo = reason || 'Not specified';
+        
+        await client.unsafe(
+          `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) 
+           VALUES ($1, $2, $3, $4, $5, NOW())`,
+          [
+            `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            'System',
+            'Manual Correction',
+            `Marked serial number ${sn} as ${status} for ${product?.brand || ''} ${product?.model || ''}, reason: ${reasonInfo}`,
+            existingSN.product_id
+          ]
+        );
+      }
+      
       return res.status(200).json(parseDbSerialNumber(result[0]));
     }
 

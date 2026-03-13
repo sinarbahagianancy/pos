@@ -114,9 +114,14 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
 
     setIsProcessingSN(true);
     try {
-      // Add serial numbers to database
+      // Add serial numbers to database with supplier, date, and reason
       const { addSerialNumbers } = await import('../../app/services/product.service');
-      await addSerialNumbers(snList.map(sn => ({ sn, productId: addingSNProduct.id })));
+      await addSerialNumbers(
+        snList.map(sn => ({ sn, productId: addingSNProduct.id })),
+        snOperationSupplier,
+        snOperationDate,
+        snOperationReason
+      );
       
       alert(`${snList.length} nomor seri berhasil ditambahkan ke ${addingSNProduct.model}.`);
       
@@ -128,6 +133,7 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
       setAddingSNProduct(null);
       setNewSNInput('');
       setSNOperationReason('');
+      setSNOperationSupplier('');
     } catch (error) {
       console.error('Failed to add serial numbers:', error);
       alert('Gagal menambahkan nomor seri.');
@@ -162,10 +168,10 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
 
     setIsProcessingSN(true);
     try {
-      // Update SN status to Damaged
+      // Update SN status to Damaged with reason
       const { updateSerialNumberStatus } = await import('../../app/services/product.service');
       for (const sn of validSNs) {
-        await updateSerialNumberStatus(sn, 'Damaged');
+        await updateSerialNumberStatus(sn, 'Damaged', snOperationReason);
       }
       
       alert(`${validSNs.length} nomor seri berhasil ditandai sebagai rusak/hilang dari ${removingSNProduct.model}.`);

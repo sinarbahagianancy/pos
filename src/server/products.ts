@@ -293,7 +293,12 @@ export const createSerialNumber = async (input: unknown) => {
   return parseDbSerialNumber(result[0]);
 };
 
-export const createSerialNumbersBulk = async (inputs: unknown[]) => {
+export const createSerialNumbersBulk = async (
+  inputs: unknown[],
+  supplier?: string,
+  date?: string,
+  reason?: string
+) => {
   const validated = inputs.map(validateCreateSerialNumberInput);
   
   const values = validated.map(v => ({
@@ -303,18 +308,54 @@ export const createSerialNumbersBulk = async (inputs: unknown[]) => {
   }));
   
   const result = await db.insert(serialNumbers).values(values).returning();
+  
+  // Create audit log with supplier, date, and reason info
+  if (validated.length > 0 && validated[0].productId) {
+    const [product] = await db.select().from(products).where(eq(products.id, validated[0].productId));
+    const snList = validated.map(v => v.sn).join(', ');
+    const supplierInfo = supplier || 'Unknown';
+    const dateInfo = date || new Date().toISOString().split('T')[0];
+    const reasonInfo = reason || 'Not specified';
+    
+    await db.insert(auditLogs).values({
+      id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      staffName: 'System',
+      action: 'Stock Addition',
+      details: `Added ${validated.length} serial number(s) to ${product?.brand || ''} ${product?.model || ''} from supplier ${supplierInfo} on ${dateInfo}, reason: ${reasonInfo}. SN: ${snList}`,
+      relatedId: validated[0].productId,
+    });
+  }
+  
   return result.map(parseDbSerialNumber);
 };
 
 export const updateSerialNumberStatus = async (
   sn: string, 
-  status: 'In Stock' | 'Sold' | 'Claimed' | 'Damaged'
+  status: 'In Stock' | 'Sold' | 'Claimed' | 'Damaged',
+  reason?: string
 ) => {
+  // Get the SN to find product info before updating
+  const [existingSN] = await db.select().from(serialNumbers).where(eq(serialNumbers.sn, sn));
+  
   const [result] = await db
     .update(serialNumbers)
     .set({ status })
     .where(eq(serialNumbers.sn, sn))
     .returning();
+  
+  // Create audit log for status change
+  if (existingSN) {
+    const [product] = await db.select().from(products).where(eq(products.id, existingSN.productId));
+    const reasonInfo = reason || 'Not specified';
+    
+    await db.insert(auditLogs).values({
+      id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      staffName: 'System',
+      action: 'Manual Correction',
+      details: `Marked serial number ${sn} as ${status} for ${product?.brand || ''} ${product?.model || ''}, reason: ${reasonInfo}`,
+      relatedId: existingSN.productId,
+    });
+  }
   
   return result ? parseDbSerialNumber(result) : null;
 };
