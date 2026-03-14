@@ -10,7 +10,7 @@ interface InventoryProps {
   suppliers: Supplier[];
   setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
   canViewSensitive: boolean;
-  onManualAdjust: (productId: string, newStock: number, reason: string) => void;
+  onManualAdjust: (productId: string, newStock: number, reason: string, supplier?: string, dateRestocked?: string) => void;
   onAddProduct: (product: Product, serials: string[]) => void;
   onEditProduct?: (id: string, data: Partial<Product>) => Promise<void>;
   onDeleteProduct?: (id: string) => Promise<void>;
@@ -44,6 +44,8 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
   const [simpleAdjustProduct, setSimpleAdjustProduct] = useState<Product | null>(null);
   const [simpleAdjustAmount, setSimpleAdjustAmount] = useState(0);
   const [simpleAdjustReason, setSimpleAdjustReason] = useState('');
+  const [simpleAdjustSupplier, setSimpleAdjustSupplier] = useState('');
+  const [simpleAdjustDate, setSimpleAdjustDate] = useState(new Date().toISOString().split('T')[0]);
   
   // SN-based stock operations
   const [addingSNProduct, setAddingSNProduct] = useState<Product | null>(null);
@@ -94,7 +96,7 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
     if (simpleAdjustProduct.hasSerialNumber === true && onRefreshSNs) {
       await onRefreshSNs();
     } else {
-      onManualAdjust(simpleAdjustProduct.id, newStock, simpleAdjustReason);
+      onManualAdjust(simpleAdjustProduct.id, newStock, simpleAdjustReason, simpleAdjustSupplier || undefined, simpleAdjustDate || undefined);
     }
     
     setSimpleAdjustProduct(null);
@@ -389,7 +391,7 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
                         </>
                       ) : (
                         <button 
-                          onClick={() => { setSimpleAdjustProduct(p); setSimpleAdjustAmount(0); setSimpleAdjustReason(''); }}
+                          onClick={() => { setSimpleAdjustProduct(p); setSimpleAdjustAmount(0); setSimpleAdjustReason(''); setSimpleAdjustSupplier(p.supplier || ''); setSimpleAdjustDate(new Date().toISOString().split('T')[0]); }}
                           className="text-blue-600 hover:bg-blue-50 p-2 rounded-lg text-xs font-bold transition-all"
                           title="Sesuaikan Stok (+/-)"
                         >
@@ -863,18 +865,18 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
       {/* Simple Stock Adjustment Modal */}
       {simpleAdjustProduct && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-xl flex items-center justify-center z-[100] p-4">
-          <div className="bg-white rounded-[32px] lg:rounded-[40px] shadow-2xl max-w-md w-full overflow-hidden border border-indigo-100 animate-in zoom-in-95 duration-200">
-            <div className="p-6 lg:p-8 border-b border-indigo-100 bg-indigo-50/50 flex items-center justify-between">
+          <div className="bg-white rounded-[32px] lg:rounded-[40px] shadow-2xl max-w-md w-full max-h-[90vh] flex flex-col overflow-hidden border border-indigo-100 animate-in zoom-in-95 duration-200">
+            <div className="p-6 lg:p-8 border-b border-indigo-100 bg-indigo-50/50 flex items-center justify-between shrink-0">
               <div>
                 <h2 className="text-xl font-black text-indigo-800 uppercase tracking-tighter">Sesuaikan Stok</h2>
                 <p className="text-[10px] text-indigo-600 font-bold uppercase mt-2">{simpleAdjustProduct.brand} {simpleAdjustProduct.model}</p>
                 <p className="text-[10px] text-indigo-500 font-medium mt-1">Stok saat ini: {getProductStock(simpleAdjustProduct)} unit</p>
               </div>
-              <button onClick={() => { setSimpleAdjustProduct(null); setSimpleAdjustAmount(0); setSimpleAdjustReason(''); }} className="text-slate-300 hover:text-slate-900 transition-colors">
+              <button onClick={() => { setSimpleAdjustProduct(null); setSimpleAdjustAmount(0); setSimpleAdjustReason(''); setSimpleAdjustSupplier(''); setSimpleAdjustDate(new Date().toISOString().split('T')[0]); }} className="text-slate-300 hover:text-slate-900 transition-colors">
                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
-            <form onSubmit={handleSimpleAdjust} className="p-6 lg:p-8 space-y-6">
+            <form onSubmit={handleSimpleAdjust} className="p-6 lg:p-8 space-y-6 overflow-y-auto custom-scrollbar flex-1">
               <div className="space-y-4">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Jumlah Penyesuaian</label>
                 <div className="flex items-center justify-center gap-2">
@@ -916,8 +918,30 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
                   <option value="Barang Rusak">Barang Rusak</option>
                 </select>
               </div>
-              <div className="flex gap-4 pt-6">
-                <button type="button" onClick={() => { setSimpleAdjustProduct(null); setSimpleAdjustAmount(0); setSimpleAdjustReason(''); }} className="flex-1 py-4 lg:py-5 bg-white border border-slate-200 text-slate-700 font-black rounded-3xl text-[10px] uppercase tracking-widest">Batal</button>
+              <div className="space-y-4">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Supplier</label>
+                <select 
+                  className="w-full px-6 py-4 rounded-2xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold focus:ring-4 focus:ring-indigo-500/10 outline-none appearance-none"
+                  value={simpleAdjustSupplier}
+                  onChange={(e) => setSimpleAdjustSupplier(e.target.value)}
+                >
+                  <option value="">Pilih Supplier...</option>
+                  {suppliers.map(s => (
+                    <option key={s.id} value={s.name}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-4">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Tanggal</label>
+                <input 
+                  type="date" 
+                  className="w-full px-6 py-4 rounded-2xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold focus:ring-4 focus:ring-indigo-500/10 outline-none"
+                  value={simpleAdjustDate}
+                  onChange={(e) => setSimpleAdjustDate(e.target.value)}
+                />
+              </div>
+              <div className="flex gap-4 pt-6 shrink-0">
+                <button type="button" onClick={() => { setSimpleAdjustProduct(null); setSimpleAdjustAmount(0); setSimpleAdjustReason(''); setSimpleAdjustSupplier(''); setSimpleAdjustDate(new Date().toISOString().split('T')[0]); }} className="flex-1 py-4 lg:py-5 bg-white border border-slate-200 text-slate-700 font-black rounded-3xl text-[10px] uppercase tracking-widest">Batal</button>
                 <button type="submit" className="flex-1 py-4 lg:py-5 bg-indigo-600 text-white font-black rounded-3xl text-[10px] uppercase tracking-widest shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95">
                   Simpan
                 </button>

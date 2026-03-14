@@ -75,12 +75,14 @@ export const adjustStock = async (
   productId: string, 
   newStock: number, 
   reason: string, 
-  staffName: string = 'System'
+  staffName: string = 'System',
+  supplier?: string,
+  dateRestocked?: string
 ): Promise<Product | null> => {
   const response = await fetch(`${API_BASE}/products/adjust-stock`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ productId, newStock, reason, staffName }),
+    body: JSON.stringify({ productId, newStock, reason, staffName, supplier, dateRestocked }),
   });
   if (!response.ok) {
     if (response.status === 404) return null;

@@ -683,7 +683,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
       validateStockAdjustmentInput(input);
       
-      const { productId, newStock, reason, staffName = 'System' } = input;
+      const { productId, newStock, reason, staffName = 'System', supplier, dateRestocked } = input;
       
       const [product] = await db.select('products', ['*'], { column: 'id', value: productId });
       if (!product) {
@@ -693,13 +693,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const diff = newStock - Number(product.stock);
       const actionType = diff > 0 ? 'Stock Addition' : 'Manual Correction';
       
-      const [result] = await db.update('products', { stock: newStock }, { column: 'id', value: productId });
+      // Update fields - only update supplier and dateRestocked when adding stock (positive diff)
+      const updateData: any = { stock: newStock };
+      if (diff > 0 && supplier) {
+        updateData.supplier = supplier;
+      }
+      if (diff > 0 && dateRestocked) {
+        updateData.date_restocked = new Date(dateRestocked);
+      }
+      
+      const [result] = await db.update('products', updateData, { column: 'id', value: productId });
+      
+      // Build audit log details with supplier and date info
+      let auditDetails = `Manual adjust ${product.brand} ${product.model}: ${product.stock} -> ${newStock}. Reason: ${reason}`;
+      if (diff > 0) {
+        if (supplier) {
+          auditDetails += `. Supplier: ${supplier}`;
+        }
+        if (dateRestocked) {
+          auditDetails += `. Date: ${dateRestocked}`;
+        }
+      }
       
       await db.insert('audit_logs', [{
         id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
         staff_name: staffName,
         action: actionType,
-        details: `Manual adjust ${product.brand} ${product.model}: ${product.stock} -> ${newStock}. Reason: ${reason}`,
+        details: auditDetails,
         related_id: productId,
       }]);
       

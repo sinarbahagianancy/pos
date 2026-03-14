@@ -209,7 +209,9 @@ export const adjustStock = async (
   productId: string, 
   newStock: number, 
   reason: string, 
-  staffName: string = 'System'
+  staffName: string = 'System',
+  supplier?: string,
+  dateRestocked?: string
 ) => {
   validateStockAdjustmentInput({ productId, newStock, reason });
   
@@ -222,17 +224,37 @@ export const adjustStock = async (
   const diff = newStock - Number(product.stock);
   const actionType = diff > 0 ? 'Stock Addition' : 'Manual Correction';
   
+  // Update fields - only update supplier and dateRestocked when adding stock (positive diff)
+  const updateData: any = { stock: newStock, updatedAt: new Date() };
+  if (diff > 0 && supplier) {
+    updateData.supplier = supplier;
+  }
+  if (diff > 0 && dateRestocked) {
+    updateData.dateRestocked = new Date(dateRestocked);
+  }
+  
   const [result] = await db
     .update(products)
-    .set({ stock: newStock, updatedAt: new Date() })
+    .set(updateData)
     .where(eq(products.id, productId))
     .returning();
+  
+  // Build audit log details with supplier and date info
+  let auditDetails = `Manual adjust ${product.brand} ${product.model}: ${product.stock} -> ${newStock}. Reason: ${reason}`;
+  if (diff > 0) {
+    if (supplier) {
+      auditDetails += `. Supplier: ${supplier}`;
+    }
+    if (dateRestocked) {
+      auditDetails += `. Date: ${dateRestocked}`;
+    }
+  }
   
   await db.insert(auditLogs).values({
     id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     staffName,
     action: actionType,
-    details: `Manual adjust ${product.brand} ${product.model}: ${product.stock} -> ${newStock}. Reason: ${reason}`,
+    details: auditDetails,
     relatedId: productId,
   });
   

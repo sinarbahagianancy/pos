@@ -277,11 +277,11 @@ const InventoryComponent = () => {
     loadData();
   }, []);
 
-  const handleManualAdjust = async (productId: string, newStock: number, reason: string) => {
+  const handleManualAdjust = async (productId: string, newStock: number, reason: string, supplier?: string, dateRestocked?: string) => {
     try {
-      await dbAdjustStock(productId, newStock, reason, staffName);
+      await dbAdjustStock(productId, newStock, reason, staffName, supplier, dateRestocked);
       setProducts(prev => prev.map(p => 
-        p.id === productId ? { ...p, stock: newStock } : p
+        p.id === productId ? { ...p, stock: newStock, supplier: supplier || p.supplier, dateRestocked: dateRestocked || p.dateRestocked } : p
       ));
     } catch (error) {
       console.error('Failed to adjust stock:', error);
