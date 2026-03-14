@@ -331,8 +331,8 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
       <style>
         {`
           @media print {
-            @page {
-              size: A5 landscape;
+          @page {
+              size: A5 portrait;
               margin: 5mm;
             }
             body {
@@ -760,18 +760,22 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
   <meta charset="UTF-8">
   <title>Invoice - ${lastSale.id}</title>
   <style>
-    @page { size: A5; margin: 0; }
+    @page { size: A5 portrait; margin: 0; }
     @media print {
       body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { 
+      width: 148mm;
+      height: 210mm;
+    }
     body { 
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
       color: #0f172a; 
       font-size: 12px;
       line-height: 1.5;
-      width: 148mm;
-      min-height: 210mm;
+      width: 100%;
+      height: 100%;
       padding: 10mm;
     }
     .header { 
