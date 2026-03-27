@@ -461,7 +461,7 @@ const CustomersView: React.FC<CustomersProps> = ({ customers, sales, setCustomer
                       onChange={(e) => setEditForm({...editForm, phone: e.target.value})}
                     />
                 </div>
-                <div>
+                {/* <div>
                     <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Email</label>
                     <input 
                       type="email" 
@@ -470,7 +470,7 @@ const CustomersView: React.FC<CustomersProps> = ({ customers, sales, setCustomer
                       value={editForm.email}
                       onChange={(e) => setEditForm({...editForm, email: e.target.value})}
                     />
-                </div>
+                </div> */}
                 <div>
                     <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">NPWP (Opsional)</label>
                     <input 

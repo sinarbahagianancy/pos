@@ -37,6 +37,9 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
   const [printPdfUrl, setPrintPdfUrl] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [isQuotation, setIsQuotation] = useState(false);
+  const [confirmCheckout, setConfirmCheckout] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processResult, setProcessResult] = useState<{ success: boolean; message: string } | null>(null);
 
   // Close customer suggestions when clicking outside
   useEffect(() => {
@@ -287,8 +290,6 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
     };
     onCompleteSale(sale);
     setLastSale(sale);
-    setToast({ message: 'Transaksi berhasil!', type: 'success' });
-    setShowInvoice(true);
     setIsQuotation(false);
     setCart([]);
     setCustomerSearch('');
@@ -681,7 +682,7 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
 
           <button 
             disabled={cart.length === 0}
-            onClick={handleCheckout}
+            onClick={() => setConfirmCheckout(true)}
             className={`w-full py-6 rounded-3xl font-black text-sm uppercase tracking-widest transition-all shadow-xl active:scale-95 mt-3 ${
               cart.length === 0 
                 ? 'bg-slate-800 text-slate-600 cursor-not-allowed border border-slate-700' 
@@ -1032,6 +1033,107 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
                 className="flex-1 py-4 bg-white text-slate-900 font-black rounded-3xl text-[10px] uppercase tracking-widest hover:bg-slate-100 shadow-xl shadow-white/5 transition-all active:scale-95 order-1 sm:order-2 disabled:opacity-50"
               >
                 {isPrinting ? 'Preparing...' : 'Print Invoice (A5)'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Confirmation Modal */}
+      {confirmCheckout && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-3xl p-8 max-w-md w-full mx-4 shadow-2xl">
+            <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight mb-4">Konfirmasi Transaksi</h3>
+            <div className="space-y-3 mb-6">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Pelanggan</span>
+                <span className="font-black">{customerSearch || selectedCustomer?.name || 'Guest'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Metode Pembayaran</span>
+                <span className="font-black">{paymentMethod === 'Utang' ? 'Utang' : paymentMethod}</span>
+              </div>
+              {paymentMethod === 'Utang' && dueDate && (
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Due Date</span>
+                  <span className="font-black">{dueDate}</span>
+                </div>
+              )}
+              <div className="flex justify-between pt-3 border-t border-slate-100">
+                <span className="text-slate-500 font-bold">Total</span>
+                <span className="font-black text-green-600 text-lg">{formatIDR(total)}</span>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmCheckout(false)}
+                className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-slate-200 transition-all"
+              >
+                Batal
+              </button>
+              <button
+                onClick={() => {
+                  setConfirmCheckout(false);
+                  setIsProcessing(true);
+                  
+                  setTimeout(async () => {
+                    try {
+                      await handleCheckout();
+                      setProcessResult({ success: true, message: 'Transaksi berhasil!' });
+                    } catch (error) {
+                      setProcessResult({ success: false, message: 'Transaksi gagal. Silakan coba lagi.' });
+                    } finally {
+                      setIsProcessing(false);
+                    }
+                  }, 800);
+                }}
+                className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-black text-sm uppercase tracking-widest hover:bg-indigo-700 transition-all"
+              >
+                Ya, Lanjutkan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Processing Loading Overlay */}
+      {isProcessing && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-3xl p-8 text-center">
+            <div className="animate-spin w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full mx-auto mb-4"></div>
+            <p className="font-black text-slate-900">Memproses Transaksi...</p>
+          </div>
+        </div>
+      )}
+      
+      {/* Result Modal */}
+      {processResult && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className={`bg-white rounded-3xl p-8 max-w-md w-full mx-4 shadow-2xl ${processResult.success ? 'border-2 border-green-500' : 'border-2 border-red-500'}`}>
+            <div className="text-center">
+              {processResult.success ? (
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+                </div>
+              ) : (
+                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </div>
+              )}
+              <h3 className={`text-xl font-black uppercase mb-2 ${processResult.success ? 'text-green-600' : 'text-red-600'}`}>
+                {processResult.success ? 'Berhasil!' : 'Gagal'}
+              </h3>
+              <p className="text-slate-600 mb-6">{processResult.message}</p>
+              <button
+                onClick={() => {
+                  setProcessResult(null);
+                  if (processResult.success) {
+                    setShowInvoice(true);
+                  }
+                }}
+                className={`w-full py-3 rounded-xl font-black text-sm uppercase tracking-widest ${processResult.success ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-red-600 text-white hover:bg-red-700'}`}
+              >
+                {processResult.success ? 'Lihat Invoice' : 'Coba Lagi'}
               </button>
             </div>
           </div>
