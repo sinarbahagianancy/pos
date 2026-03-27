@@ -30,11 +30,11 @@ export const getProductById = async (id: string): Promise<Product | null> => {
   return response.json();
 };
 
-export const createProduct = async (input: unknown): Promise<Product> => {
+export const createProduct = async (input: Record<string, unknown>, staffName: string = 'System'): Promise<Product> => {
   const response = await fetch(`${API_BASE}/products`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
+    body: JSON.stringify({ ...input, staffName }),
   });
   if (!response.ok) {
     const error = await response.json();

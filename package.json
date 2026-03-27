@@ -47,6 +47,7 @@
     "@vitejs/plugin-react": "^5.0.4",
     "drizzle-kit": "^0.31.9",
     "jsdom": "^27.0.0",
+    "react-currency-input-field": "^4.0.5",
     "typescript": "^5.7.2",
     "vite": "^7.1.7",
     "vite-tsconfig-paths": "^5.1.4",

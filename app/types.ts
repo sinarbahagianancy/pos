@@ -1,6 +1,6 @@
 export type MountType = 'E-mount' | 'RF-mount' | 'X-mount' | 'L-mount' | 'Z-mount' | 'M-mount';
 export type ConditionType = 'New' | 'Used';
-export type PaymentMethod = 'Cash' | 'Debit' | 'QRIS' | 'Credit';
+export type PaymentMethod = 'Cash' | 'Debit' | 'QRIS' | 'Utang';
 export type WarrantyType = 'Official Sony Indonesia' | 'Official Canon Indonesia' | 'Official Fujifilm Indonesia' | 'Distributor' | 'Store Warranty';
 export type ClaimStatus = 'Received' | 'Sent to HQ' | 'Repairing' | 'Ready for Pickup' | 'Completed';
 export type ProductCategory = 'Body' | 'Lens' | 'Accessory';
@@ -72,6 +72,9 @@ export interface Sale {
   paymentMethod: PaymentMethod;
   staffName: string;
   notes?: string;
+  dueDate?: string;
+  isPaid?: boolean;
+  paidAt?: string;
   timestamp: string;
 }
 

@@ -36,9 +36,9 @@ const LoginView: React.FC<LoginProps> = ({ staffList, onLogin }) => {
       <div className="absolute bottom-[-20%] left-[-10%] w-[600px] h-[600px] bg-blue-200/20 rounded-full blur-3xl"></div>
 
       <div className={`w-full max-w-md bg-white rounded-[40px] shadow-2xl border border-slate-100 overflow-hidden relative z-10 transition-all duration-700 ${isLoading ? 'opacity-0 scale-95 translate-y-10' : 'opacity-100 scale-100 translate-y-0'}`}>
-        <div className="p-8 lg:p-10 text-center">
-          <div className="w-20 h-20 bg-indigo-600 rounded-3xl flex items-center justify-center text-white shadow-xl shadow-indigo-500/30 mx-auto mb-6 transform rotate-3">
-             <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+          <div className="p-8 lg:p-10 text-center">
+          <div className="w-24 h-24  rounded-3xl flex items-center justify-center mx-auto mb-6 overflow-hidden ">
+             <img src="/logo.png" alt="Sinar Bahagia Logo" className="w-full h-full object-contain " />
           </div>
           <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-2">Sinar Bahagia POS</h1>
           <p className="text-slate-500 text-sm font-medium">Premium Imaging & Inventory System</p>
@@ -107,8 +107,6 @@ const LoginView: React.FC<LoginProps> = ({ staffList, onLogin }) => {
 
           <div className="mt-8 pt-8 border-t border-slate-100 text-center">
             <p className="text-[10px] text-slate-400 font-medium">
-              Protected System • Authorized Personnel Only
-              <br/>
               Sinar Bahagia Surabaya © {new Date().getFullYear()}
             </p>
           </div>

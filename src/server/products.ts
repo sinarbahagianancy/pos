@@ -51,7 +51,7 @@ try {
 export const getAllProducts = async () => {
   // Use direct SQL to avoid any Drizzle ORM issues
   const rawResult = await client.unsafe(`
-    SELECT 
+    SELECT
       p.id, p.brand, p.model, p.category, p.mount, p.condition,
       p.price, p.cogs, p.warranty_months, p.warranty_type, p.stock,
       p.has_serial_number, p.supplier, p.date_restocked, p.hidden, p.deleted,
@@ -59,7 +59,7 @@ export const getAllProducts = async () => {
     FROM products p
     WHERE p.deleted = false
   `);
-  
+
   return rawResult.map((row: any) => parseDbProduct(row));
 };
 
@@ -70,7 +70,8 @@ export const getProductById = async (id: string) => {
 
 export const createProduct = async (input: unknown) => {
   const validated = validateCreateProductInput(input);
-  
+  const staffName = (input as Record<string, unknown>)?.staffName as string || 'System';
+
   const hasSerialNumber = validated.hasSerialNumber === true;
   const stockCount = hasSerialNumber 
     ? (validated.serialNumbers?.length || 0) 
@@ -117,7 +118,7 @@ export const createProduct = async (input: unknown) => {
     
     await db.insert(auditLogs).values({
       id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      staffName: 'System',
+      staffName,
       action: 'Stock Addition',
       details: `Created product ${validated.brand} ${validated.model} with ${validated.serialNumbers.length} serial numbers from supplier ${validated.supplier}`,
       relatedId: newProduct.id,
@@ -125,7 +126,7 @@ export const createProduct = async (input: unknown) => {
   } else if (!hasSerialNumber && validated.quantity && validated.quantity > 0) {
     await db.insert(auditLogs).values({
       id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      staffName: 'System',
+      staffName,
       action: 'Stock Addition',
       details: `Created product ${validated.brand} ${validated.model} with ${validated.quantity} units from supplier ${validated.supplier}`,
       relatedId: newProduct.id,

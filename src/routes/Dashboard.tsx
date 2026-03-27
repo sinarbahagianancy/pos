@@ -2,9 +2,8 @@
 import React from 'react';
 import { Sale, WarrantyClaim, Product } from '../../app/types';
 import { formatIDR } from '../../app/utils/formatters';
-import { 
+import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell,
   AreaChart, Area
 } from 'recharts';
 
@@ -73,11 +72,9 @@ const DashboardView: React.FC<DashboardProps> = ({ sales, claims, products, mont
     .sort((a, b) => b[1].revenue - a[1].revenue)
     .slice(0, 5);
 
-  const categoryData = [
-    { name: 'Body', value: products.filter(p => p.category === 'Body').reduce((acc, p) => acc + p.stock, 0), color: '#4f46e5' },
-    { name: 'Lens', value: products.filter(p => p.category === 'Lens').reduce((acc, p) => acc + p.stock, 0), color: '#22c55e' },
-    { name: 'Accessory', value: products.filter(p => p.category === 'Accessory').reduce((acc, p) => acc + p.stock, 0), color: '#f59e0b' },
-  ].filter(d => d.value > 0);
+  const lowStockProducts = products
+    .filter(p => p.stock <= 5)
+    .sort((a, b) => a.stock - b.stock);
 
   const inventoryCost = products.reduce((acc, p) => acc + (p.stock * p.cogs), 0);
   const retailValue = products.reduce((acc, p) => acc + (p.stock * p.price), 0);
@@ -91,10 +88,6 @@ const DashboardView: React.FC<DashboardProps> = ({ sales, claims, products, mont
         <div>
           <h1 className="text-xl lg:text-2xl font-black text-slate-900 tracking-tight uppercase">Sinar Bahagia Hub</h1>
           <p className="text-slate-500 text-sm font-medium">Jl. Kramat Gantung No. 63 • Real-time Business Analytics</p>
-        </div>
-        <div className="flex items-center space-x-2 bg-indigo-50 border border-indigo-100 px-4 py-2 rounded-2xl shadow-sm self-start sm:self-center">
-          <span className="flex h-2 w-2 rounded-full bg-indigo-600 animate-pulse"></span>
-          <span className="text-[10px] font-black uppercase text-indigo-700 tracking-widest leading-none mt-0.5">Live Connection</span>
         </div>
       </div>
 
@@ -182,42 +175,37 @@ const DashboardView: React.FC<DashboardProps> = ({ sales, claims, products, mont
         </div>
 
         <div className="space-y-6 lg:space-y-8">
-          <div className="bg-white p-6 lg:p-8 rounded-[40px] border border-slate-200 shadow-sm">
-            <h2 className="text-xs font-black text-slate-900 uppercase tracking-widest mb-6">Inventory Distribution</h2>
-            {categoryData.length > 0 ? (
-              <div className="h-[180px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={categoryData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={45}
-                      outerRadius={70}
-                      paddingAngle={4}
-                      dataKey="value"
-                    >
-                      {categoryData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value) => [`${Number(value) || 0} units`, 'Stock']} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            ) : (
-              <div className="h-[180px] flex items-center justify-center text-slate-400 text-sm">No inventory data</div>
-            )}
-            <div className="mt-4 space-y-2">
-              {categoryData.map(cat => (
-                <div key={cat.name} className="flex items-center justify-between text-[11px] font-black uppercase tracking-tighter">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.color }}></div>
-                    <span className="text-slate-700">{cat.name}</span>
+          <div className="bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-hidden">
+            <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+              <h2 className="font-black text-slate-900 uppercase tracking-tighter text-xs">Low Stock Products</h2>
+              {lowStockProducts.length > 0 && (
+                <span className="text-[9px] font-black text-red-600 bg-red-50 px-2 py-0.5 rounded-full uppercase tracking-tighter">
+                  {lowStockProducts.length} items
+                </span>
+              )}
+            </div>
+            <div className="divide-y divide-slate-100 max-h-[280px] overflow-y-auto custom-scrollbar">
+              {lowStockProducts.length > 0 ? (
+                lowStockProducts.map(product => (
+                  <div key={product.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                    <div className="min-w-0">
+                      <p className="text-xs font-black text-slate-900 uppercase tracking-tight truncate">{product.brand} {product.model}</p>
+                      <p className="text-[9px] text-slate-400 font-bold uppercase">{product.category}</p>
+                    </div>
+                    <div className="flex items-center space-x-2 shrink-0 ml-3">
+                      <span className={`text-sm font-black tabular-nums ${product.stock === 0 ? 'text-red-600' : product.stock <= 2 ? 'text-amber-600' : 'text-yellow-600'}`}>
+                        {product.stock}
+                      </span>
+                      <div className={`w-2 h-2 rounded-full ${product.stock === 0 ? 'bg-red-500' : product.stock <= 2 ? 'bg-amber-500' : 'bg-yellow-500'}`}></div>
+                    </div>
                   </div>
-                  <span className="text-slate-400">{cat.value} units</span>
+                ))
+              ) : (
+                <div className="p-8 text-center">
+                  <p className="text-xs font-black text-green-600 uppercase tracking-tighter">All stock healthy</p>
+                  <p className="text-[9px] text-slate-400 font-bold uppercase mt-1">No products below threshold</p>
                 </div>
-              ))}
+              )}
             </div>
           </div>
 

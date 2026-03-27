@@ -270,6 +270,7 @@ interface InvoiceData {
   total: number;
   staffName: string;
   paymentMethod: string;
+  isQuotation?: boolean;
 }
 
 const formatCurrency = (amount: number): string => {
@@ -280,50 +281,62 @@ const formatCurrency = (amount: number): string => {
   }).format(amount);
 };
 
-export const InvoiceDocument: React.FC<{ data: InvoiceData }> = ({ data }) => (
-  <Document>
-    <Page size="A5" style={styles.page}>
-      {/* Header */}
-      <View style={styles.header}>
+export const InvoiceDocument: React.FC<{ data: InvoiceData }> = ({ data }) => {
+  const isQuotation = data.isQuotation || false;
+  
+  return (
+    <Document>
+      <Page size="A5" style={styles.page}>
+        {/* Header */}
+        <View style={styles.header}>
         <View style={styles.logoSection}>
-          <Image src="https://pos-prototype-bay.vercel.app/logo.png" style={styles.logo} />
-          <View style={styles.storeInfo}>
-            <Text style={styles.storeName}>{data.storeName}</Text>
-            <Text style={styles.storeTagline}>Premium Imaging Solution</Text>
-            <Text style={styles.storeAddress}>{data.address}</Text>
+          <Image src="/logo.png" style={styles.logo} />
+            <View style={styles.storeInfo}>
+              <Text style={styles.storeName}>{data.storeName}</Text>
+              <Text style={styles.storeTagline}>Premium Imaging Solution</Text>
+              <Text style={styles.storeAddress}>{data.address}</Text>
+            </View>
           </View>
-        </View>
-        <View style={styles.invoiceInfo}>
-          <Text style={styles.invoiceLabel}>Faktur Penjualan</Text>
-          <Text style={styles.invoiceId}>{data.invoiceNumber}</Text>
-          <Text style={styles.invoiceDate}>{data.date}</Text>
-        </View>
-      </View>
-
-      {/* Customer Section */}
-      <View style={styles.customerSection}>
-        <View style={styles.customerLeft}>
-          <Text style={styles.sectionLabel}>Bill To / Penerima</Text>
-          <Text style={styles.customerName}>{data.customerName}</Text>
-          <Text style={styles.customerDetail}>{data.customerAddress || '-'}</Text>
-          <Text style={styles.customerDetail}>Telp: {data.customerPhone || '-'}</Text>
-        </View>
-        <View style={styles.customerRight}>
-          <Text style={styles.sectionLabel}>Tax Registration</Text>
-          {data.customerNpwp ? (
-            <Text style={styles.customerNpwp}>{data.customerNpwp}</Text>
-          ) : (
-            <Text style={styles.noNpwp}>No NPWP Provided</Text>
-          )}
-          <View style={styles.paymentBadge}>
-            <Text style={styles.paymentText}>
-              {data.paymentMethod === 'Credit' ? 'ORG UTANG (BON)' : data.paymentMethod}
+          <View style={styles.invoiceInfo}>
+            <Text style={[styles.invoiceLabel, isQuotation ? { color: '#f97316' } : {}]}>
+              {isQuotation ? 'Quotation' : 'Faktur Penjualan'}
             </Text>
+            <Text style={styles.invoiceId}>{data.invoiceNumber}</Text>
+            <Text style={styles.invoiceDate}>{data.date}</Text>
+            {isQuotation && (
+              <View style={{ backgroundColor: '#fef2f2', padding: '4 8', borderRadius: 4, marginTop: 6 }}>
+                <Text style={{ color: '#dc2626', fontSize: 7, fontWeight: 800 }}>BUKAN BUKTI PEMBAYARAN</Text>
+              </View>
+            )}
           </View>
         </View>
-      </View>
 
-      {/* Table */}
+        {/* Customer Section - Hidden for quotations */}
+        {!isQuotation && (
+        <View style={styles.customerSection}>
+          <View style={styles.customerLeft}>
+            <Text style={styles.sectionLabel}>Bill To / Penerima</Text>
+            <Text style={styles.customerName}>{data.customerName}</Text>
+            <Text style={styles.customerDetail}>{data.customerAddress || '-'}</Text>
+            <Text style={styles.customerDetail}>Telp: {data.customerPhone || '-'}</Text>
+          </View>
+          <View style={styles.customerRight}>
+            <Text style={styles.sectionLabel}>Tax Registration</Text>
+            {data.customerNpwp ? (
+              <Text style={styles.customerNpwp}>{data.customerNpwp}</Text>
+            ) : (
+              <Text style={styles.noNpwp}>No NPWP Provided</Text>
+            )}
+            <View style={styles.paymentBadge}>
+              <Text style={styles.paymentText}>
+                {data.paymentMethod === 'Credit' ? 'UTANG (BON)' : data.paymentMethod}
+              </Text>
+            </View>
+          </View>
+        </View>
+        )}
+
+        {/* Table */}
       <View style={styles.table}>
         <View style={styles.tableHeader}>
           <Text style={[styles.tableHeaderText, styles.col1]}>Description / Serial Number</Text>
@@ -367,5 +380,6 @@ export const InvoiceDocument: React.FC<{ data: InvoiceData }> = ({ data }) => (
     </Page>
   </Document>
 );
+};
 
 export default InvoiceDocument;

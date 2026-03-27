@@ -1,7 +1,33 @@
 export default function apiServerPlugin() {
+  let schemaMigrated = false;
+
   return {
     name: 'api-server',
     configureServer(server) {
+      // One-time schema migration for missing columns not in original migration
+      const migrateSchema = async () => {
+        if (schemaMigrated) return;
+        try {
+          const { default: postgres } = await import('postgres');
+          const connectionString = process.env.DATABASE_URL;
+          if (!connectionString) return;
+          const pg = postgres(connectionString, { prepare: false });
+          await pg.unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS deleted boolean DEFAULT false`);
+          await pg.unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS tax_enabled boolean DEFAULT true`);
+          await pg.unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS notes text`);
+          await pg.unsafe(`ALTER TABLE warranty_claims ADD COLUMN IF NOT EXISTS created_at timestamp with time zone DEFAULT now()`);
+          await pg.unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS due_date timestamp with time zone`);
+          await pg.unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS is_paid boolean DEFAULT false`);
+          await pg.unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS paid_at timestamp with time zone`);
+          await pg.unsafe(`ALTER TYPE payment_method ADD VALUE IF NOT EXISTS 'Utang'`);
+          await pg.end();
+          schemaMigrated = true;
+        } catch (e) {
+          console.warn('Schema migration warning:', e);
+        }
+      };
+      migrateSchema();
+
       server.middlewares.use(async (req, res, next) => {
         if (req.url?.startsWith('/api/')) {
           const path = req.url.replace('/api/', '');
@@ -450,6 +476,25 @@ export default function apiServerPlugin() {
                 const result = await createSaleHandler(data);
                 res.setHeader('Content-Type', 'application/json');
                 res.statusCode = 201;
+                res.end(JSON.stringify(result));
+              } catch (error) {
+                res.statusCode = 500;
+                res.end(JSON.stringify({ error: String(error) }));
+              }
+            });
+            return;
+          }
+
+          if (path.startsWith('sales/') && path.endsWith('/mark-paid') && req.method === 'PUT') {
+            const saleId = path.replace('sales/', '').replace('/mark-paid', '');
+            const { markSaleAsPaidHandler } = await import('./customers.js');
+            let body = '';
+            req.on('data', chunk => body += chunk);
+            req.on('end', async () => {
+              try {
+                const { staffName } = JSON.parse(body);
+                const result = await markSaleAsPaidHandler(saleId, staffName);
+                res.setHeader('Content-Type', 'application/json');
                 res.end(JSON.stringify(result));
               } catch (error) {
                 res.statusCode = 500;

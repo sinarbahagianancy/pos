@@ -12,11 +12,12 @@ interface POSProps {
   onCompleteSale: (sale: Sale) => void;
   onCreateCustomer?: (name: string, phone?: string, address?: string) => Promise<Customer>;
   staffName: string;
+  isAdmin: boolean;
   taxRate: number;
   storeConfig: StoreConfig;
 }
 
-const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale, onCreateCustomer, staffName, taxRate, storeConfig }) => {
+const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale, onCreateCustomer, staffName, isAdmin, taxRate, storeConfig }) => {
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState<SaleItem[]>([]);
   const [customerSearch, setCustomerSearch] = useState('');
@@ -26,6 +27,7 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [isRegistered, setIsRegistered] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash');
+  const [dueDate, setDueDate] = useState('');
   const [ppnEnabled, setPpnEnabled] = useState(true);
   const [transactionNotes, setTransactionNotes] = useState('');
   const [showInvoice, setShowInvoice] = useState(false);
@@ -34,6 +36,7 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
   const [printModalHtml, setPrintModalHtml] = useState('');
   const [printPdfUrl, setPrintPdfUrl] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [isQuotation, setIsQuotation] = useState(false);
 
   // Close customer suggestions when clicking outside
   useEffect(() => {
@@ -230,6 +233,31 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
   const tax = ppnEnabled ? subtotal * taxRate : 0;
   const total = subtotal + tax;
 
+  const handleShowQuotation = () => {
+    if (cart.length === 0) return;
+
+    const customer = selectedCustomer || { id: 'guest', name: 'Guest', phone: undefined, email: undefined, address: undefined, npwp: undefined, loyaltyPoints: 0 };
+
+    const quotation = {
+      id: `QTN-${Date.now()}`,
+      customerId: customer.id,
+      customerName: customer.name,
+      items: cart,
+      subtotal,
+      tax,
+      taxEnabled: ppnEnabled,
+      total,
+      paymentMethod: 'Quotation' as PaymentMethod,
+      staffName,
+      notes: transactionNotes,
+      timestamp: new Date().toISOString()
+    };
+
+    setLastSale(quotation);
+    setIsQuotation(true);
+    setShowInvoice(true);
+  };
+
   const handleCheckout = async () => {
     if (cart.length === 0) return;
     
@@ -254,12 +282,14 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
       paymentMethod,
       staffName,
       notes: transactionNotes,
+      dueDate: paymentMethod === 'Utang' && dueDate ? dueDate : undefined,
       timestamp: new Date().toISOString()
     };
     onCompleteSale(sale);
     setLastSale(sale);
     setToast({ message: 'Transaksi berhasil!', type: 'success' });
     setShowInvoice(true);
+    setIsQuotation(false);
     setCart([]);
     setCustomerSearch('');
     setCustomerPhone('');
@@ -562,21 +592,38 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
           <div className="space-y-4">
             <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest">Settlement Method</label>
             <div className="grid grid-cols-2 gap-3">
-              {(['Cash', 'Debit', 'QRIS', 'Credit'] as PaymentMethod[]).map(method => (
+              {(isAdmin 
+                ? ['Cash', 'Debit', 'QRIS', 'Utang'] as PaymentMethod[]
+                : ['Cash', 'Debit', 'QRIS'] as PaymentMethod[]
+              ).map(method => (
                 <button
                   key={method}
-                  onClick={() => setPaymentMethod(method)}
+                  onClick={() => { setPaymentMethod(method); if (method !== 'Utang') setDueDate(''); }}
                   className={`py-4 rounded-2xl text-[10px] font-black uppercase border transition-all ${
                     paymentMethod === method 
                       ? 'bg-indigo-600 text-white border-indigo-500 shadow-xl shadow-indigo-500/30 scale-[1.02]' 
                       : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700'
                   }`}
                 >
-                  {method === 'Credit' ? 'Org Utang (Bon)' : method}
+                  {method === 'Utang' ? 'Utang' : method}
                 </button>
               ))}
             </div>
           </div>
+
+          {paymentMethod === 'Utang' && (
+            <div className="space-y-3">
+              <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                Due Date
+              </label>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white text-sm font-medium focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+          )}
 
           <div className="space-y-3">
             <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest">
@@ -618,12 +665,24 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
                 <p className="text-3xl font-black tracking-tighter tabular-nums leading-none">{formatIDR(total)}</p>
               </div>
             </div>
-          </div>
+            </div>
+
+          <button 
+            disabled={cart.length === 0}
+            onClick={handleShowQuotation}
+            className={`w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all border mt-4 ${
+              cart.length === 0 
+                ? 'bg-slate-800 text-slate-600 cursor-not-allowed border-slate-700' 
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border-slate-700'
+            }`}
+          >
+            Cetak Quotation
+          </button>
 
           <button 
             disabled={cart.length === 0}
             onClick={handleCheckout}
-            className={`w-full py-6 rounded-3xl font-black text-sm uppercase tracking-widest transition-all shadow-xl active:scale-95 ${
+            className={`w-full py-6 rounded-3xl font-black text-sm uppercase tracking-widest transition-all shadow-xl active:scale-95 mt-3 ${
               cart.length === 0 
                 ? 'bg-slate-800 text-slate-600 cursor-not-allowed border border-slate-700' 
                 : 'bg-white text-slate-900 hover:bg-slate-50 shadow-white/5'
@@ -653,14 +712,18 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
                  </div>
                </div>
                <div className="text-left sm:text-right w-full sm:w-auto">
-                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Faktur Penjualan</p>
-                 <p className="text-lg font-black text-slate-900 mt-1">{lastSale.id}</p>
-                 <p className="text-[10px] text-slate-500 font-bold mt-1 uppercase tracking-widest">{formatDate(lastSale.timestamp)}</p>
-               </div>
+                  <p className="text-[10px] font-black uppercase tracking-widest">{isQuotation ? 'Quotation' : 'Faktur Penjualan'}</p>
+                  <p className="text-lg font-black text-slate-900 mt-1">{lastSale.id}</p>
+                  <p className="text-[10px] text-slate-500 font-bold mt-1 uppercase tracking-widest">{formatDate(lastSale.timestamp)}</p>
+                  {isQuotation && (
+                    <p className="text-xs font-black text-red-600 bg-red-50 px-2 py-1 rounded-lg mt-2 inline-block">BUKAN BUKTI PEMBAYARAN</p>
+                  )}
+                </div>
             </div>
 
             {/* Fields: Nama, Phone, NPWP, and Alamat */}
             <div className="px-6 lg:px-8 py-6 bg-slate-50/50 flex flex-col sm:grid sm:grid-cols-2 gap-6 lg:gap-8 border-b border-slate-100 print-grid">
+              {!isQuotation && (
               <div className="space-y-4">
                 <div>
                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Bill To / Penerima</p>
@@ -669,7 +732,8 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
                   <p className="text-[11px] text-slate-500 font-bold mt-2">Telp: {selectedCustomer?.phone || '-'}</p>
                 </div>
               </div>
-              <div className="text-left sm:text-right space-y-4">
+              )}
+              <div className={`text-left sm:text-right space-y-4 ${isQuotation ? 'sm:grid-cols-1' : ''}`}>
                 <div>
                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Tax Registration</p>
                   {selectedCustomer?.npwp ? (
@@ -679,8 +743,12 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
                   )}
                   <div className="mt-4">
                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Payment Method</p>
-                     <span className="inline-block px-3 py-1 bg-white border border-slate-200 rounded-lg text-[10px] font-black uppercase text-indigo-600 shadow-sm">{lastSale.paymentMethod === 'Credit' ? 'ORG UTANG (BON)' : lastSale.paymentMethod}</span>
-                  </div>
+                     {isQuotation ? (
+                       <span className="inline-block px-3 py-1 bg-slate-100 border border-slate-200 rounded-lg text-[10px] font-black uppercase text-slate-500 shadow-sm">Menunggu Pembayaran</span>
+                     ) : (
+                       <span className="inline-block px-3 py-1 bg-white border border-slate-200 rounded-lg text-[10px] font-black uppercase text-indigo-600 shadow-sm">{lastSale.paymentMethod === 'Utang' ? 'UTANG' : lastSale.paymentMethod}</span>
+                     )}
+                   </div>
                 </div>
               </div>
             </div>
@@ -732,7 +800,7 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
             </div>
 
             <div className="p-6 bg-slate-900 flex flex-col sm:flex-row gap-4 no-print shrink-0">
-              <button onClick={() => setShowInvoice(false)} className="flex-1 py-4 bg-slate-800 text-slate-300 font-black rounded-3xl text-[10px] uppercase tracking-widest hover:text-white transition-all order-2 sm:order-1">Close</button>
+              <button onClick={() => { setShowInvoice(false); setIsQuotation(false); }} className="flex-1 py-4 bg-slate-800 text-slate-300 font-black rounded-3xl text-[10px] uppercase tracking-widest hover:text-white transition-all order-2 sm:order-1">Close</button>
               <button 
                 onClick={async () => {
                   if (!lastSale) return;
@@ -758,7 +826,7 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Invoice - ${lastSale.id}</title>
+  <title>${isQuotation ? 'Quotation' : 'Invoice'} - ${lastSale.id}</title>
   <style>
     @page { size: A5 portrait; margin: 0; }
     @media print {
@@ -854,7 +922,7 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
 <body>
   <div class="header">
   <div class="logo-section">
-      <img class="logo" src="https://pos-prototype-bay.vercel.app/logo.png" alt="Logo" />
+      <img class="logo" src="/logo.png" alt="Logo" />
       <div>
         <div class="store-name">${storeConfig.storeName}</div>
         <div class="store-tagline">Premium Imaging Solution</div>
@@ -862,25 +930,28 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
       </div>
     </div>
     <div class="invoice-info">
-      <div class="invoice-label">Faktur Penjualan</div>
+      <div class="invoice-label">${isQuotation ? 'Quotation' : 'Faktur Penjualan'}</div>
       <div class="invoice-id">${lastSale.id}</div>
       <div class="invoice-date">${formatDate(lastSale.timestamp)}</div>
+      ${isQuotation ? '<div style="background: #fef2f2; color: #dc2626; font-weight: 800; font-size: 10px; padding: 4px 8px; border-radius: 4px; margin-top: 8px; display: inline-block;">BUKAN BUKTI PEMBAYARAN</div>' : ''}
     </div>
   </div>
   
   <div class="customer-section">
     <div>
+      ${isQuotation ? '<div class="section-label" style="visibility: hidden;">Bill To</div>' : `
       <div class="section-label">Bill To / Penerima</div>
       <div class="customer-name">${lastSale.customerName}</div>
       <div class="customer-detail">${customer?.address || '-'}</div>
       <div class="customer-detail">Telp: ${customer?.phone || '-'}</div>
+      `}
     </div>
     <div style="text-align: right;">
       <div class="section-label">Tax Registration</div>
-      ${customer?.npwp ? `<div class="customer-npwp">${customer.npwp}</div>` : '<div class="no-npwp">No NPWP Provided</div>'}
+      ${isQuotation ? '' : (customer?.npwp ? `<div class="customer-npwp">${customer.npwp}</div>` : '<div class="no-npwp">No NPWP Provided</div>')}
       <div style="margin-top: 16px;">
         <div class="section-label">Payment Method</div>
-        <span class="payment-badge">${lastSale.paymentMethod === 'Credit' ? 'ORG UTANG (BON)' : lastSale.paymentMethod}</span>
+        <span class="payment-badge" style="${isQuotation ? 'background: #f1f5f9; color: #64748b; border-color: #e2e8f0;' : ''}">${isQuotation ? 'Menunggu Pembayaran' : (lastSale.paymentMethod === 'Utang' ? 'UTANG' : lastSale.paymentMethod)}</span>
       </div>
     </div>
   </div>
@@ -943,7 +1014,8 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
                           taxEnabled: lastSale.taxEnabled,
                           total: lastSale.total,
                           staffName: lastSale.staffName,
-                          paymentMethod: lastSale.paymentMethod,
+                          paymentMethod: isQuotation ? 'Menunggu Pembayaran' : lastSale.paymentMethod,
+                          isQuotation,
                         }}
                       />
                     ).toBlob();

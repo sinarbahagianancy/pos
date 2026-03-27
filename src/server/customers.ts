@@ -159,7 +159,7 @@ export const deleteCustomerHandler = async (id: string, staffName: string = 'Sys
 
 export const getAllSalesHandler = async () => {
   const salesResult = await client.unsafe('SELECT * FROM sales ORDER BY timestamp DESC');
-  
+
   const salesWithItems = await Promise.all(salesResult.map(async (sale: Record<string, unknown>) => {
     const itemsResult = await client.unsafe(
       'SELECT * FROM sale_items WHERE sale_id = $1',
@@ -173,7 +173,7 @@ export const getAllSalesHandler = async () => {
       cogs: typeof item.cogs === 'string' ? parseFloat(item.cogs) : (item.cogs as number),
       warrantyExpiry: item.warranty_expiry as string
     }));
-    
+
     return {
       id: sale.id as string,
       customerId: sale.customer_id as string,
@@ -186,10 +186,13 @@ export const getAllSalesHandler = async () => {
       paymentMethod: sale.payment_method as string,
       staffName: sale.staff_name as string,
       notes: sale.notes as string | undefined,
+      dueDate: sale.due_date as string | undefined,
+      isPaid: sale.is_paid as boolean,
+      paidAt: sale.paid_at as string | undefined,
       timestamp: sale.timestamp as string,
     };
   }));
-  
+
   return salesWithItems;
 };
 
@@ -220,11 +223,13 @@ export const createSaleHandler = async (data: {
   paymentMethod: string;
   staffName: string;
   notes?: string;
+  dueDate?: string;
+  isPaid?: boolean;
 }) => {
   try {
     await client.unsafe(
-      'INSERT INTO sales (id, customer_id, customer_name, subtotal, tax, tax_enabled, total, payment_method, staff_name, notes) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
-      [data.id, data.customerId, data.customerName, String(data.subtotal), String(data.tax), data.taxEnabled, String(data.total), data.paymentMethod, data.staffName, data.notes || null]
+      'INSERT INTO sales (id, customer_id, customer_name, subtotal, tax, tax_enabled, total, payment_method, staff_name, notes, due_date, is_paid) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)',
+      [data.id, data.customerId, data.customerName, String(data.subtotal), String(data.tax), data.taxEnabled, String(data.total), data.paymentMethod, data.staffName, data.notes || null, data.dueDate || null, data.isPaid ?? false]
     );
 
     for (const item of data.items) {
@@ -350,5 +355,48 @@ export const updateWarrantyClaimHandler = async (id: string, status: string) => 
     issue: result[0].issue as string,
     status: result[0].status as string,
     createdAt: result[0].created_at as string,
+  };
+};
+
+export const markSaleAsPaidHandler = async (saleId: string, staffName: string) => {
+  const now = new Date().toISOString();
+  
+  const result = await client.unsafe(
+    'UPDATE sales SET is_paid = true, paid_at = $1 WHERE id = $2 RETURNING *',
+    [now, saleId]
+  );
+  
+  if (result.length === 0) {
+    throw new Error('Sale not found');
+  }
+  
+  const sale = result[0];
+  
+  const pointsEarned = Math.floor(Number(sale.total) / 1000);
+  if (pointsEarned > 0) {
+    await client.unsafe(
+      'UPDATE customers SET loyalty_points = loyalty_points + $1, updated_at = NOW() WHERE id = $2',
+      [pointsEarned, sale.customer_id]
+    );
+  }
+  
+  await client.unsafe(
+    'INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())',
+    [`LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`, staffName, 'General', `Marked sale ${saleId} as paid. Loyalty points awarded: ${pointsEarned}`, saleId]
+  );
+  
+  return {
+    id: sale.id as string,
+    customerId: sale.customer_id as string,
+    customerName: sale.customer_name as string,
+    subtotal: typeof sale.subtotal === 'string' ? parseFloat(sale.subtotal) : (sale.subtotal as number),
+    tax: typeof sale.tax === 'string' ? parseFloat(sale.tax) : (sale.tax as number),
+    total: typeof sale.total === 'string' ? parseFloat(sale.total) : (sale.total as number),
+    paymentMethod: sale.payment_method as string,
+    staffName: sale.staff_name as string,
+    dueDate: sale.due_date as string | undefined,
+    isPaid: true,
+    paidAt: sale.paid_at as string,
+    timestamp: sale.timestamp as string,
   };
 };

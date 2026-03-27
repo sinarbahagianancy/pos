@@ -332,7 +332,7 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
                     );
                     })()}
                     <span className={`inline-flex items-center px-2 py-0.5 rounded text-[9px] font-bold uppercase mt-1 ${p.hasSerialNumber === true ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
-                      {p.hasSerialNumber === true ? 'Serial Number' : 'Non Serial Number'}
+                      {p.hasSerialNumber === true ? 'SN' : 'Non-SN'}
                     </span>
                   </td>
                   <td className="px-8 py-6 text-right font-black text-slate-900 tracking-tighter">{formatIDR(p.price)}</td>
@@ -617,6 +617,28 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
                 </div>
               </div>
               <div className="space-y-4">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Garansi</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <input 
+                    type="number" 
+                    placeholder="Bulan" 
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold outline-none" 
+                    value={newP.warrantyMonths || 12} 
+                    onChange={e => setNewP({...newP, warrantyMonths: Number(e.target.value)})}
+                  />
+                  <select 
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 text-xs font-bold outline-none" 
+                    value={newP.warrantyType || 'Distributor'} 
+                    onChange={e => setNewP({...newP, warrantyType: e.target.value as any})}
+                  >
+                    <option value="Distributor">Distributor</option>
+                    <option value="Store Warranty">Toko</option>
+                    <option value="No Warranty">No Warranty</option>
+                  </select>
+                </div>
+              </div>
+              <div className='space-y-4'></div>
+              <div className="space-y-4">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Harga Jual (Retail)</label>
                 <input type="number" className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold outline-none" value={newP.price} onChange={e => setNewP({...newP, price: Number(e.target.value)})} required />
               </div>
@@ -750,7 +772,7 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
                   </select>
                 </div>
               </div>
-              <div className="space-y-4">
+              {/* <div className="space-y-4">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Mount</label>
                 <select className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 text-xs font-bold outline-none" value={editForm.mount || ''} onChange={e => setEditForm({...editForm, mount: e.target.value as any})}>
                   <option value="">-</option>
@@ -763,19 +785,19 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
                   <option value="Micro 4/3">Micro 4/3</option>
                   <option value="Universal">Universal</option>
                 </select>
-              </div>
+              </div> */}
               <div className="space-y-4">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Garansi</label>
                 <div className="grid grid-cols-2 gap-2">
                   <input type="number" placeholder="Bulan" className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold outline-none" value={editForm.warrantyMonths || 0} onChange={e => setEditForm({...editForm, warrantyMonths: Number(e.target.value)})} required />
                   <select className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 text-xs font-bold outline-none" value={editForm.warrantyType || ''} onChange={e => setEditForm({...editForm, warrantyType: e.target.value as any})}>
-                    <option value="Official Sony Indonesia">Official Sony</option>
                     <option value="Distributor">Distributor</option>
                     <option value="Toko">Toko</option>
                     <option value="No Warranty">No Warranty</option>
                   </select>
                 </div>
               </div>
+              <div className='space-y-4'></div>
               <div className="space-y-4">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Harga Jual (Retail)</label>
                 <input type="number" className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold outline-none" value={editForm.price || 0} onChange={e => setEditForm({...editForm, price: Number(e.target.value)})} required />

@@ -164,9 +164,14 @@ interface Sale {
   items: SaleItem[];
   subtotal: number;
   tax: number;
+  taxEnabled?: boolean;
   total: number;
   paymentMethod: PaymentMethod;
   staffName: string;
+  notes?: string;
+  dueDate?: string;
+  isPaid?: boolean;
+  paidAt?: string;
   timestamp: string;
 }
 
@@ -237,9 +242,14 @@ const parseDbSale = (row: Record<string, unknown>): Sale => ({
   items: [],
   subtotal: typeof row.subtotal === 'string' ? parseFloat(row.subtotal) : (row.subtotal as number),
   tax: typeof row.tax === 'string' ? parseFloat(row.tax) : (row.tax as number),
+  taxEnabled: row.tax_enabled as boolean,
   total: typeof row.total === 'string' ? parseFloat(row.total) : (row.total as number),
   paymentMethod: row.payment_method as PaymentMethod,
   staffName: row.staff_name as string,
+  notes: row.notes as string | undefined,
+  dueDate: row.due_date as string | undefined,
+  isPaid: row.is_paid as boolean,
+  paidAt: row.paid_at as string | undefined,
   timestamp: row.timestamp as string,
 });
 
@@ -329,6 +339,15 @@ const initializeDatabase = async () => {
     // Add new columns to sales if not exists
     await client.unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS tax_enabled boolean DEFAULT true`).catch(() => {});
     await client.unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS notes text`).catch(() => {});
+    await client.unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS due_date timestamp with time zone`).catch(() => {});
+    await client.unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS is_paid boolean DEFAULT false`).catch(() => {});
+    await client.unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS paid_at timestamp with time zone`).catch(() => {});
+    
+    // Add Utang to payment_method enum
+    await client.unsafe(`ALTER TYPE payment_method ADD VALUE IF NOT EXISTS 'Utang'`).catch(() => {});
+    
+    // Add created_at to warranty_claims if not exists (missing from original migration)
+    await client.unsafe(`ALTER TABLE warranty_claims ADD COLUMN IF NOT EXISTS created_at timestamp with time zone DEFAULT now()`).catch(() => {});
     
     // Create default admin accounts if they don't exist
     const defaultAdmins = [
@@ -563,12 +582,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (method === 'POST' && url === '/api/products') {
       const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
       const validated = validateCreateProductInput(input);
-      
+      const staffName = (input as Record<string, unknown>)?.staffName as string || 'System';
+
       const hasSerialNumber = validated.hasSerialNumber === true;
-      const stockCount = hasSerialNumber 
-        ? (validated.serialNumbers?.length || 0) 
+      const stockCount = hasSerialNumber
+        ? (validated.serialNumbers?.length || 0)
         : (validated.quantity || 0);
-      
+
       const result = await db.insert('products', [{
         id: validated.id,
         brand: validated.brand,
@@ -585,9 +605,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         supplier: validated.supplier,
         date_restocked: validated.dateRestocked ? new Date(validated.dateRestocked) : new Date(),
       }]);
-      
+
       const newProduct = result[0];
-      
+
       if (hasSerialNumber && validated.serialNumbers && validated.serialNumbers.length > 0) {
         for (const sn of validated.serialNumbers) {
           await db.insert('serial_numbers', [{
@@ -597,7 +617,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }]);
         }
       }
-      
+
+      // Create audit log
+      const details = hasSerialNumber && validated.serialNumbers
+        ? `Created product ${validated.brand} ${validated.model} with ${validated.serialNumbers.length} serial numbers from supplier ${validated.supplier}`
+        : `Created product ${validated.brand} ${validated.model} with ${validated.quantity || 0} units from supplier ${validated.supplier}`;
+
+      await client.unsafe(
+        'INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())',
+        [`LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`, staffName, 'Stock Addition', details, newProduct.id]
+      );
+
       return res.status(201).json(parseDbProduct(newProduct));
     }
 
@@ -1253,8 +1283,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // GET /api/sales
     if (method === 'GET' && url === '/api/sales') {
       await initializeDatabase();
-      const result = await client.unsafe('SELECT * FROM sales ORDER BY timestamp DESC');
-      return res.status(200).json(result.map(parseDbSale));
+      const salesResult = await client.unsafe('SELECT * FROM sales ORDER BY timestamp DESC');
+      const salesWithItems = await Promise.all(salesResult.map(async (sale: Record<string, unknown>) => {
+        const itemsResult = await client.unsafe(
+          'SELECT * FROM sale_items WHERE sale_id = $1',
+          [sale.id]
+        );
+        return {
+          ...parseDbSale(sale),
+          items: itemsResult.map((item: Record<string, unknown>) => parseDbSaleItem(item)),
+        };
+      }));
+      return res.status(200).json(salesWithItems);
     }
 
     // GET /api/sales/customer/:customerId
@@ -1272,7 +1312,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (method === 'POST' && url === '/api/sales') {
       await initializeDatabase();
       const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-      const { id, customerId, customerName, items, subtotal, tax, total, paymentMethod, staffName } = input;
+      const { id, customerId, customerName, items, subtotal, tax, total, paymentMethod, staffName, notes, dueDate, isPaid } = input;
 
       if (!id || !customerId || !items || items.length === 0 || !paymentMethod || !staffName) {
         return res.status(400).json({ error: 'Missing required fields' });
@@ -1281,8 +1321,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       try {
         // Insert sale
         await client.unsafe(
-          'INSERT INTO sales (id, customer_id, customer_name, subtotal, tax, total, payment_method, staff_name) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-          [id, customerId, customerName, String(subtotal), String(tax), String(total), paymentMethod, staffName]
+          'INSERT INTO sales (id, customer_id, customer_name, subtotal, tax, total, payment_method, staff_name, notes, due_date, is_paid) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)',
+          [id, customerId, customerName, String(subtotal), String(tax), String(total), paymentMethod, staffName, notes || null, dueDate || null, isPaid ?? false]
         );
 
         // Insert sale items, update serial numbers, deduct stock
@@ -1333,6 +1373,49 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } catch (err) {
         console.error('Sale error:', err);
         return res.status(500).json({ error: 'Failed to create sale' });
+      }
+    }
+
+    // PUT /api/sales/:id/mark-paid
+    if (method === 'PUT' && url?.startsWith('/api/sales/') && url.endsWith('/mark-paid')) {
+      await initializeDatabase();
+      const saleId = url.replace('/api/sales/', '').replace('/mark-paid', '');
+      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const { staffName } = input;
+
+      if (!staffName) {
+        return res.status(400).json({ error: 'Missing staffName' });
+      }
+
+      try {
+        const now = new Date().toISOString();
+        const updateResult = await client.unsafe(
+          'UPDATE sales SET is_paid = true, paid_at = $1 WHERE id = $2 RETURNING *',
+          [now, saleId]
+        );
+
+        if (updateResult.length === 0) {
+          return res.status(404).json({ error: 'Sale not found' });
+        }
+
+        const sale = updateResult[0];
+        const pointsEarned = Math.floor(Number(sale.total) / 1000);
+        if (pointsEarned > 0) {
+          await client.unsafe(
+            'UPDATE customers SET loyalty_points = loyalty_points + $1, updated_at = NOW() WHERE id = $2',
+            [pointsEarned, sale.customer_id]
+          );
+        }
+
+        await client.unsafe(
+          'INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())',
+          [`LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`, staffName, 'General', `Marked sale ${saleId} as paid. Loyalty points awarded: ${pointsEarned}`, saleId]
+        );
+
+        return res.status(200).json(parseDbSale(sale));
+      } catch (err) {
+        console.error('Mark paid error:', err);
+        return res.status(500).json({ error: 'Failed to mark sale as paid' });
       }
     }
 

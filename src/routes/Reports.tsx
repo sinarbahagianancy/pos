@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Sale, Product, SerialNumber, WarrantyClaim } from '../../app/types';
 import { formatIDR, exportToCSV, formatDate } from '../../app/utils/formatters';
 
@@ -9,21 +9,43 @@ interface ReportsProps {
   sns: SerialNumber[];
   claims: WarrantyClaim[];
   canViewSensitive: boolean;
+  onMarkAsPaid?: (saleId: string) => Promise<void>;
 }
 
-const ReportsView: React.FC<ReportsProps> = ({ sales, products, sns, claims, canViewSensitive }) => {
+const ReportsView: React.FC<ReportsProps> = ({ sales, products, sns, claims, canViewSensitive, onMarkAsPaid }) => {
+  const [confirmModal, setConfirmModal] = useState<{ show: boolean; saleId: string; customerName: string } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
   const totalRevenue = sales.reduce((acc, s) => acc + s.total, 0);
   const totalCogs = sales.reduce((acc, s) => acc + s.items.reduce((sum, item) => sum + item.cogs, 0), 0);
   const grossProfit = totalRevenue - totalCogs;
   
-  const receivables = sales.filter(s => s.paymentMethod === 'Credit');
-  const totalReceivables = receivables.reduce((acc, s) => acc + s.total, 0);
+  const unpaidUtang = sales.filter(s => s.paymentMethod === 'Utang' && !s.isPaid);
+  const totalReceivables = unpaidUtang.reduce((acc, s) => acc + s.total, 0);
 
-  // Requirement: Track outstanding debts for Cicik, Vita, and Mami
-  const PRIORITY_DEBTORS = ['Cicik', 'Vita', 'Mami'];
-  const priorityReceivables = receivables.filter(s => 
-    PRIORITY_DEBTORS.some(name => s.customerName.toLowerCase().includes(name.toLowerCase()))
-  );
+  const priorityReceivables = unpaidUtang.sort((a, b) => {
+    const aOverdue = !a.dueDate || new Date(a.dueDate) < new Date();
+    const bOverdue = !b.dueDate || new Date(b.dueDate) < new Date();
+    if (aOverdue && !bOverdue) return -1;
+    if (!aOverdue && bOverdue) return 1;
+    return new Date(a.dueDate || 0).getTime() - new Date(b.dueDate || 0).getTime();
+  });
+
+  const handleMarkAsPaid = async () => {
+    if (!confirmModal || !onMarkAsPaid) return;
+    setLoading(true);
+    try {
+      await onMarkAsPaid(confirmModal.saleId);
+      setToast({ message: 'Pelunasan berhasil!', type: 'success' });
+      setConfirmModal(null);
+    } catch (error) {
+      setToast({ message: 'Gagal melakukan pelunasan', type: 'error' });
+    } finally {
+      setLoading(false);
+      setTimeout(() => setToast(null), 3000);
+    }
+  };
 
   const exportSales = () => {
     const data = sales.map(s => ({
@@ -32,21 +54,57 @@ const ReportsView: React.FC<ReportsProps> = ({ sales, products, sns, claims, can
       Pelanggan: s.customerName,
       Total: s.total,
       Profit: canViewSensitive ? s.total - s.items.reduce((sum, i) => sum + i.cogs, 0) : 'RESTRICTED',
-      Metode: s.paymentMethod
+      Metode: s.paymentMethod,
+      Status: s.isPaid ? 'Lunas' : 'Belum Lunas'
     }));
     exportToCSV(data, 'Executive_Report_Sinar_Bahagia');
   };
 
   return (
     <div className="space-y-8 max-w-full">
+      {toast && (
+        <div className={`fixed top-4 right-4 px-6 py-3 rounded-xl shadow-xl z-50 ${
+          toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+        }`}>
+          <span className="font-black text-sm">{toast.message}</span>
+        </div>
+      )}
+
+      {confirmModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-3xl p-8 max-w-md w-full mx-4 shadow-2xl">
+            <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight mb-4">Konfirmasi Pelunasan</h3>
+            <p className="text-slate-600 mb-6">
+              Apakah Anda yakin ingin menandai nota <span className="font-black text-orange-600">{confirmModal.saleId}</span> dari <span className="font-black">{confirmModal.customerName}</span> sebagai lunas?
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmModal(null)}
+                className="flex-1 py-3 px-4 bg-slate-100 text-slate-600 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-slate-200 transition-all"
+                disabled={loading}
+              >
+                Batal
+              </button>
+              <button
+                onClick={handleMarkAsPaid}
+                className="flex-1 py-3 px-4 bg-green-600 text-white rounded-xl font-black text-sm uppercase tracking-widest hover:bg-green-700 transition-all disabled:opacity-50"
+                disabled={loading}
+              >
+                {loading ? 'Memproses...' : 'Ya, Lunaskan'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-black text-slate-900 tracking-tight uppercase leading-none">Reporting & Piutang</h1>
-          <p className="text-sm text-slate-500 font-medium tracking-tight mt-1">Laporan finansial dan monitoring Org Utang (Bon).</p>
+          <p className="text-sm text-slate-500 font-medium tracking-tight mt-1">Laporan Finansial dan Monitoring Utang (Bon).</p>
         </div>
-        <button onClick={exportSales} className="w-full sm:w-auto bg-slate-900 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-slate-200">
+        {/* <button onClick={exportSales} className="w-full sm:w-auto bg-slate-900 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-slate-200">
           Ekspor CSV (Master)
-        </button>
+        </button> */}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -76,25 +134,14 @@ const ReportsView: React.FC<ReportsProps> = ({ sales, products, sns, claims, can
           </div>
         )}
 
-        {/* Priority Debt Tracking Card */}
         <div className="bg-white border border-slate-200 p-8 rounded-[40px] shadow-sm flex flex-col justify-between min-h-[220px]">
           <div>
-            <p className="text-orange-500 text-[10px] font-black uppercase tracking-widest mb-1">Total Piutang (Org Utang)</p>
+            <p className="text-orange-500 text-[10px] font-black uppercase tracking-widest mb-1">Total Piutang Aktif</p>
             <h2 className="text-3xl font-black text-slate-900 truncate tabular-nums tracking-tighter">{formatIDR(totalReceivables)}</h2>
-            <div className="mt-4 flex flex-wrap gap-2">
-               {PRIORITY_DEBTORS.map(name => {
-                 const amount = receivables.filter(s => s.customerName.toLowerCase().includes(name.toLowerCase())).reduce((acc, s) => acc + s.total, 0);
-                 return (
-                   <span key={name} className="px-3 py-1 bg-orange-50 text-orange-600 text-[9px] font-black rounded-lg border border-orange-100 uppercase tracking-tight">
-                     {name}: {formatIDR(amount)}
-                   </span>
-                 );
-               })}
-            </div>
           </div>
           <div className="mt-8 pt-6 border-t border-slate-100 flex justify-between items-center text-[11px] font-bold text-slate-400 uppercase tracking-widest">
             <span>Nota Pending</span>
-            <span className="text-slate-900 font-black">{receivables.length} Transaksi</span>
+            <span className="text-slate-900 font-black">{unpaidUtang.length} Transaksi</span>
           </div>
         </div>
 
@@ -105,8 +152,8 @@ const ReportsView: React.FC<ReportsProps> = ({ sales, products, sns, claims, can
           </div>
            <div className="mt-8 pt-6 border-t border-slate-100 flex justify-between items-center">
              <div>
-                <p className="text-slate-400 text-[9px] font-black uppercase mb-1">Total Unit Gudang</p>
-                <p className="text-xl font-black text-slate-900">{products.reduce((acc, p) => acc + p.stock, 0)} Pcs</p>
+               <p className="text-slate-400 text-[9px] font-black uppercase mb-1">Total Unit Gudang</p>
+               <p className="text-xl font-black text-slate-900">{products.reduce((acc, p) => acc + p.stock, 0)} Pcs</p>
              </div>
              {canViewSensitive && (
                <div className="text-right">
@@ -114,42 +161,64 @@ const ReportsView: React.FC<ReportsProps> = ({ sales, products, sns, claims, can
                  <p className="text-lg font-black text-indigo-900 tabular-nums">{formatIDR(products.reduce((acc, p) => acc + (p.stock * p.cogs), 0))}</p>
                </div>
              )}
-          </div>
-        </div>
-      </div>
+         </div>
+       </div>
+     </div>
 
       <div className="bg-white rounded-[40px] border border-orange-100 shadow-xl shadow-orange-900/5 overflow-hidden flex flex-col">
         <div className="p-8 border-b border-orange-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-orange-50/30">
           <div>
-            <h2 className="font-black text-orange-900 uppercase tracking-tighter text-lg">Daftar Piutang Prioritas (Cicik, Vita, Mami)</h2>
-            <p className="text-[10px] text-orange-500 font-black uppercase tracking-widest mt-1">Monitoring penagihan hutang owner & keluarga.</p>
+            <h2 className="font-black text-orange-900 uppercase tracking-tighter text-lg">Daftar Piutang Belum Lunas</h2>
+            <p className="text-[10px] text-orange-500 font-black uppercase tracking-widest mt-1">Diurutkan berdasarkan due date (yang overdue berada di atas).</p>
           </div>
-          <span className="px-4 py-2 bg-white border border-orange-200 text-orange-600 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm">Overdue Alerts Active</span>
+          <span className="px-4 py-2 bg-white border border-orange-200 text-orange-600 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm">{priorityReceivables.length} Nota</span>
         </div>
         <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-left min-w-[900px]">
+          <table className="w-full text-left min-w-[1100px]">
              <thead className="bg-orange-50 text-orange-400 uppercase text-[10px] font-black tracking-widest">
               <tr>
-                <th className="px-10 py-6">Invoice ID</th>
-                <th className="px-10 py-6">Tanggal Bon</th>
-                <th className="px-10 py-6">Debitur (Pelanggan)</th>
-                <th className="px-10 py-6 text-right">Nilai Tagihan</th>
-                <th className="px-10 py-6 text-center">Tindakan</th>
+                <th className="px-8 py-6">Invoice ID</th>
+                <th className="px-8 py-6">Tanggal Bon</th>
+                <th className="px-8 py-6">Due Date</th>
+                <th className="px-8 py-6">Pelanggan</th>
+                <th className="px-8 py-6 text-right">Nilai Tagihan</th>
+                <th className="px-8 py-6">Staff</th>
+                <th className="px-8 py-6 text-center">Tindakan</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-orange-100/50 text-sm font-medium">
-              {priorityReceivables.length > 0 ? priorityReceivables.map(s => (
-                <tr key={s.id} className="hover:bg-orange-50/40 transition-colors">
-                  <td className="px-10 py-6 font-mono text-orange-600 text-xs font-bold">{s.id}</td>
-                  <td className="px-10 py-6 text-slate-600">{formatDate(s.timestamp)}</td>
-                  <td className="px-10 py-6 font-black text-slate-900 uppercase tracking-tighter">{s.customerName}</td>
-                  <td className="px-10 py-6 text-right font-black text-orange-600 tabular-nums">{formatIDR(s.total)}</td>
-                  <td className="px-10 py-6 text-center">
-                    <button className="px-5 py-2 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm hover:bg-indigo-700 transition-all">Pelunasan</button>
-                  </td>
-                </tr>
-              )) : (
-                <tr><td colSpan={5} className="p-20 text-center text-slate-300 italic">Tidak ada piutang prioritas aktif.</td></tr>
+              {priorityReceivables.length > 0 ? priorityReceivables.map(s => {
+                const isOverdue = !s.dueDate || new Date(s.dueDate) < new Date();
+                return (
+                  <tr key={s.id} className="hover:bg-orange-50/40 transition-colors">
+                    <td className="px-8 py-6 font-mono text-orange-600 text-xs font-bold">{s.id}</td>
+                    <td className="px-8 py-6 text-slate-600">{formatDate(s.timestamp)}</td>
+                    <td className="px-8 py-6">
+                      {s.dueDate ? (
+                        <span className={`px-3 py-1 rounded-lg text-xs font-black uppercase tracking-tight ${
+                          isOverdue ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                        }`}>
+                        {isOverdue ? 'OVERDUE' : formatDate(s.dueDate)}
+                      </span>
+                      ) : (
+                        <span className="px-3 py-1 bg-slate-100 text-slate-500 rounded-lg text-xs font-black uppercase tracking-tight">Tanpa Due Date</span>
+                      )}
+                    </td>
+                    <td className="px-8 py-6 font-black text-slate-900 uppercase tracking-tighter">{s.customerName}</td>
+                    <td className="px-8 py-6 text-right font-black text-orange-600 tabular-nums">{formatIDR(s.total)}</td>
+                    <td className="px-8 py-6 text-slate-500">{s.staffName}</td>
+                    <td className="px-8 py-6 text-center">
+                      <button 
+                        onClick={() => setConfirmModal({ show: true, saleId: s.id, customerName: s.customerName })}
+                        className="px-5 py-2 bg-green-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm hover:bg-green-700 transition-all"
+                      >
+                        Pelunasan
+                      </button>
+                    </td>
+                  </tr>
+                );
+              }) : (
+                <tr><td colSpan={7} className="p-20 text-center text-slate-300 italic">Tidak ada piutang yang belum lunas.</td></tr>
               )}
             </tbody>
           </table>
@@ -184,8 +253,12 @@ const ReportsView: React.FC<ReportsProps> = ({ sales, products, sns, claims, can
                     {canViewSensitive && <td className="px-10 py-6 text-right font-black text-green-600 tabular-nums">{formatIDR(sProfit)}</td>}
                     <td className="px-10 py-6 text-center">
                        <span className={`px-3 py-1 rounded-xl text-[9px] font-black uppercase border shadow-sm ${
-                         s.paymentMethod === 'Credit' ? 'bg-orange-50 text-orange-700 border-orange-100' : 'bg-indigo-50 text-indigo-700 border-indigo-100'
-                       }`}>{s.paymentMethod === 'Credit' ? 'Bon' : s.paymentMethod}</span>
+                         s.paymentMethod === 'Utang' 
+                           ? (s.isPaid ? 'bg-green-100 text-green-700 border-green-100' : 'bg-orange-50 text-orange-700 border-orange-100')
+                           : 'bg-indigo-50 text-indigo-700 border-indigo-100'
+                       }`}>
+                         {s.paymentMethod === 'Utang' ? (s.isPaid ? 'Lunas' : 'Utang') : s.paymentMethod}
+                       </span>
                     </td>
                   </tr>
                 );
