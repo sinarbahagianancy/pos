@@ -702,10 +702,7 @@ const POSView: React.FC<POSProps> = ({ products, sns, customers, onCompleteSale,
             {/* Logo Sinar & Header */}
             <div className="p-6 lg:p-8 pb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-100 gap-4">
                <div className="flex items-center space-x-4">
-                 <div className="w-12 h-12 lg:w-14 lg:h-14 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg shrink-0">
-                   {/* Logo Sinar Icon */}
-                   <svg className="w-6 h-6 lg:w-8 lg:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                 </div>
+                 <img src="/logo.png" alt="Logo" className="w-12 h-12 lg:w-14 lg:h-14 rounded-2xl object-contain shadow-lg bg-white" />
                  <div>
                    <h1 className="text-xl lg:text-2xl font-black text-slate-900 uppercase tracking-tighter leading-none">{storeConfig.storeName}</h1>
                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Premium Imaging Solution</p>

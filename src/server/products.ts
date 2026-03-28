@@ -139,10 +139,13 @@ export const createProduct = async (input: unknown) => {
 };
 
 export const updateProduct = async (id: string, input: unknown, staffName: string = 'System') => {
+  console.log('[SERVER products.ts] updateProduct called, id:', id, 'input:', JSON.stringify(input));
   const validated = validateUpdateProductInput(input);
+  console.log('[SERVER products.ts] validated:', JSON.stringify(validated));
   
   // Get old product for audit logging
   const [oldProduct] = await db.select().from(products).where(eq(products.id, id));
+  console.log('[SERVER products.ts] oldProduct taxEnabled:', oldProduct?.taxEnabled);
   if (!oldProduct) {
     throw new Error('Product not found');
   }

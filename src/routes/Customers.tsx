@@ -305,10 +305,10 @@ const CustomersView: React.FC<CustomersProps> = ({ customers, sales, setCustomer
                     <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-1">Contact Phone</p>
                     <p className="text-sm font-black text-slate-900 break-all">{selectedCustomer.phone}</p>
                   </div>
-                  <div className="bg-white p-4 lg:p-5 rounded-2xl border border-slate-200 shadow-sm">
+                  {/* <div className="bg-white p-4 lg:p-5 rounded-2xl border border-slate-200 shadow-sm">
                     <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-1">Email Address</p>
                     <p className="text-sm font-black text-slate-900 truncate">{selectedCustomer.email || '-'}</p>
-                  </div>
+                  </div> */}
                   <div className="bg-white p-4 lg:p-5 rounded-2xl border border-slate-200 shadow-sm">
                     <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mb-1">Tax ID (NPWP)</p>
                     <p className="text-sm font-mono font-black text-slate-900 break-all">{selectedCustomer.npwp || '-'}</p>

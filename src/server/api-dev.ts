@@ -13,6 +13,7 @@ export default function apiServerPlugin() {
           if (!connectionString) return;
           const pg = postgres(connectionString, { prepare: false });
           await pg.unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS deleted boolean DEFAULT false`);
+          await pg.unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS tax_enabled boolean DEFAULT true`);
           await pg.unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS tax_enabled boolean DEFAULT true`);
           await pg.unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS notes text`);
           await pg.unsafe(`ALTER TABLE warranty_claims ADD COLUMN IF NOT EXISTS created_at timestamp with time zone DEFAULT now()`);
