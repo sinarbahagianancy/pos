@@ -192,6 +192,7 @@ export function validateCreateProductInput(input: unknown): CreateProductInput {
     dateRestocked: obj.dateRestocked as string,
     serialNumbers: obj.serialNumbers as string[] | undefined,
     quantity: obj.quantity as number | undefined,
+    taxEnabled: obj.taxEnabled as boolean | undefined,
   };
 }
 
@@ -263,6 +264,12 @@ export function validateUpdateProductInput(input: unknown): UpdateProductInput {
     }
     result.stock = obj.stock;
   }
+  if (obj.taxEnabled !== undefined) {
+    if (typeof obj.taxEnabled !== 'boolean') {
+      throw new Error('Invalid input: taxEnabled must be a boolean');
+    }
+    result.taxEnabled = obj.taxEnabled;
+  }
   
   return result;
 }
@@ -313,6 +320,10 @@ export function validateCreateSerialNumberInput(input: unknown): CreateSerialNum
 
 export function parseDbProduct(row: Record<string, unknown>): Product {
   const hasSN = row.has_serial_number;
+  const taxEnabledValue = (row.tax_enabled !== undefined ? row.tax_enabled : row.taxEnabled) as unknown;
+  console.log('[parseDbProduct] row.tax_enabled:', row.tax_enabled, 'row.taxEnabled:', row.taxEnabled);
+  const taxEnabled = taxEnabledValue === true || taxEnabledValue === 'true' || taxEnabledValue === 1 ? true : false;
+  console.log('[parseDbProduct] returning taxEnabled:', taxEnabled);
   return {
     id: row.id as string,
     brand: row.brand as string,
@@ -329,7 +340,7 @@ export function parseDbProduct(row: Record<string, unknown>): Product {
     supplier: row.supplier as string | undefined,
     dateRestocked: row.date_restocked as string | undefined,
     hidden: row.hidden as number | undefined,
-    taxEnabled: row.tax_enabled as boolean,
+    taxEnabled,
   };
 }
 

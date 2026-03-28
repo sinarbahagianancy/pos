@@ -93,7 +93,7 @@ export const createProduct = async (input: unknown) => {
     hasSerialNumber: hasSerialNumber,
     supplier: validated.supplier || null,
     dateRestocked: validated.dateRestocked ? new Date(validated.dateRestocked) : new Date(),
-    taxEnabled: validated.taxEnabled ?? true,
+    taxEnabled: validated.taxEnabled === true,
   }).returning();
   
   const newProduct = result[0];
@@ -210,9 +210,15 @@ export const updateProduct = async (id: string, input: unknown, staffName: strin
     });
   }
   
-  const result = await db.update(products).set(updateData).where(eq(products.id, id)).returning();
+  await db.update(products).set(updateData).where(eq(products.id, id));
   
-  return result[0] ? parseDbProduct(result[0]) : null;
+  const [updatedProduct] = await db.select().from(products).where(eq(products.id, id));
+  console.log('[SERVER products.ts] Fresh fetch after update:', JSON.stringify(updatedProduct));
+  
+  const parsed = updatedProduct ? parseDbProduct(updatedProduct) : null;
+  console.log('[SERVER products.ts] parseDbProduct returned:', JSON.stringify(parsed));
+  
+  return parsed;
 };
 
 export const adjustStock = async (

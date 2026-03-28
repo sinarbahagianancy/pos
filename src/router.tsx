@@ -330,9 +330,17 @@ const InventoryComponent = () => {
 
   const handleEditProduct = async (id: string, data: Partial<Product>) => {
     try {
+      console.log('[ROUTER] handleEditProduct called, id:', id, 'data:', JSON.stringify(data));
       const updated = await dbUpdateProduct(id, data, staffName);
+      console.log('[ROUTER] handleEditProduct received updated:', JSON.stringify(updated));
+      console.log('[ROUTER] updated.taxEnabled value:', updated?.taxEnabled);
       if (updated) {
-        setProducts(prev => prev.map(p => p.id === id ? updated : p));
+        setProducts(prev => {
+          console.log('[ROUTER] Before setProducts, current product:', JSON.stringify(prev.find(p => p.id === id)));
+          const newProducts = prev.map(p => p.id === id ? updated : p);
+          console.log('[ROUTER] After setProducts, new product:', JSON.stringify(newProducts.find(p => p.id === id)));
+          return newProducts;
+        });
       }
     } catch (error) {
       console.error('Failed to edit product:', error);

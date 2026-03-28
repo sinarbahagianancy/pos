@@ -752,6 +752,7 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
             </div>
             <form onSubmit={async (e) => {
               e.preventDefault();
+              console.log('[DEBUG] Form onSubmit triggered');
               if (!onEditProduct || !editingProduct) {
                 console.log('[DEBUG] onEditProduct or editingProduct is missing');
                 return;
@@ -761,7 +762,7 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
               try {
                 console.log('[DEBUG] Calling onEditProduct with id:', editingProduct.id);
                 await onEditProduct(editingProduct.id, editForm);
-                console.log('[DEBUG] onEditProduct completed');
+                console.log('[DEBUG] onEditProduct completed successfully');
                 setEditingProduct(null);
               } catch (error: any) {
                 console.log('[DEBUG] onEditProduct error:', error);
