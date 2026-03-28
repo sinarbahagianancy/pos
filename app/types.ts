@@ -31,6 +31,7 @@ export interface Product {
   supplier?: string;
   dateRestocked?: string;
   hidden?: number;
+  taxEnabled?: boolean;
 }
 
 export interface SerialNumber {

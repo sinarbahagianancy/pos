@@ -17,7 +17,9 @@ export const getAllProducts = async (): Promise<Product[]> => {
     const error = await response.json();
     throw new Error(error.error || 'Failed to fetch products');
   }
-  return response.json();
+  const data = await response.json();
+  console.log('[DEBUG] Products from API, sample:', JSON.stringify(data[0]));
+  return data;
 };
 
 export const getProductById = async (id: string): Promise<Product | null> => {
@@ -44,17 +46,21 @@ export const createProduct = async (input: Record<string, unknown>, staffName: s
 };
 
 export const updateProduct = async (id: string, input: Record<string, unknown>, staffName: string = 'System'): Promise<Product | null> => {
+  console.log('[SERVICE] updateProduct called, id:', id, 'input:', JSON.stringify(input));
   const response = await fetch(`${API_BASE}/products/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...input, staffName }),
   });
+  console.log('[SERVICE] updateProduct response status:', response.status);
   if (!response.ok) {
     if (response.status === 404) return null;
     const error = await response.json();
     throw new Error(error.error || 'Failed to update product');
   }
-  return response.json();
+  const result = await response.json();
+  console.log('[SERVICE] updateProduct result:', JSON.stringify(result));
+  return result;
 };
 
 export const toggleProductHidden = async (id: string, hidden: boolean): Promise<Product | null> => {

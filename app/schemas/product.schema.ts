@@ -26,6 +26,7 @@ export interface Product {
   supplier?: string;
   dateRestocked?: string;
   hidden?: number;
+  taxEnabled?: boolean;
 }
 
 export interface CreateProductInput {
@@ -44,6 +45,7 @@ export interface CreateProductInput {
   dateRestocked?: string;
   serialNumbers?: string[];
   quantity?: number;
+  taxEnabled?: boolean;
 }
 
 export interface UpdateProductInput {
@@ -60,6 +62,7 @@ export interface UpdateProductInput {
   hasSerialNumber?: boolean;
   supplier?: string;
   dateRestocked?: string;
+  taxEnabled?: boolean;
 }
 
 export interface StockAdjustmentInput {
@@ -326,6 +329,7 @@ export function parseDbProduct(row: Record<string, unknown>): Product {
     supplier: row.supplier as string | undefined,
     dateRestocked: row.date_restocked as string | undefined,
     hidden: row.hidden as number | undefined,
+    taxEnabled: row.tax_enabled as boolean,
   };
 }
 

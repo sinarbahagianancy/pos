@@ -108,13 +108,13 @@ const DashboardView: React.FC<DashboardProps> = ({ sales, claims, products, mont
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm group hover:border-indigo-200 transition-all">
+        {/* <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm group hover:border-indigo-200 transition-all">
           <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Repair Queue</p>
           <p className="text-2xl font-black text-indigo-600 tracking-tighter tabular-nums">{activeClaims} Claims</p>
           <div className="mt-4 flex items-center space-x-1.5">
             <span className="text-[9px] font-black text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full uppercase tracking-tighter">Action Needed</span>
           </div>
-        </div>
+        </div> */}
 
         <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm group hover:border-indigo-200 transition-all">
           <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Stock Critical</p>
@@ -209,7 +209,7 @@ const DashboardView: React.FC<DashboardProps> = ({ sales, claims, products, mont
             </div>
           </div>
 
-          <div className="bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-hidden">
+          {/* <div className="bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-hidden">
             <div className="p-6 border-b border-slate-100 bg-slate-50/50">
               <h2 className="font-black text-slate-900 uppercase tracking-tighter text-xs">Operator Leaderboard</h2>
             </div>
@@ -234,7 +234,7 @@ const DashboardView: React.FC<DashboardProps> = ({ sales, claims, products, mont
                 <div className="p-8 text-center text-slate-400 text-xs">No data available</div>
               )}
             </div>
-          </div>
+          </div> */}
         </div>
       </div>
 

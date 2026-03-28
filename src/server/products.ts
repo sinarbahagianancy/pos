@@ -55,6 +55,7 @@ export const getAllProducts = async () => {
       p.id, p.brand, p.model, p.category, p.mount, p.condition,
       p.price, p.cogs, p.warranty_months, p.warranty_type, p.stock,
       p.has_serial_number, p.supplier, p.date_restocked, p.hidden, p.deleted,
+      p.tax_enabled,
       (SELECT COUNT(*) FROM serial_numbers sn WHERE sn.product_id = p.id) as sn_count
     FROM products p
     WHERE p.deleted = false
@@ -92,6 +93,7 @@ export const createProduct = async (input: unknown) => {
     hasSerialNumber: hasSerialNumber,
     supplier: validated.supplier || null,
     dateRestocked: validated.dateRestocked ? new Date(validated.dateRestocked) : new Date(),
+    taxEnabled: validated.taxEnabled ?? true,
   }).returning();
   
   const newProduct = result[0];
@@ -189,6 +191,10 @@ export const updateProduct = async (id: string, input: unknown, staffName: strin
   if (validated.warrantyType !== undefined && validated.warrantyType !== oldProduct.warrantyType) {
     updateData.warrantyType = validated.warrantyType;
     changes.push(`warrantyType: ${oldProduct.warrantyType} -> ${validated.warrantyType}`);
+  }
+  if (validated.taxEnabled !== undefined && validated.taxEnabled !== oldProduct.taxEnabled) {
+    updateData.taxEnabled = validated.taxEnabled;
+    changes.push(`taxEnabled: ${oldProduct.taxEnabled} -> ${validated.taxEnabled}`);
   }
   
   if (changes.length > 0) {

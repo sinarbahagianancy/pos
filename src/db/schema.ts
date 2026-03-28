@@ -101,6 +101,7 @@ export const products = pgTable('products', {
   supplier: text('supplier'),
   dateRestocked: timestamp('date_restocked'),
   hidden: integer('hidden').notNull().default(0),
+  taxEnabled: boolean('tax_enabled').notNull().default(true),
   deleted: boolean('deleted').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),

@@ -127,6 +127,7 @@ interface Product {
   supplier?: string;
   dateRestocked?: string;
   hidden?: number;
+  taxEnabled?: boolean;
 }
 
 interface SerialNumber {
@@ -214,6 +215,7 @@ const parseDbProduct = (row: Record<string, unknown>): Product => {
     supplier: row.supplier as string | undefined,
     dateRestocked: row.date_restocked as string | undefined,
     hidden: row.hidden as number | undefined,
+    taxEnabled: row.tax_enabled as boolean,
   };
 };
 
@@ -406,6 +408,7 @@ interface CreateProductInput {
   dateRestocked?: string;
   serialNumbers?: string[];
   quantity?: number;
+  taxEnabled?: boolean;
 }
 
 interface UpdateProductInput {
@@ -419,6 +422,7 @@ interface UpdateProductInput {
   warrantyMonths?: number;
   warrantyType?: WarrantyType;
   stock?: number;
+  taxEnabled?: boolean;
 }
 
 interface StockAdjustmentInput {
@@ -476,6 +480,7 @@ const validateCreateProductInput = (input: unknown): CreateProductInput => {
     dateRestocked: obj.dateRestocked as string,
     serialNumbers: obj.serialNumbers as string[] | undefined,
     quantity: obj.quantity as number | undefined,
+    taxEnabled: obj.taxEnabled as boolean | undefined,
   };
 };
 
@@ -498,6 +503,7 @@ const validateUpdateProductInput = (input: unknown): UpdateProductInput => {
   if (obj.warrantyMonths !== undefined) result.warrantyMonths = obj.warrantyMonths as number;
   if (obj.warrantyType !== undefined) result.warrantyType = obj.warrantyType as WarrantyType;
   if (obj.stock !== undefined) result.stock = obj.stock as number;
+  if (obj.taxEnabled !== undefined) result.taxEnabled = obj.taxEnabled as boolean;
   
   return result;
 };
@@ -575,6 +581,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // GET /api/products
     if (method === 'GET' && url === '/api/products') {
       const result = await client.unsafe('SELECT * FROM products WHERE deleted = false ORDER BY created_at DESC');
+      console.log('[DEBUG] Products fetched, sample row:', JSON.stringify(result[0]));
       return res.status(200).json(result.map(parseDbProduct));
     }
 
@@ -604,6 +611,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         has_serial_number: hasSerialNumber,
         supplier: validated.supplier,
         date_restocked: validated.dateRestocked ? new Date(validated.dateRestocked) : new Date(),
+        tax_enabled: validated.taxEnabled ?? true,
       }]);
 
       const newProduct = result[0];
@@ -635,8 +643,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (method === 'PUT' && url?.startsWith('/api/products/')) {
       const productId = url.replace('/api/products/', '');
       const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      console.log('[DEBUG PUT] Input:', JSON.stringify(input));
       const { staffName = 'System', ...productInput } = input;
+      console.log('[DEBUG PUT] productInput:', JSON.stringify(productInput));
       const validated = validateUpdateProductInput(productInput);
+      console.log('[DEBUG PUT] validated:', JSON.stringify(validated));
       
       // Get old product for audit logging
       const [oldProduct] = await db.select('products', ['*'], { column: 'id', value: productId });
@@ -688,6 +699,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (validated.warrantyType !== undefined && validated.warrantyType !== oldProduct.warranty_type) {
         updateData.warranty_type = validated.warrantyType;
         changes.push(`warrantyType: ${oldProduct.warranty_type} -> ${validated.warrantyType}`);
+      }
+      if (validated.taxEnabled !== undefined && validated.taxEnabled !== oldProduct.tax_enabled) {
+        updateData.tax_enabled = validated.taxEnabled;
+        changes.push(`taxEnabled: ${oldProduct.tax_enabled} -> ${validated.taxEnabled}`);
       }
       
       if (changes.length > 0) {

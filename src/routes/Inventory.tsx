@@ -59,7 +59,7 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
 
   // New Product State
   const [newP, setNewP] = useState<Partial<Product>>({
-    brand: '', model: '', category: 'Body', condition: 'New', price: 0, cogs: 0, warrantyMonths: 12, warrantyType: 'Official Sony Indonesia'
+    brand: '', model: '', category: 'Body', condition: 'New', price: 0, cogs: 0, warrantyMonths: 12, warrantyType: 'Official Sony Indonesia', taxEnabled: true
   });
   const [newSerials, setNewSerials] = useState('');
   const [newProductHasSN, setNewProductHasSN] = useState(false);
@@ -334,6 +334,12 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
                     <span className={`inline-flex items-center px-2 py-0.5 rounded text-[9px] font-bold uppercase mt-1 ${p.hasSerialNumber === true ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
                       {p.hasSerialNumber === true ? 'SN' : 'Non-SN'}
                     </span>
+                    {console.log('[DEBUG] Rendering product:', p.model, 'taxEnabled:', p.taxEnabled) || null}
+              {p.taxEnabled && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] font-bold uppercase mt-1 ml-1 bg-amber-100 text-amber-700">
+                        PPN
+                      </span>
+                    )}
                   </td>
                   <td className="px-8 py-6 text-right font-black text-slate-900 tracking-tighter">{formatIDR(p.price)}</td>
                   {canViewSensitive && <td className="px-8 py-6 text-right font-bold text-indigo-600 tracking-tighter tabular-nums">{formatIDR(p.cogs)}</td>}
@@ -362,7 +368,8 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
                               price: p.price,
                               cogs: p.cogs,
                               warrantyMonths: p.warrantyMonths,
-                              warrantyType: p.warrantyType
+                              warrantyType: p.warrantyType,
+                              taxEnabled: p.taxEnabled
                             });
                             setEditError(null);
                           }}
@@ -637,7 +644,18 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
                   </select>
                 </div>
               </div>
-              <div className='space-y-4'></div>
+              <div className='space-y-4'>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">PPN</label>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newP.taxEnabled === true}
+                    onChange={(e) => setNewP({...newP, taxEnabled: e.target.checked === true})}
+                    className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span className="text-sm font-bold text-slate-700">Produk ini dikenakan PPN</span>
+                </label>
+              </div>
               <div className="space-y-4">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Harga Jual (Retail)</label>
                 <input type="number" className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold outline-none" value={newP.price} onChange={e => setNewP({...newP, price: Number(e.target.value)})} required />
@@ -734,12 +752,19 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
             </div>
             <form onSubmit={async (e) => {
               e.preventDefault();
-              if (!onEditProduct || !editingProduct) return;
+              if (!onEditProduct || !editingProduct) {
+                console.log('[DEBUG] onEditProduct or editingProduct is missing');
+                return;
+              }
               setEditError(null);
+              console.log('[DEBUG] Edit form submit, editForm:', JSON.stringify(editForm));
               try {
+                console.log('[DEBUG] Calling onEditProduct with id:', editingProduct.id);
                 await onEditProduct(editingProduct.id, editForm);
+                console.log('[DEBUG] onEditProduct completed');
                 setEditingProduct(null);
               } catch (error: any) {
+                console.log('[DEBUG] onEditProduct error:', error);
                 setEditError(error.message || 'Gagal mengedit produk');
               }
             }} className="flex-1 overflow-y-auto p-6 lg:p-8 custom-scrollbar grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -797,7 +822,21 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
                   </select>
                 </div>
               </div>
-              <div className='space-y-4'></div>
+              <div className='space-y-4'>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">PPN</label>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editForm.taxEnabled === true}
+                    onChange={(e) => {
+                      console.log('[DEBUG] Checkbox onChange, checked:', e.target.checked);
+                      setEditForm({...editForm, taxEnabled: e.target.checked === true});
+                    }}
+                    className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span className="text-sm font-bold text-slate-700">Produk ini dikenakan PPN</span>
+                </label>
+              </div>
               <div className="space-y-4">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Harga Jual (Retail)</label>
                 <input type="number" className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold outline-none" value={editForm.price || 0} onChange={e => setEditForm({...editForm, price: Number(e.target.value)})} required />
