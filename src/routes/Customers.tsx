@@ -11,9 +11,15 @@ interface CustomersProps {
   onAddCustomer?: (customer: Customer) => Promise<void>;
   onUpdateCustomer?: (id: string, data: Partial<Customer>) => Promise<void>;
   onDeleteCustomer?: (id: string) => Promise<void>;
+  currentPage?: number;
+  totalPages?: number;
+  totalItems?: number;
+  onPageChange?: (page: number) => void;
+  perPage?: number;
+  onPerPageChange?: (perPage: number) => void;
 }
 
-const CustomersView: React.FC<CustomersProps> = ({ customers, sales, setCustomers, notify, onAddCustomer, onUpdateCustomer, onDeleteCustomer }) => {
+const CustomersView: React.FC<CustomersProps> = ({ customers, sales, setCustomers, notify, onAddCustomer, onUpdateCustomer, onDeleteCustomer, currentPage = 1, totalPages = 1, totalItems = 0, onPageChange, perPage = 10, onPerPageChange }) => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -23,8 +29,6 @@ const CustomersView: React.FC<CustomersProps> = ({ customers, sales, setCustomer
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
 
   const getTier = (points: number) => {
     if (points > 5000) return { label: 'Platinum Member', color: 'bg-indigo-600 text-white shadow-indigo-100' };
@@ -33,22 +37,18 @@ const CustomersView: React.FC<CustomersProps> = ({ customers, sales, setCustomer
   };
 
   const filteredCustomers = customers.filter(c => {
-    if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
     return (
       c.name.toLowerCase().includes(query) ||
-      c.phone.toLowerCase().includes(query) ||
+      (c.phone?.toLowerCase().includes(query)) ||
       (c.email?.toLowerCase().includes(query)) ||
       (c.address?.toLowerCase().includes(query)) ||
       (c.npwp?.toLowerCase().includes(query))
     );
   });
 
-  const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage);
-  const paginatedCustomers = filteredCustomers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-
   React.useEffect(() => {
-    setCurrentPage(1);
+    onPageChange?.(1);
   }, [searchQuery]);
 
   const handleAdd = async (e: React.FormEvent) => {
@@ -169,13 +169,13 @@ const CustomersView: React.FC<CustomersProps> = ({ customers, sales, setCustomer
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {paginatedCustomers.length === 0 ? (
+              {filteredCustomers.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="px-6 py-12 text-center">
                     <div className="text-slate-400 font-medium">{searchQuery ? 'Tidak ada pelanggan yang cocok' : 'Belum ada pelanggan'}</div>
                   </td>
                 </tr>
-              ) : paginatedCustomers.map(c => {
+              ) : filteredCustomers.map(c => {
                 const customerSales = sales.filter(s => s.customerId === c.id);
                 const totalSpent = customerSales.reduce((acc, s) => acc + s.total, 0);
                 const tier = getTier(c.loyaltyPoints);
@@ -238,31 +238,59 @@ const CustomersView: React.FC<CustomersProps> = ({ customers, sales, setCustomer
         
         {totalPages > 1 && (
           <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/50">
-            <div className="text-xs text-slate-500 font-medium">
-              Menampilkan {((currentPage - 1) * itemsPerPage) + 1}-{Math.min(currentPage * itemsPerPage, filteredCustomers.length)} dari {filteredCustomers.length} pelanggan
+            <div className="flex items-center gap-4">
+              <span className="text-sm text-slate-500">
+                Tampilkan
+              </span>
+              <select
+                value={perPage}
+                onChange={(e) => {
+                  onPerPageChange?.(Number(e.target.value));
+                  onPageChange?.(1);
+                }}
+                className="px-3 py-2 rounded-xl text-sm font-bold border border-slate-200 bg-white text-slate-700 focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none"
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+              <span className="text-sm text-slate-500">
+                dari <span className="font-medium">{totalItems}</span> pelanggan | Halaman <span className="font-medium">{currentPage}</span> dari <span className="font-medium">{totalPages}</span>
+              </span>
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
+                onClick={() => onPageChange?.(currentPage - 1)}
+                disabled={currentPage <= 1}
                 className="p-2 rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
               </button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1).map((page, idx, arr) => (
-                <React.Fragment key={page}>
-                  {idx > 0 && arr[idx - 1] !== page - 1 && <span className="text-slate-400 px-1">...</span>}
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum: number;
+                if (totalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+                return (
                   <button
-                    onClick={() => setCurrentPage(page)}
-                    className={`w-10 h-10 rounded-xl font-bold text-sm transition-colors ${currentPage === page ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+                    key={pageNum}
+                    onClick={() => onPageChange?.(pageNum)}
+                    className={`w-10 h-10 rounded-xl font-bold text-sm transition-colors ${currentPage === pageNum ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
                   >
-                    {page}
+                    {pageNum}
                   </button>
-                </React.Fragment>
-              ))}
+                );
+              })}
               <button
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
+                onClick={() => onPageChange?.(currentPage + 1)}
+                disabled={currentPage >= totalPages}
                 className="p-2 rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>

@@ -1,5 +1,6 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { SortingState } from '@tanstack/react-table';
 import { Product, SerialNumber, AuditLog, Supplier } from '../../app/types';
 import { formatIDR } from '../../app/utils/formatters';
 
@@ -17,10 +18,18 @@ interface InventoryProps {
   onRestoreProduct?: (id: string) => Promise<void>;
   onToggleHidden?: (id: string, hidden: boolean) => Promise<void>;
   onRefreshSNs?: () => Promise<void>;
+  currentPage?: number;
+  totalPages?: number;
+  totalItems?: number;
+  onPageChange?: (page: number) => void;
+  perPage?: number;
+  onPerPageChange?: (perPage: number) => void;
 }
 
-const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, suppliers, setProducts, canViewSensitive, onManualAdjust, onAddProduct, onEditProduct, onDeleteProduct, onRestoreProduct, onToggleHidden, onRefreshSNs }) => {
+const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, suppliers, setProducts, canViewSensitive, onManualAdjust, onAddProduct, onEditProduct, onDeleteProduct, onRestoreProduct, onToggleHidden, onRefreshSNs, currentPage = 1, totalPages = 1, totalItems = 0, onPageChange, perPage = 20, onPerPageChange }) => {
+  console.log('[DEBUG] Pagination props:', { currentPage, totalPages, totalItems, perPage });
   const [filter, setFilter] = useState('');
+  const [sorting, setSorting] = useState<SortingState>([{ id: 'createdAt', desc: true }]);
   const [adjustingProduct, setAdjustingProduct] = useState<Product | null>(null);
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -39,7 +48,7 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
     }
     return product.stock;
   };
-  
+
   // Simple stock adjustment
   const [simpleAdjustProduct, setSimpleAdjustProduct] = useState<Product | null>(null);
   const [simpleAdjustAmount, setSimpleAdjustAmount] = useState(0);
@@ -72,6 +81,32 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
     p.brand.toLowerCase().includes(filter.toLowerCase()) ||
     p.id.toLowerCase().includes(filter.toLowerCase())
   );
+
+  const sortedProducts = useMemo(() => {
+    if (sorting.length === 0) {
+      // Default sort by createdAt DESC (newest first)
+      return [...filteredProducts].sort((a, b) => {
+        const aVal = a.createdAt || '';
+        const bVal = b.createdAt || '';
+        return bVal.localeCompare(aVal);
+      });
+    }
+    const { id, desc } = sorting[0];
+    return [...filteredProducts].sort((a, b) => {
+      let aVal: any = a[id as keyof Product];
+      let bVal: any = b[id as keyof Product];
+      if (id === 'createdAt') {
+        aVal = aVal || '';
+        bVal = bVal || '';
+        return desc ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
+      }
+      if (typeof aVal === 'string') aVal = aVal.toLowerCase();
+      if (typeof bVal === 'string') bVal = bVal.toLowerCase();
+      if (aVal < bVal) return desc ? 1 : -1;
+      if (aVal > bVal) return desc ? -1 : 1;
+      return 0;
+    });
+  }, [filteredProducts, sorting]);
 
   const handleAdjustSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -298,16 +333,110 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
             <thead className="bg-slate-900 text-slate-400 uppercase text-[10px] font-black tracking-widest border-b border-slate-800">
               <tr>
                 <th className="px-6 py-6 text-center">#</th>
-                <th className="px-8 py-6">Produk</th>
-                <th className="px-8 py-6">Status Stok</th>
-                <th className="px-8 py-6 text-right">Retail Price</th>
-                {canViewSensitive && <th className="px-8 py-6 text-right text-indigo-400">Capital Price (HPP)</th>}
-                <th className="px-8 py-6">Supplier</th>
+                <th 
+                  className="px-8 py-6 cursor-pointer hover:text-slate-300 select-none"
+                  onClick={() => {
+                    const currentSort = sorting.find(s => s.id === 'brand');
+                    if (!currentSort) {
+                      setSorting([{ id: 'brand', desc: false }]);
+                    } else if (currentSort.desc === false) {
+                      setSorting([{ id: 'brand', desc: true }]);
+                    } else {
+                      setSorting([]);
+                    }
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    Produk
+                    {sorting.find(s => s.id === 'brand')?.desc === false && <span className="text-xs">▲</span>}
+                    {sorting.find(s => s.id === 'brand')?.desc === true && <span className="text-xs">▼</span>}
+                  </div>
+                </th>
+                <th 
+                  className="px-8 py-6 cursor-pointer hover:text-slate-300 select-none"
+                  onClick={() => {
+                    const currentSort = sorting.find(s => s.id === 'stock');
+                    if (!currentSort) {
+                      setSorting([{ id: 'stock', desc: false }]);
+                    } else if (currentSort.desc === false) {
+                      setSorting([{ id: 'stock', desc: true }]);
+                    } else {
+                      setSorting([]);
+                    }
+                  }}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    Status Stok
+                    {sorting.find(s => s.id === 'stock')?.desc === false && <span className="text-xs">▲</span>}
+                    {sorting.find(s => s.id === 'stock')?.desc === true && <span className="text-xs">▼</span>}
+                  </div>
+                </th>
+                <th 
+                  className="px-8 py-6 text-right cursor-pointer hover:text-slate-300 select-none"
+                  onClick={() => {
+                    const currentSort = sorting.find(s => s.id === 'price');
+                    if (!currentSort) {
+                      setSorting([{ id: 'price', desc: false }]);
+                    } else if (currentSort.desc === false) {
+                      setSorting([{ id: 'price', desc: true }]);
+                    } else {
+                      setSorting([]);
+                    }
+                  }}
+                >
+                  <div className="flex items-center justify-end gap-2">
+                    Retail Price
+                    {sorting.find(s => s.id === 'price')?.desc === false && <span className="text-xs">▲</span>}
+                    {sorting.find(s => s.id === 'price')?.desc === true && <span className="text-xs">▼</span>}
+                  </div>
+                </th>
+                {canViewSensitive && (
+                  <th 
+                    className="px-8 py-6 text-right cursor-pointer hover:text-indigo-300 select-none"
+                    onClick={() => {
+                      const currentSort = sorting.find(s => s.id === 'cogs');
+                      if (!currentSort) {
+                        setSorting([{ id: 'cogs', desc: false }]);
+                      } else if (currentSort.desc === false) {
+                        setSorting([{ id: 'cogs', desc: true }]);
+                      } else {
+                        setSorting([]);
+                      }
+                    }}
+                  >
+                    <div className="flex items-center justify-end gap-2">
+                      Capital Price (HPP)
+                      {sorting.find(s => s.id === 'cogs')?.desc === false && <span className="text-xs">▲</span>}
+                      {sorting.find(s => s.id === 'cogs')?.desc === true && <span className="text-xs">▼</span>}
+                    </div>
+                  </th>
+                )}
+                <th 
+                  className="px-8 py-6 cursor-pointer hover:text-slate-300 select-none"
+                  onClick={() => {
+                    const currentSort = sorting.find(s => s.id === 'supplier');
+                    if (!currentSort) {
+                      setSorting([{ id: 'supplier', desc: false }]);
+                    } else if (currentSort.desc === false) {
+                      setSorting([{ id: 'supplier', desc: true }]);
+                    } else {
+                      setSorting([]);
+                    }
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    Supplier
+                    {sorting.find(s => s.id === 'supplier')?.desc === false && <span className="text-xs">▲</span>}
+                    {sorting.find(s => s.id === 'supplier')?.desc === true && <span className="text-xs">▼</span>}
+                  </div>
+                </th>
                 <th className="px-8 py-6 text-center">Tindakan</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-sm font-medium">
-              {filteredProducts.map((p, index) => (
+              {sortedProducts.map((p, index) => {
+                const currentStock = getProductStock(p);
+                return (
                 <tr key={p.id} className={`transition-colors group ${p.hidden ? 'opacity-50 bg-slate-50/50' : 'hover:bg-slate-50'}`}>
                   <td className="px-6 py-6 text-center">
                     <span className="font-black text-slate-400 text-xs">{index + 1}</span>
@@ -322,20 +451,14 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
                     </div>
                   </td>
                   <td className="px-8 py-6 text-center">
-                    {(() => {
-                      const currentStock = getProductStock(p);
-                      return (
-                    <div className="flex items-center space-x-2.5">
+                    <div className="flex items-center justify-center space-x-2.5">
                       <div className={`w-2.5 h-2.5 rounded-full ${currentStock <= 2 ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]' : 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]'}`}></div>
                       <span className={`font-black text-xs uppercase tracking-widest ${currentStock <= 2 ? 'text-red-600' : 'text-slate-900'}`}>{currentStock} Unit</span>
                     </div>
-                    );
-                    })()}
                     <span className={`inline-flex items-center px-2 py-0.5 rounded text-[9px] font-bold uppercase mt-1 ${p.hasSerialNumber === true ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
                       {p.hasSerialNumber === true ? 'SN' : 'Non-SN'}
                     </span>
-                    {console.log('[DEBUG] Rendering product:', p.model, 'taxEnabled:', p.taxEnabled) || null}
-              {p.taxEnabled && (
+                    {p.taxEnabled && (
                       <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] font-bold uppercase mt-1 ml-1 bg-amber-100 text-amber-700">
                         PPN
                       </span>
@@ -379,61 +502,147 @@ const InventoryView: React.FC<InventoryProps> = ({ products, sns, logs, supplier
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                         </button>
                       )}
-                      {p.hasSerialNumber === true ? (
-                        <>
-                          <button 
-                            onClick={() => { setAddingSNProduct(p); setNewSNInput(''); setSNOperationReason(''); setSNOperationSupplier(p.supplier || ''); }}
-                            className="text-green-600 hover:bg-green-50 p-2 rounded-lg text-xs font-bold transition-all"
-                            title="Tambah Stok (Input SN)"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
-                          </button>
-                          <button 
-                            onClick={() => { setRemovingSNProduct(p); setNewSNInput(''); setSNOperationReason(''); setSelectedSNs([]); }}
-                            className="text-red-600 hover:bg-red-50 p-2 rounded-lg text-xs font-bold transition-all"
-                            title="Kurangi Stok (Pilih SN)"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 12H4" /></svg>
-                          </button>
-                        </>
-                      ) : (
-                        <button 
-                          onClick={() => { setSimpleAdjustProduct(p); setSimpleAdjustAmount(0); setSimpleAdjustReason(''); setSimpleAdjustSupplier(p.supplier || ''); setSimpleAdjustDate(new Date().toISOString().split('T')[0]); }}
-                          className="text-blue-600 hover:bg-blue-50 p-2 rounded-lg text-xs font-bold transition-all"
-                          title="Sesuaikan Stok (+/-)"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                        </button>
-                      )}
-                      {onToggleHidden && (
-                        <button 
-                          onClick={() => onToggleHidden(p.id, !p.hidden)}
-                          className={`p-2 rounded-lg text-xs font-bold transition-all ${p.hidden ? 'text-green-600 hover:bg-green-50' : 'text-orange-500 hover:bg-orange-50'}`}
-                          title={p.hidden ? 'Tampilkan' : 'Sembunyikan'}
-                        >
-                          {p.hidden ? (
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                          ) : (
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
-                          )}
-                        </button>
-                      )}
-                      {onDeleteProduct && (
+                      {onDeleteProduct && p.hidden !== 1 && (
                         <button 
                           onClick={() => setDeletingProduct(p)}
                           className="text-red-600 hover:bg-red-50 p-2 rounded-lg text-xs font-bold transition-all"
-                          title="Hapus"
+                          title="Hapus Produk"
                         >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                        </button>
+                      )}
+                      {/* Stock Adjustment - for non-SN products, not hidden */}
+                      {p.hidden !== 1 && !p.hasSerialNumber && (
+                        <button 
+                          onClick={() => setSimpleAdjustProduct(p)}
+                          className="text-blue-600 hover:bg-blue-50 p-2 rounded-lg text-xs font-bold transition-all"
+                          title="Sesuaikan Stok"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" /></svg>
+                        </button>
+                      )}
+                      {/* Add SN - for SN products, not hidden */}
+                      {p.hidden !== 1 && p.hasSerialNumber && (
+                        <button 
+                          onClick={() => setAddingSNProduct(p)}
+                          className="text-green-600 hover:bg-green-50 p-2 rounded-lg text-xs font-bold transition-all"
+                          title="Tambah SN"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                        </button>
+                      )}
+                      {/* Reduce SN - for SN products, not hidden */}
+                      {p.hidden !== 1 && p.hasSerialNumber && (
+                        <button 
+                          onClick={() => setRemovingSNProduct(p)}
+                          className="text-orange-600 hover:bg-orange-50 p-2 rounded-lg text-xs font-bold transition-all"
+                          title="Kurangi SN"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" /></svg>
+                        </button>
+                      )}
+                      {/* Restore - for hidden products */}
+                      {p.hidden === 1 && onRestoreProduct && (
+                        <button 
+                          onClick={() => onRestoreProduct(p.id)}
+                          className="text-green-600 hover:bg-green-50 p-2 rounded-lg text-xs font-bold transition-all"
+                          title="Tampilkan Produk"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                        </button>
+                      )}
+                      {/* Toggle Hide - for both hidden and visible products */}
+                      {onToggleHidden && (
+                        <button 
+                          onClick={() => onToggleHidden(p.id, p.hidden !== 1)}
+                          className={`p-2 rounded-lg text-xs font-bold transition-all ${p.hidden === 1 ? 'text-indigo-600 hover:bg-indigo-50' : 'text-slate-400 hover:bg-slate-100'}`}
+                          title={p.hidden === 1 ? 'Tampilkan Produk' : 'Sembunyikan Produk'}
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            {p.hidden === 1 ? (
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            ) : (
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                            )}
+                          </svg>
                         </button>
                       )}
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
+
+        {/* Pagination Controls */}
+        {totalPages >= 1 && (
+          <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/50">
+            <div className="flex items-center gap-4">
+              <span className="text-sm text-slate-500">
+                Tampilkan
+              </span>
+              <select
+                value={perPage}
+                onChange={(e) => {
+                  onPerPageChange?.(Number(e.target.value));
+                  onPageChange?.(1);
+                }}
+                className="px-3 py-2 rounded-xl text-sm font-bold border border-slate-200 bg-white text-slate-700 focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none"
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+              <span className="text-sm text-slate-500">
+                dari <span className="font-medium">{totalItems}</span> produk | Halaman <span className="font-medium">{currentPage}</span> dari <span className="font-medium">{totalPages}</span>
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => onPageChange?.(currentPage - 1)}
+                disabled={currentPage <= 1}
+                className="px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              >
+                ← Prev
+              </button>
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum: number;
+                if (totalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => onPageChange?.(pageNum)}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${
+                      currentPage === pageNum
+                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20'
+                        : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+              <button
+                onClick={() => onPageChange?.(currentPage + 1)}
+                disabled={currentPage >= totalPages}
+                className="px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              >
+                Next →
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Add SN Modal */}

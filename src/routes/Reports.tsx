@@ -10,9 +10,15 @@ interface ReportsProps {
   claims: WarrantyClaim[];
   canViewSensitive: boolean;
   onMarkAsPaid?: (saleId: string) => Promise<void>;
+  currentPage?: number;
+  totalPages?: number;
+  totalItems?: number;
+  onPageChange?: (page: number) => void;
+  perPage?: number;
+  onPerPageChange?: (perPage: number) => void;
 }
 
-const ReportsView: React.FC<ReportsProps> = ({ sales, products, sns, claims, canViewSensitive, onMarkAsPaid }) => {
+const ReportsView: React.FC<ReportsProps> = ({ sales, products, sns, claims, canViewSensitive, onMarkAsPaid, currentPage = 1, totalPages = 1, totalItems = 0, onPageChange, perPage = 20, onPerPageChange }) => {
   const [confirmModal, setConfirmModal] = useState<{ show: boolean; saleId: string; customerName: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);

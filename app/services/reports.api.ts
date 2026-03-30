@@ -13,6 +13,19 @@ export interface SaleItem {
   warrantyExpiry: string;
 }
 
+export interface PaginatedWarrantyClaimsResult {
+  claims: WarrantyClaim[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export interface WarrantyClaimsParams {
+  page?: number;
+  limit?: number;
+}
+
 export const getAllSaleItems = async (): Promise<SaleItem[]> => {
   const response = await fetch(`${API_BASE}/sale-items`);
   if (!response.ok) {
@@ -31,8 +44,14 @@ export const getSaleItemsBySaleId = async (saleId: string): Promise<SaleItem[]> 
   return response.json();
 };
 
-export const getAllWarrantyClaims = async (): Promise<WarrantyClaim[]> => {
-  const response = await fetch(`${API_BASE}/warranty-claims`);
+export const getAllWarrantyClaims = async (params: WarrantyClaimsParams = {}): Promise<PaginatedWarrantyClaimsResult> => {
+  const { page = 1, limit = 20 } = params;
+  const queryString = new URLSearchParams({
+    page: page.toString(),
+    limit: limit.toString(),
+  }).toString();
+  
+  const response = await fetch(`${API_BASE}/warranty-claims?${queryString}`);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to fetch warranty claims');

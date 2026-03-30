@@ -2,8 +2,40 @@ import type { Product, SerialNumber, AuditLog } from '../types';
 
 const API_BASE = '/api';
 
-export const getAllAuditLogs = async (): Promise<AuditLog[]> => {
-  const response = await fetch(`${API_BASE}/audit-logs`);
+export interface PaginatedProductsResult {
+  products: Product[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export interface ProductsParams {
+  page?: number;
+  limit?: number;
+}
+
+export interface PaginatedAuditLogsResult {
+  logs: AuditLog[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export interface AuditLogsParams {
+  page?: number;
+  limit?: number;
+}
+
+export const getAllAuditLogs = async (params: AuditLogsParams = {}): Promise<PaginatedAuditLogsResult> => {
+  const { page = 1, limit = 20 } = params;
+  const queryString = new URLSearchParams({
+    page: page.toString(),
+    limit: limit.toString(),
+  }).toString();
+  
+  const response = await fetch(`${API_BASE}/audit-logs?${queryString}`);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to fetch audit logs');
@@ -11,14 +43,20 @@ export const getAllAuditLogs = async (): Promise<AuditLog[]> => {
   return response.json();
 };
 
-export const getAllProducts = async (): Promise<Product[]> => {
-  const response = await fetch(`${API_BASE}/products`);
+export const getAllProducts = async (params: ProductsParams = {}): Promise<PaginatedProductsResult> => {
+  const { page = 1, limit = 20 } = params;
+  const queryString = new URLSearchParams({
+    page: page.toString(),
+    limit: limit.toString(),
+  }).toString();
+  
+  const response = await fetch(`${API_BASE}/products?${queryString}`);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to fetch products');
   }
   const data = await response.json();
-  console.log('[DEBUG] Products from API, sample:', JSON.stringify(data[0]));
+  console.log('[DEBUG] Products from API, sample:', JSON.stringify(data.products?.[0]));
   return data;
 };
 

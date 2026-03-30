@@ -2,8 +2,27 @@ import type { Customer } from '../types';
 
 const API_BASE = '/api';
 
-export const getAllCustomers = async (): Promise<Customer[]> => {
-  const response = await fetch(`${API_BASE}/customers`);
+export interface PaginatedCustomersResult {
+  customers: Customer[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export interface CustomersParams {
+  page?: number;
+  limit?: number;
+}
+
+export const getAllCustomers = async (params: CustomersParams = {}): Promise<PaginatedCustomersResult> => {
+  const { page = 1, limit = 20 } = params;
+  const queryString = new URLSearchParams({
+    page: page.toString(),
+    limit: limit.toString(),
+  }).toString();
+  
+  const response = await fetch(`${API_BASE}/customers?${queryString}`);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to fetch customers');

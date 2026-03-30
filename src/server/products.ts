@@ -1,14 +1,15 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { products, serialNumbers, auditLogs } from '../db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, sql } from 'drizzle-orm';
 import { 
   validateCreateProductInput,
   validateUpdateProductInput,
   validateStockAdjustmentInput,
   validateCreateSerialNumberInput,
   parseDbProduct,
-  parseDbSerialNumber
+  parseDbSerialNumber,
+  Product
 } from '../../app/schemas/product.schema';
 import dotenv from 'dotenv';
 
@@ -48,20 +49,42 @@ try {
   console.log('Migration check (may be ok):', e);
 }
 
-export const getAllProducts = async () => {
+export interface PaginatedProductsResult {
+  products: Product[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export const getAllProducts = async (page: number = 1, limit: number = 20): Promise<PaginatedProductsResult> => {
+  const offset = (page - 1) * limit;
+  
+  // Get total count
+  const countResult = await client.unsafe('SELECT COUNT(*) as count FROM products WHERE deleted = false');
+  const total = parseInt(countResult[0]?.count || '0', 10);
+  
   // Use direct SQL to avoid any Drizzle ORM issues
   const rawResult = await client.unsafe(`
     SELECT
       p.id, p.brand, p.model, p.category, p.mount, p.condition,
       p.price, p.cogs, p.warranty_months, p.warranty_type, p.stock,
       p.has_serial_number, p.supplier, p.date_restocked, p.hidden, p.deleted,
-      p.tax_enabled,
+      p.tax_enabled, p.created_at,
       (SELECT COUNT(*) FROM serial_numbers sn WHERE sn.product_id = p.id) as sn_count
     FROM products p
     WHERE p.deleted = false
+    ORDER BY p.created_at DESC
+    LIMIT ${limit} OFFSET ${offset}
   `);
 
-  return rawResult.map((row: any) => parseDbProduct(row));
+  return {
+    products: rawResult.map((row: any) => parseDbProduct(row)),
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
+  };
 };
 
 export const getProductById = async (id: string) => {
@@ -415,18 +438,39 @@ export const getAuditLogsByProduct = async (productId: string) => {
   }));
 };
 
-export const getAllAuditLogs = async () => {
+export interface PaginatedAuditLogsResult {
+  logs: { id: string; staffName: string; action: string; details: string; timestamp: string | null; relatedId: string | null }[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export const getAllAuditLogs = async (page: number = 1, limit: number = 20): Promise<PaginatedAuditLogsResult> => {
+  const offset = (page - 1) * limit;
+  
   const result = await db
     .select()
     .from(auditLogs)
-    .orderBy(desc(auditLogs.timestamp));
+    .orderBy(desc(auditLogs.timestamp))
+    .limit(limit)
+    .offset(offset);
   
-  return result.map(r => ({
-    id: r.id,
-    staffName: r.staffName,
-    action: r.action,
-    details: r.details,
-    timestamp: r.timestamp ?? null,
-    relatedId: r.relatedId,
-  }));
+  const countResult = await db.select({ count: sql<number>`count(*)` }).from(auditLogs);
+  const total = Number(countResult[0]?.count) || 0;
+  
+  return {
+    logs: result.map(r => ({
+      id: r.id,
+      staffName: r.staffName,
+      action: r.action,
+      details: r.details,
+      timestamp: r.timestamp ? r.timestamp.toISOString() : null,
+      relatedId: r.relatedId,
+    })),
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
+  };
 };

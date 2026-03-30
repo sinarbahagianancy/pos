@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createRouter, RootRoute, Route, Link, useNavigate, Outlet, useRouterState } from '@tanstack/react-router';
 import POSView from './routes/POS';
 import InventoryView from './routes/Inventory';
@@ -18,12 +19,12 @@ import {
   adjustStock as dbAdjustStock,
   createSerialNumbersBulk,
   deleteProduct as dbDeleteProduct,
-  restoreProduct,
+  restoreProduct as dbRestoreProduct,
   toggleProductHidden,
   updateProduct as dbUpdateProduct,
   getAllAuditLogs
 } from '../app/services/product.service';
-import { getAllSuppliers } from '../app/services/supplier.service';
+import { getAllSuppliers, createSupplier, updateSupplier, deleteSupplier } from '../app/services/supplier.service';
 import { 
   login as authLogin,
   logout as authLogout, 
@@ -215,14 +216,14 @@ const DashboardComponent = () => {
     const loadData = async () => {
       try {
         const [salesData, productsData, claimsData, configData] = await Promise.all([
-          getAllSales(),
-          getAllProducts(),
-          getAllWarrantyClaims(),
+          getAllSales({ page: 1, limit: 10000 }),
+          getAllProducts({ page: 1, limit: 10000 }),
+          getAllWarrantyClaims({ page: 1, limit: 10000 }),
           getStoreConfig()
         ]);
-        setSales(salesData);
-        setProducts(productsData);
-        setClaims(claimsData);
+        setSales(salesData.sales);
+        setProducts(productsData.products);
+        setClaims(claimsData.claims);
         if (configData?.monthlyTarget) {
           setMonthlyTarget(configData.monthlyTarget);
         }
@@ -248,41 +249,42 @@ const DashboardComponent = () => {
 
 // Inventory
 const InventoryComponent = () => {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [sns, setSns] = useState<SerialNumber[]>([]);
-  const [logs, setLogs] = useState<AuditLog[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const [productPage, setProductPage] = useState(1);
+  const [productsPerPage, setProductsPerPage] = useState(20);
 
   const user = getCurrentUser();
   const staffName = user?.name || 'System';
 
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [productsData, snsData, suppliersData] = await Promise.all([
-          getAllProducts(),
-          getAllSerialNumbers(),
-          getAllSuppliers(),
-        ]);
-        setProducts(productsData);
-        setSns(snsData);
-        setSuppliers(suppliersData);
-      } catch (error) {
-        console.error('Failed to load inventory data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadData();
-  }, []);
+  // Query for products with pagination
+  const { data: productsData, isLoading: productsLoading } = useQuery({
+    queryKey: ['products', productPage, productsPerPage],
+    queryFn: () => getAllProducts({ page: productPage, limit: productsPerPage }),
+  });
+
+  // Query for serial numbers
+  const { data: snsData = [] } = useQuery({
+    queryKey: ['serialNumbers'],
+    queryFn: getAllSerialNumbers,
+  });
+
+  // Query for suppliers
+  const { data: suppliersData } = useQuery({
+    queryKey: ['suppliers', 1, 1000],
+    queryFn: () => getAllSuppliers({ page: 1, limit: 1000 }),
+  });
+
+  const products = productsData?.products || [];
+  const totalProducts = productsData?.total || 0;
+  const totalPages = productsData?.totalPages || 0;
+  const sns = snsData;
+  const suppliers = suppliersData?.suppliers || [];
+  const loading = productsLoading;
 
   const handleManualAdjust = async (productId: string, newStock: number, reason: string, supplier?: string, dateRestocked?: string) => {
     try {
       await dbAdjustStock(productId, newStock, reason, staffName, supplier, dateRestocked);
-      setProducts(prev => prev.map(p => 
-        p.id === productId ? { ...p, stock: newStock, supplier: supplier || p.supplier, dateRestocked: dateRestocked || p.dateRestocked } : p
-      ));
+      queryClient.invalidateQueries({ queryKey: ['products'] });
     } catch (error) {
       console.error('Failed to adjust stock:', error);
     }
@@ -290,27 +292,7 @@ const InventoryComponent = () => {
 
   const handleRefreshSNs = async () => {
     try {
-      const snsData = await getAllSerialNumbers();
-      setSns(snsData);
-      
-      // Recalculate stock for all products based on In Stock SNs
-      const stockMap = new Map<string, number>();
-      snsData.forEach(sn => {
-        if (sn.status === 'In Stock') {
-          stockMap.set(sn.productId, (stockMap.get(sn.productId) || 0) + 1);
-        }
-      });
-      
-      // Update products with new stock counts
-      setProducts(prev => prev.map(p => {
-        const newStock = stockMap.get(p.id) ?? p.stock;
-        return { ...p, stock: newStock };
-      }));
-      
-      // Also sync to DB
-      for (const [productId, newStock] of stockMap) {
-        await dbAdjustStock(productId, newStock, 'SN Status Changed', staffName);
-      }
+      queryClient.invalidateQueries({ queryKey: ['serialNumbers'] });
     } catch (error) {
       console.error('Failed to refresh SNs:', error);
     }
@@ -318,11 +300,11 @@ const InventoryComponent = () => {
 
   const handleAddProduct = async (product: Product, serials: string[]) => {
     try {
-      const newProduct = await dbCreateProduct(product as unknown as Record<string, unknown>, staffName);
-      setProducts(prev => [...prev, newProduct]);
-      // Reload serial numbers to get the latest
-      const snsData = await getAllSerialNumbers();
-      setSns(snsData);
+      await dbCreateProduct(product as unknown as Record<string, unknown>, staffName);
+      await queryClient.invalidateQueries({ queryKey: ['products'] });
+      await queryClient.invalidateQueries({ queryKey: ['serialNumbers'] });
+      // Navigate to page 1 where new products appear (sorted by createdAt DESC)
+      setProductPage(1);
     } catch (error) {
       console.error('Failed to add product:', error);
     }
@@ -334,14 +316,7 @@ const InventoryComponent = () => {
       const updated = await dbUpdateProduct(id, data, staffName);
       console.log('[ROUTER] handleEditProduct received updated:', JSON.stringify(updated));
       console.log('[ROUTER] updated.taxEnabled value:', updated?.taxEnabled);
-      if (updated) {
-        setProducts(prev => {
-          console.log('[ROUTER] Before setProducts, current product:', JSON.stringify(prev.find(p => p.id === id)));
-          const newProducts = prev.map(p => p.id === id ? updated : p);
-          console.log('[ROUTER] After setProducts, new product:', JSON.stringify(newProducts.find(p => p.id === id)));
-          return newProducts;
-        });
-      }
+      queryClient.invalidateQueries({ queryKey: ['products'] });
     } catch (error) {
       console.error('Failed to edit product:', error);
       throw error;
@@ -351,36 +326,27 @@ const InventoryComponent = () => {
   const handleDeleteProduct = async (id: string) => {
     try {
       await dbDeleteProduct(id);
-      setProducts(prev => prev.filter(p => p.id !== id));
-      const snsData = await getAllSerialNumbers();
-      setSns(snsData);
+      queryClient.invalidateQueries({ queryKey: ['products'] });
     } catch (error) {
       console.error('Failed to delete product:', error);
-      throw error;
-    }
-  };
-
-  const handleToggleHidden = async (id: string, hidden: boolean) => {
-    try {
-      const updated = await toggleProductHidden(id, hidden);
-      if (updated) {
-        setProducts(prev => prev.map(p => p.id === id ? updated : p));
-      }
-    } catch (error) {
-      console.error('Failed to toggle product visibility:', error);
-      throw error;
     }
   };
 
   const handleRestoreProduct = async (id: string) => {
     try {
-      const restored = await restoreProduct(id);
-      setProducts(prev => [...prev, restored]);
-      const snsData = await getAllSerialNumbers();
-      setSns(snsData);
+      await dbRestoreProduct(id);
+      queryClient.invalidateQueries({ queryKey: ['products'] });
     } catch (error) {
       console.error('Failed to restore product:', error);
-      throw error;
+    }
+  };
+
+  const handleToggleHidden = async (id: string, hidden: boolean) => {
+    try {
+      await toggleProductHidden(id, hidden);
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+    } catch (error) {
+      console.error('Failed to toggle product hidden:', error);
     }
   };
 
@@ -396,9 +362,9 @@ const InventoryComponent = () => {
     <InventoryView 
       products={products}
       sns={sns}
-      logs={logs}
+      logs={[]}
       suppliers={suppliers}
-      setProducts={setProducts}
+      setProducts={() => {}}
       canViewSensitive={true}
       onManualAdjust={handleManualAdjust}
       onAddProduct={handleAddProduct}
@@ -407,44 +373,104 @@ const InventoryComponent = () => {
       onRestoreProduct={handleRestoreProduct}
       onToggleHidden={handleToggleHidden}
       onRefreshSNs={handleRefreshSNs}
+      currentPage={productPage}
+      totalPages={totalPages}
+      totalItems={totalProducts}
+      onPageChange={setProductPage}
+      perPage={productsPerPage}
+      onPerPageChange={setProductsPerPage}
     />
   );
 };
 
 // Suppliers
 const SuppliersComponent = () => {
+  const queryClient = useQueryClient();
+  const [supplierPage, setSupplierPage] = useState(1);
+  const [suppliersPerPage, setSuppliersPerPage] = useState(20);
+
   const user = getCurrentUser();
   const staffName = user?.name || 'System';
-  
-  return <SuppliersView staffName={staffName} />;
+
+  const { data: suppliersData, isLoading: suppliersLoading } = useQuery({
+    queryKey: ['suppliers', supplierPage, suppliersPerPage],
+    queryFn: () => getAllSuppliers({ page: supplierPage, limit: suppliersPerPage }),
+  });
+
+  const suppliers = suppliersData?.suppliers || [];
+  const totalSuppliers = suppliersData?.total || 0;
+  const totalSupplierPages = suppliersData?.totalPages || 0;
+  const loading = suppliersLoading;
+
+  const handleAddSupplier = async (data: { name: string; phone?: string; address?: string }) => {
+    try {
+      await createSupplier(data);
+      await queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+    } catch (error) {
+      console.error('Failed to add supplier:', error);
+      throw error;
+    }
+  };
+
+  const handleUpdateSupplier = async (id: string, data: { name?: string; phone?: string; address?: string }) => {
+    try {
+      await updateSupplier(id, data);
+      await queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+    } catch (error) {
+      console.error('Failed to update supplier:', error);
+      throw error;
+    }
+  };
+
+  const handleDeleteSupplier = async (id: string) => {
+    try {
+      await deleteSupplier(id);
+      await queryClient.invalidateQueries({ queryKey: ['suppliers'] });
+    } catch (error) {
+      console.error('Failed to delete supplier:', error);
+    }
+  };
+
+  return <SuppliersView 
+    staffName={staffName} 
+    suppliers={suppliers}
+    loading={loading}
+    onAddSupplier={handleAddSupplier}
+    onUpdateSupplier={handleUpdateSupplier}
+    onDeleteSupplier={handleDeleteSupplier}
+    currentPage={supplierPage}
+    totalPages={totalSupplierPages}
+    totalItems={totalSuppliers}
+    onPageChange={setSupplierPage}
+    perPage={suppliersPerPage}
+    onPerPageChange={setSuppliersPerPage}
+  />;
 };
 
 // Customers
 const CustomersComponent = () => {
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [sales, setSales] = useState<Sale[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const [customerPage, setCustomerPage] = useState(1);
+  const [customersPerPage, setCustomersPerPage] = useState(20);
 
   const user = getCurrentUser();
   const staffName = user?.name || 'System';
 
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [customersData, salesData] = await Promise.all([
-          getAllCustomers(),
-          getAllSales()
-        ]);
-        setCustomers(customersData);
-        setSales(salesData);
-      } catch (error) {
-        console.error('Failed to load customers:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadData();
-  }, []);
+  const { data: customersData, isLoading: customersLoading } = useQuery({
+    queryKey: ['customers', customerPage, customersPerPage],
+    queryFn: () => getAllCustomers({ page: customerPage, limit: customersPerPage }),
+  });
+
+  const { data: salesData } = useQuery({
+    queryKey: ['sales'],
+    queryFn: () => getAllSales({ page: 1, limit: 10000 }),
+  });
+
+  const customers = customersData?.customers || [];
+  const totalCustomers = customersData?.total || 0;
+  const totalCustomerPages = customersData?.totalPages || 0;
+  const sales = salesData?.sales || [];
+  const loading = customersLoading;
 
   const notify = (message: string, type: 'success' | 'error' | 'info') => {
     console.log(`[${type}] ${message}`);
@@ -452,7 +478,7 @@ const CustomersComponent = () => {
 
   const handleAddCustomer = async (customer: Customer) => {
     try {
-      const newCustomer = await apiCreateCustomer({
+      await apiCreateCustomer({
         id: customer.id,
         name: customer.name,
         phone: customer.phone,
@@ -461,7 +487,8 @@ const CustomersComponent = () => {
         npwp: customer.npwp,
         loyaltyPoints: customer.loyaltyPoints
       });
-      setCustomers(prev => [...prev, newCustomer]);
+      await queryClient.invalidateQueries({ queryKey: ['customers'] });
+      setCustomerPage(1);
       notify(`${customer.name} berhasil didaftarkan ke sistem.`, 'success');
     } catch (error) {
       console.error('Failed to add customer:', error);
@@ -473,7 +500,7 @@ const CustomersComponent = () => {
   const handleUpdateCustomer = async (id: string, data: Partial<Customer>) => {
     try {
       const updated = await apiUpdateCustomer(id, { ...data, staffName });
-      setCustomers(prev => prev.map(c => c.id === id ? updated : c));
+      await queryClient.invalidateQueries({ queryKey: ['customers'] });
       notify('Data pelanggan berhasil diperbarui.', 'success');
     } catch (error) {
       console.error('Failed to update customer:', error);
@@ -485,7 +512,7 @@ const CustomersComponent = () => {
   const handleDeleteCustomer = async (id: string) => {
     try {
       await apiDeleteCustomer(id, staffName);
-      setCustomers(prev => prev.filter(c => c.id !== id));
+      await queryClient.invalidateQueries({ queryKey: ['customers'] });
       notify('Pelanggan berhasil dihapus.', 'success');
     } catch (error) {
       console.error('Failed to delete customer:', error);
@@ -505,41 +532,59 @@ const CustomersComponent = () => {
     <CustomersView 
       customers={customers} 
       sales={sales} 
-      setCustomers={setCustomers}
+      setCustomers={() => {}}
       notify={notify}
       onAddCustomer={handleAddCustomer}
       onUpdateCustomer={handleUpdateCustomer}
       onDeleteCustomer={handleDeleteCustomer}
+      currentPage={customerPage}
+      totalPages={totalCustomerPages}
+      totalItems={totalCustomers}
+      onPageChange={setCustomerPage}
+      perPage={customersPerPage}
+      onPerPageChange={setCustomersPerPage}
     />
   );
 };
 
 // Sales Logs
 const SalesLogsComponent = () => {
-  const [sales, setSales] = useState<Sale[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [storeConfig, setStoreConfig] = useState<StoreConfigType | null>(null);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const [salesPage, setSalesPage] = useState(1);
+  const [salesPerPage, setSalesPerPage] = useState(20);
 
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [salesData, customersData, configData] = await Promise.all([
-          getAllSales(),
-          getAllCustomers(),
-          getStoreConfig()
-        ]);
-        setSales(salesData);
-        setCustomers(customersData);
-        setStoreConfig(configData);
-      } catch (error) {
-        console.error('Failed to load sales logs:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadData();
-  }, []);
+  const { data: salesData, isLoading: salesLoading } = useQuery({
+    queryKey: ['sales', salesPage, salesPerPage],
+    queryFn: () => getAllSales({ page: salesPage, limit: salesPerPage }),
+  });
+
+  const { data: customersData } = useQuery({
+    queryKey: ['customers'],
+    queryFn: () => getAllCustomers({ page: 1, limit: 1000 }),
+  });
+
+  const { data: storeConfig } = useQuery({
+    queryKey: ['storeConfig'],
+    queryFn: getStoreConfig,
+  });
+
+  const sales = salesData?.sales || [];
+  const totalSales = salesData?.total || 0;
+  const totalSalesPages = salesData?.totalPages || 0;
+  const customers = customersData?.customers || [];
+  const loading = salesLoading;
+
+  const handleMarkAsPaid = async (saleId: string) => {
+    const user = getCurrentUser();
+    const staffName = user?.name || 'System';
+    try {
+      const updatedSale = await markSaleAsPaid(saleId, staffName);
+      await queryClient.invalidateQueries({ queryKey: ['sales'] });
+    } catch (error) {
+      console.error('Failed to mark as paid:', error);
+      throw error;
+    }
+  };
 
   if (loading || !storeConfig) {
     return (
@@ -554,36 +599,44 @@ const SalesLogsComponent = () => {
       sales={sales}
       customers={customers}
       storeConfig={{ storeName: storeConfig.storeName, address: storeConfig.address, ppnRate: storeConfig.ppnRate }}
+      currentPage={salesPage}
+      totalPages={totalSalesPages}
+      totalItems={totalSales}
+      onPageChange={setSalesPage}
+      perPage={salesPerPage}
+      onPerPageChange={setSalesPerPage}
+      onMarkAsPaid={handleMarkAsPaid}
     />
   );
 };
 
 // Warranty
 const WarrantyComponent = () => {
-  const [sns, setSns] = useState<SerialNumber[]>([]);
-  const [sales, setSales] = useState<Sale[]>([]);
-  const [claims, setClaims] = useState<WarrantyClaim[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const [claimsPage, setClaimsPage] = useState(1);
+  const [claimsPerPage, setClaimsPerPage] = useState(20);
 
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [snsData, salesData, claimsData] = await Promise.all([
-          getAllSerialNumbers(),
-          getAllSales(),
-          getAllWarrantyClaims()
-        ]);
-        setSns(snsData);
-        setSales(salesData);
-        setClaims(claimsData);
-      } catch (error) {
-        console.error('Failed to load warranty data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadData();
-  }, []);
+  const { data: snsData = [] } = useQuery({
+    queryKey: ['serialNumbers'],
+    queryFn: getAllSerialNumbers,
+  });
+
+  const { data: salesData } = useQuery({
+    queryKey: ['sales'],
+    queryFn: () => getAllSales({ page: 1, limit: 10000 }),
+  });
+
+  const { data: claimsData, isLoading: claimsLoading } = useQuery({
+    queryKey: ['warrantyClaims', claimsPage, claimsPerPage],
+    queryFn: () => getAllWarrantyClaims({ page: claimsPage, limit: claimsPerPage }),
+  });
+
+  const sns = snsData;
+  const sales = salesData?.sales || [];
+  const claims = claimsData?.claims || [];
+  const totalClaims = claimsData?.total || 0;
+  const totalClaimsPages = claimsData?.totalPages || 0;
+  const loading = claimsLoading;
 
   const notify = (message: string, type: 'success' | 'error' | 'info') => {
     console.log(`[${type}] ${message}`);
@@ -592,14 +645,14 @@ const WarrantyComponent = () => {
   const handleAddClaim = async (claim: WarrantyClaim) => {
     const { createWarrantyClaim } = await import('../app/services/reports.api');
     try {
-      const newClaim = await createWarrantyClaim({
+      await createWarrantyClaim({
         id: claim.id,
         sn: claim.sn,
         productModel: claim.productModel,
         issue: claim.issue,
         status: claim.status
       });
-      setClaims(prev => [newClaim, ...prev]);
+      await queryClient.invalidateQueries({ queryKey: ['warrantyClaims'] });
       notify('Klaim garansi berhasil diajukan.', 'success');
     } catch (error) {
       console.error('Failed to add claim:', error);
@@ -611,8 +664,8 @@ const WarrantyComponent = () => {
   const handleUpdateStatus = async (id: string, status: string) => {
     const { updateWarrantyClaim } = await import('../app/services/reports.api');
     try {
-      const updated = await updateWarrantyClaim(id, status);
-      setClaims(prev => prev.map(c => c.id === id ? updated : c));
+      await updateWarrantyClaim(id, status);
+      await queryClient.invalidateQueries({ queryKey: ['warrantyClaims'] });
       notify('Status klaim diperbarui.', 'success');
     } catch (error) {
       console.error('Failed to update claim:', error);
@@ -630,54 +683,69 @@ const WarrantyComponent = () => {
   }
 
   return (
-    <WarrantyTrackerView sns={sns} sales={sales} claims={claims} onAddClaim={handleAddClaim} onUpdateStatus={handleUpdateStatus} notify={notify} />
+    <WarrantyTrackerView 
+      sns={sns} 
+      sales={sales} 
+      claims={claims} 
+      onAddClaim={handleAddClaim} 
+      onUpdateStatus={handleUpdateStatus} 
+      notify={notify}
+      currentPage={claimsPage}
+      totalPages={totalClaimsPages}
+      totalItems={totalClaims}
+      onPageChange={setClaimsPage}
+      perPage={claimsPerPage}
+      onPerPageChange={setClaimsPerPage}
+    />
   );
 };
 
 // Reports
 const ReportsComponent = () => {
-  const [sales, setSales] = useState<Sale[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [sns, setSns] = useState<SerialNumber[]>([]);
-  const [claims, setClaims] = useState<WarrantyClaim[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const [salesPage, setSalesPage] = useState(1);
+  const [salesPerPage, setSalesPerPage] = useState(20);
+
+  const { data: salesData, isLoading: salesLoading } = useQuery({
+    queryKey: ['sales', salesPage, salesPerPage],
+    queryFn: () => getAllSales({ page: salesPage, limit: salesPerPage }),
+  });
+
+  const { data: productsData } = useQuery({
+    queryKey: ['products'],
+    queryFn: () => getAllProducts({ page: 1, limit: 10000 }),
+  });
+
+  const { data: snsData = [] } = useQuery({
+    queryKey: ['serialNumbers'],
+    queryFn: getAllSerialNumbers,
+  });
+
+  const { data: claimsData } = useQuery({
+    queryKey: ['warrantyClaims'],
+    queryFn: () => getAllWarrantyClaims({ page: 1, limit: 10000 }),
+  });
+
+  const sales = salesData?.sales || [];
+  const totalSales = salesData?.total || 0;
+  const totalSalesPages = salesData?.totalPages || 0;
+  const products = productsData?.products || [];
+  const sns = snsData;
+  const claims = claimsData?.claims || [];
+  const loading = salesLoading;
 
   const user = getCurrentUser();
   const staffName = user?.name || 'System';
 
   const handleMarkAsPaid = async (saleId: string) => {
     try {
-      const updatedSale = await markSaleAsPaid(saleId, staffName);
-      setSales(prev => prev.map(s => 
-        s.id === saleId ? { ...s, ...updatedSale, items: s.items } : s
-      ));
+      await markSaleAsPaid(saleId, staffName);
+      await queryClient.invalidateQueries({ queryKey: ['sales'] });
     } catch (error) {
       console.error('Failed to mark as paid:', error);
       throw error;
     }
   };
-
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [salesData, productsData, snsData, claimsData] = await Promise.all([
-          getAllSales(),
-          getAllProducts(),
-          getAllSerialNumbers(),
-          getAllWarrantyClaims()
-        ]);
-        setSales(salesData);
-        setProducts(productsData);
-        setSns(snsData);
-        setClaims(claimsData);
-      } catch (error) {
-        console.error('Failed to load reports data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadData();
-  }, []);
 
   if (loading) {
     return (
@@ -688,28 +756,38 @@ const ReportsComponent = () => {
   }
 
   return (
-    <ReportsView sales={sales} products={products} sns={sns} claims={claims} canViewSensitive={true} onMarkAsPaid={handleMarkAsPaid} />
+    <ReportsView 
+      sales={sales} 
+      products={products} 
+      sns={sns} 
+      claims={claims} 
+      canViewSensitive={true} 
+      onMarkAsPaid={handleMarkAsPaid}
+      currentPage={salesPage}
+      totalPages={totalSalesPages}
+      totalItems={totalSales}
+      onPageChange={setSalesPage}
+      perPage={salesPerPage}
+      onPerPageChange={setSalesPerPage}
+    />
   );
 };
 
 // Audit
 const AuditComponent = () => {
-  const [logs, setLogs] = useState<AuditLog[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const [logsPage, setLogsPage] = useState(1);
+  const [logsPerPage, setLogsPerPage] = useState(20);
 
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const logsData = await getAllAuditLogs();
-        setLogs(logsData);
-      } catch (error) {
-        console.error('Failed to load audit logs:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadData();
-  }, []);
+  const { data: logsData, isLoading: logsLoading } = useQuery({
+    queryKey: ['auditLogs', logsPage, logsPerPage],
+    queryFn: () => getAllAuditLogs({ page: logsPage, limit: logsPerPage }),
+  });
+
+  const logs = logsData?.logs || [];
+  const totalLogs = logsData?.total || 0;
+  const totalLogsPages = logsData?.totalPages || 0;
+  const loading = logsLoading;
 
   if (loading) {
     return (
@@ -833,17 +911,17 @@ const POSComponent = () => {
     const loadData = async () => {
       try {
         const [productsData, snsData, customersData, configData] = await Promise.all([
-          getAllProducts(),
+          getAllProducts({ page: 1, limit: 10000 }),
           getAllSerialNumbers(),
-          getAllCustomers(),
+          getAllCustomers({ page: 1, limit: 10000 }),
           getStoreConfig()
         ]);
-        console.log('Products loaded:', productsData.length);
+        console.log('Products loaded:', productsData.products.length);
         console.log('SNs loaded:', snsData.length);
-        console.log('Customers loaded:', customersData.length);
-        setProducts(productsData);
+        console.log('Customers loaded:', customersData.customers.length);
+        setProducts(productsData.products);
         setSns(snsData);
-        setCustomers(customersData);
+        setCustomers(customersData.customers);
         setStoreConfig(configData);
       } catch (error) {
         console.error('Failed to load POS data:', error);
@@ -879,8 +957,8 @@ const POSComponent = () => {
       ));
 
       // Refresh products to get updated stock
-      const updatedProducts = await getAllProducts();
-      setProducts(updatedProducts);
+      const updatedProducts = await getAllProducts({ page: 1, limit: 10000 });
+      setProducts(updatedProducts.products);
     } catch (error) {
       console.error('Failed to complete sale:', error);
       throw error;

@@ -1,7 +1,7 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { customers, sales, saleItems, serialNumbers, auditLogs, products } from '../db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -43,9 +43,28 @@ const parseDbSale = (row: Record<string, unknown>) => ({
   timestamp: row.timestamp as string,
 });
 
-export const getAllCustomersHandler = async () => {
-  const result = await client.unsafe('SELECT * FROM customers WHERE deleted = false ORDER BY name');
-  return result.map(parseDbCustomer);
+export interface PaginatedCustomersResult {
+  customers: ReturnType<typeof parseDbCustomer>[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export const getAllCustomersHandler = async (page: number = 1, limit: number = 20): Promise<PaginatedCustomersResult> => {
+  const offset = (page - 1) * limit;
+  
+  const result = await client.unsafe(`SELECT * FROM customers WHERE deleted = false ORDER BY name LIMIT ${limit} OFFSET ${offset}`);
+  const countResult = await client.unsafe(`SELECT COUNT(*) as count FROM customers WHERE deleted = false`);
+  const total = Number(countResult[0]?.count) || 0;
+  
+  return {
+    customers: result.map(parseDbCustomer),
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
+  };
 };
 
 export const getCustomerByIdHandler = async (id: string) => {
@@ -157,8 +176,20 @@ export const deleteCustomerHandler = async (id: string, staffName: string = 'Sys
   );
 };
 
-export const getAllSalesHandler = async () => {
-  const salesResult = await client.unsafe('SELECT * FROM sales ORDER BY timestamp DESC');
+export interface PaginatedSalesResult {
+  sales: ReturnType<typeof parseDbSale>[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export const getAllSalesHandler = async (page: number = 1, limit: number = 20): Promise<PaginatedSalesResult> => {
+  const offset = (page - 1) * limit;
+  
+  const salesResult = await client.unsafe(`SELECT * FROM sales ORDER BY timestamp DESC LIMIT ${limit} OFFSET ${offset}`);
+  const countResult = await client.unsafe('SELECT COUNT(*) as count FROM sales');
+  const total = Number(countResult[0]?.count) || 0;
 
   const salesWithItems = await Promise.all(salesResult.map(async (sale: Record<string, unknown>) => {
     const itemsResult = await client.unsafe(
@@ -193,7 +224,13 @@ export const getAllSalesHandler = async () => {
     };
   }));
 
-  return salesWithItems;
+  return {
+    sales: salesWithItems,
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
+  };
 };
 
 export const getSalesByCustomerHandler = async (customerId: string) => {
@@ -307,16 +344,35 @@ export const getSaleItemsBySaleIdHandler = async (saleId: string) => {
   }));
 };
 
-export const getAllWarrantyClaimsHandler = async () => {
-  const result = await client.unsafe('SELECT * FROM warranty_claims ORDER BY created_at DESC');
-  return result.map((row: Record<string, unknown>) => ({
-    id: row.id as string,
-    sn: row.sn as string,
-    productModel: row.product_model as string,
-    issue: row.issue as string,
-    status: row.status as string,
-    createdAt: row.created_at as string,
-  }));
+export interface PaginatedWarrantyClaimsResult {
+  claims: { id: string; sn: string; productModel: string; issue: string; status: string; createdAt: string }[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export const getAllWarrantyClaimsHandler = async (page: number = 1, limit: number = 20): Promise<PaginatedWarrantyClaimsResult> => {
+  const offset = (page - 1) * limit;
+  
+  const result = await client.unsafe(`SELECT * FROM warranty_claims ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`);
+  const countResult = await client.unsafe('SELECT COUNT(*) as count FROM warranty_claims');
+  const total = Number(countResult[0]?.count) || 0;
+  
+  return {
+    claims: result.map((row: Record<string, unknown>) => ({
+      id: row.id as string,
+      sn: row.sn as string,
+      productModel: row.product_model as string,
+      issue: row.issue as string,
+      status: row.status as string,
+      createdAt: row.created_at as string,
+    })),
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
+  };
 };
 
 export const createWarrantyClaimHandler = async (data: {

@@ -1,7 +1,7 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { suppliers } from '../db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -24,9 +24,28 @@ const parseDbSupplier = (row: Record<string, unknown>) => ({
   createdAt: row.created_at as string,
 });
 
-export const getAllSuppliers = async () => {
-  const result = await db.select().from(suppliers).where(eq(suppliers.deleted, false)).orderBy(suppliers.name);
-  return result.map(parseDbSupplier);
+export interface PaginatedSuppliersResult {
+  suppliers: ReturnType<typeof parseDbSupplier>[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export const getAllSuppliers = async (page: number = 1, limit: number = 20): Promise<PaginatedSuppliersResult> => {
+  const offset = (page - 1) * limit;
+  
+  const result = await db.select().from(suppliers).where(eq(suppliers.deleted, false)).orderBy(suppliers.name).limit(limit).offset(offset);
+  const countResult = await db.select({ count: sql<number>`count(*)` }).from(suppliers).where(eq(suppliers.deleted, false));
+  const total = Number(countResult[0]?.count) || 0;
+  
+  return {
+    suppliers: result.map(parseDbSupplier),
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
+  };
 };
 
 export const getSupplierById = async (id: string) => {

@@ -1,14 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { Supplier } from '../../app/types';
-import { getAllSuppliers, createSupplier, updateSupplier, deleteSupplier } from '../../app/services/supplier.service';
+import { createSupplier, updateSupplier, deleteSupplier } from '../../app/services/supplier.service';
 
 interface SuppliersViewProps {
   staffName: string;
+  suppliers?: Supplier[];
+  loading?: boolean;
+  onAddSupplier?: (data: { name: string; phone?: string; address?: string }) => Promise<void>;
+  onUpdateSupplier?: (id: string, data: { name?: string; phone?: string; address?: string }) => Promise<void>;
+  onDeleteSupplier?: (id: string) => Promise<void>;
+  currentPage?: number;
+  totalPages?: number;
+  totalItems?: number;
+  onPageChange?: (page: number) => void;
+  perPage?: number;
+  onPerPageChange?: (perPage: number) => void;
 }
 
-const SuppliersView: React.FC<SuppliersViewProps> = ({ staffName }) => {
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [loading, setLoading] = useState(true);
+const SuppliersView: React.FC<SuppliersViewProps> = ({ staffName, suppliers = [], loading = false, onAddSupplier, onUpdateSupplier, onDeleteSupplier, currentPage = 1, totalPages = 1, totalItems = 0, onPageChange, perPage = 20, onPerPageChange }) => {
   const [error, setError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
@@ -20,35 +29,17 @@ const SuppliersView: React.FC<SuppliersViewProps> = ({ staffName }) => {
     address: '',
   });
 
-  const loadSuppliers = async () => {
-    try {
-      setLoading(true);
-      const data = await getAllSuppliers();
-      setSuppliers(data);
-      setError(null);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load suppliers');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadSuppliers();
-  }, []);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       if (editingSupplier) {
-        await updateSupplier(editingSupplier.id, formData);
+        await onUpdateSupplier?.(editingSupplier.id, formData);
       } else {
-        await createSupplier(formData);
+        await onAddSupplier?.(formData);
       }
       setShowAddModal(false);
       setEditingSupplier(null);
       setFormData({ name: '', phone: '', address: '' });
-      loadSuppliers();
     } catch (err: any) {
       setError(err.message || 'Failed to save supplier');
     }
@@ -67,9 +58,8 @@ const SuppliersView: React.FC<SuppliersViewProps> = ({ staffName }) => {
   const handleDelete = async () => {
     if (!deleteConfirm) return;
     try {
-      await deleteSupplier(deleteConfirm.id);
+      await onDeleteSupplier?.(deleteConfirm.id);
       setDeleteConfirm(null);
-      loadSuppliers();
     } catch (err: any) {
       setError(err.message || 'Failed to delete supplier');
     }

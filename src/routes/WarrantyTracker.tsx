@@ -10,9 +10,15 @@ interface WarrantyTrackerProps {
   onAddClaim: (claim: WarrantyClaim) => void;
   onUpdateStatus: (id: string, status: ClaimStatus) => void;
   notify: (message: string, type: 'success' | 'error' | 'info') => void;
+  currentPage?: number;
+  totalPages?: number;
+  totalItems?: number;
+  onPageChange?: (page: number) => void;
+  perPage?: number;
+  onPerPageChange?: (perPage: number) => void;
 }
 
-const WarrantyTrackerView: React.FC<WarrantyTrackerProps> = ({ sns, sales, claims, onAddClaim, onUpdateStatus, notify }) => {
+const WarrantyTrackerView: React.FC<WarrantyTrackerProps> = ({ sns, sales, claims, onAddClaim, onUpdateStatus, notify, currentPage = 1, totalPages = 1, totalItems = 0, onPageChange, perPage = 20, onPerPageChange }) => {
   const [searchSN, setSearchSN] = useState('');
   const [foundSale, setFoundSale] = useState<Sale | null>(null);
   const [foundItem, setFoundItem] = useState<any>(null);

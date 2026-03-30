@@ -2,8 +2,27 @@ import type { Sale, SaleItem } from '../types';
 
 const API_BASE = '/api';
 
-export const getAllSales = async (): Promise<Sale[]> => {
-  const response = await fetch(`${API_BASE}/sales`);
+export interface PaginatedSalesResult {
+  sales: Sale[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export interface SalesParams {
+  page?: number;
+  limit?: number;
+}
+
+export const getAllSales = async (params: SalesParams = {}): Promise<PaginatedSalesResult> => {
+  const { page = 1, limit = 20 } = params;
+  const queryString = new URLSearchParams({
+    page: page.toString(),
+    limit: limit.toString(),
+  }).toString();
+  
+  const response = await fetch(`${API_BASE}/sales?${queryString}`);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to fetch sales');

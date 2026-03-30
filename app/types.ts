@@ -32,6 +32,7 @@ export interface Product {
   dateRestocked?: string;
   hidden?: number;
   taxEnabled?: boolean;
+  createdAt?: string;
 }
 
 export interface SerialNumber {

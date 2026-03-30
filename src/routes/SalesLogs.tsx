@@ -8,9 +8,16 @@ interface SalesLogsProps {
   sales: Sale[];
   customers: Customer[];
   storeConfig: { storeName: string; address: string; ppnRate: number };
+  currentPage?: number;
+  totalPages?: number;
+  totalItems?: number;
+  onPageChange?: (page: number) => void;
+  perPage?: number;
+  onPerPageChange?: (perPage: number) => void;
+  onMarkAsPaid?: (saleId: string) => Promise<void>;
 }
 
-const SalesLogsView: React.FC<SalesLogsProps> = ({ sales, customers, storeConfig }) => {
+const SalesLogsView: React.FC<SalesLogsProps> = ({ sales, customers, storeConfig, currentPage = 1, totalPages = 1, totalItems = 0, onPageChange, perPage = 20, onPerPageChange, onMarkAsPaid }) => {
   const [search, setSearch] = useState('');
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [customerMap, setCustomerMap] = useState<Record<string, Customer>>({});

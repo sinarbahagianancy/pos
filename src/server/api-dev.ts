@@ -31,14 +31,18 @@ export default function apiServerPlugin() {
 
       server.middlewares.use(async (req, res, next) => {
         if (req.url?.startsWith('/api/')) {
-          const path = req.url.replace('/api/', '');
+          const urlParts = req.url.split('?');
+          const path = urlParts[0].replace('/api/', '');
+          const queryParams = urlParts[1] ? Object.fromEntries(new URLSearchParams(urlParts[1])) : {};
           
           if (path === 'products' && req.method === 'GET') {
             const { getAllProducts } = await import('./products.js');
             try {
-              const products = await getAllProducts();
+              const page = parseInt(queryParams.page as string) || 1;
+              const limit = parseInt(queryParams.limit as string) || 20;
+              const result = await getAllProducts(page, limit);
               res.setHeader('Content-Type', 'application/json');
-              res.end(JSON.stringify(products));
+              res.end(JSON.stringify(result));
               return;
             } catch (error) {
               res.statusCode = 500;
@@ -171,7 +175,7 @@ export default function apiServerPlugin() {
             req.on('end', async () => {
               try {
                 const data = JSON.parse(body);
-                const sns = await createSerialNumbersBulk(data);
+                const sns = await createSerialNumbersBulk(data.inputs, data.supplier, data.date, data.reason);
                 res.setHeader('Content-Type', 'application/json');
                 res.end(JSON.stringify(sns));
               } catch (error) {
@@ -323,7 +327,9 @@ export default function apiServerPlugin() {
           if (path === 'suppliers' && req.method === 'GET') {
             const { getAllSuppliers } = await import('./suppliers.js');
             try {
-              const result = await getAllSuppliers();
+              const page = parseInt(queryParams.page as string) || 1;
+              const limit = parseInt(queryParams.limit as string) || 20;
+              const result = await getAllSuppliers(page, limit);
               res.setHeader('Content-Type', 'application/json');
               res.end(JSON.stringify(result));
             } catch (error) {
@@ -387,7 +393,9 @@ export default function apiServerPlugin() {
           if (path === 'customers' && req.method === 'GET') {
             const { getAllCustomersHandler } = await import('./customers.js');
             try {
-              const result = await getAllCustomersHandler();
+              const page = parseInt(queryParams.page as string) || 1;
+              const limit = parseInt(queryParams.limit as string) || 20;
+              const result = await getAllCustomersHandler(page, limit);
               res.setHeader('Content-Type', 'application/json');
               res.end(JSON.stringify(result));
             } catch (error) {
@@ -457,7 +465,9 @@ export default function apiServerPlugin() {
           if (path === 'sales' && req.method === 'GET') {
             const { getAllSalesHandler } = await import('./customers.js');
             try {
-              const result = await getAllSalesHandler();
+              const page = parseInt(queryParams.page as string) || 1;
+              const limit = parseInt(queryParams.limit as string) || 20;
+              const result = await getAllSalesHandler(page, limit);
               res.setHeader('Content-Type', 'application/json');
               res.end(JSON.stringify(result));
             } catch (error) {
@@ -549,7 +559,9 @@ export default function apiServerPlugin() {
           if (path === 'warranty-claims' && req.method === 'GET') {
             const { getAllWarrantyClaimsHandler } = await import('./customers.js');
             try {
-              const result = await getAllWarrantyClaimsHandler();
+              const page = parseInt(queryParams.page as string) || 1;
+              const limit = parseInt(queryParams.limit as string) || 20;
+              const result = await getAllWarrantyClaimsHandler(page, limit);
               res.setHeader('Content-Type', 'application/json');
               res.end(JSON.stringify(result));
             } catch (error) {
@@ -600,7 +612,9 @@ export default function apiServerPlugin() {
           if (path === 'audit-logs' && req.method === 'GET') {
             const { getAllAuditLogs } = await import('./products.js');
             try {
-              const result = await getAllAuditLogs();
+              const page = parseInt(queryParams.page as string) || 1;
+              const limit = parseInt(queryParams.limit as string) || 20;
+              const result = await getAllAuditLogs(page, limit);
               res.setHeader('Content-Type', 'application/json');
               res.end(JSON.stringify(result));
               return;

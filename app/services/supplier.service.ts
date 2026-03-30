@@ -2,8 +2,27 @@ import type { Supplier } from '../types';
 
 const API_BASE = '/api';
 
-export const getAllSuppliers = async (): Promise<Supplier[]> => {
-  const response = await fetch(`${API_BASE}/suppliers`);
+export interface PaginatedSuppliersResult {
+  suppliers: Supplier[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export interface SuppliersParams {
+  page?: number;
+  limit?: number;
+}
+
+export const getAllSuppliers = async (params: SuppliersParams = {}): Promise<PaginatedSuppliersResult> => {
+  const { page = 1, limit = 20 } = params;
+  const queryString = new URLSearchParams({
+    page: page.toString(),
+    limit: limit.toString(),
+  }).toString();
+  
+  const response = await fetch(`${API_BASE}/suppliers?${queryString}`);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || 'Failed to fetch suppliers');
