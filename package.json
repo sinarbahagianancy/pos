@@ -6,10 +6,11 @@
     "#/*": "./src/*"
   },
   "scripts": {
-    "dev": "vite dev --port 3000",
-    "build": "vite build",
-    "preview": "vite preview",
-    "test": "vitest run"
+    "dev": "vp dev --port 3000",
+    "build": "vp build",
+    "preview": "vp preview",
+    "test": "vp test run",
+    "prepare": "vp config"
   },
   "dependencies": {
     "@effect/io": "^0.41.2",
@@ -51,8 +52,14 @@
     "jsdom": "^27.0.0",
     "react-currency-input-field": "^4.0.5",
     "typescript": "^5.7.2",
-    "vite": "^7.1.7",
+    "vite": "npm:@voidzero-dev/vite-plus-core@latest",
     "vite-tsconfig-paths": "^5.1.4",
-    "vitest": "^3.0.5"
+    "vitest": "npm:@voidzero-dev/vite-plus-test@latest",
+    "vite-plus": "latest"
+  },
+  "packageManager": "npm@11.12.1",
+  "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@latest",
+    "vitest": "npm:@voidzero-dev/vite-plus-test@latest"
   }
 }

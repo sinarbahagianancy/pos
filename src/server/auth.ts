@@ -1,6 +1,4 @@
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
-import 'dotenv/config';
+import { client } from '../db';
 
 // Staff and Store Config types
 interface StaffMember {
@@ -36,9 +34,6 @@ const parseDbStoreConfig = (row: Record<string, unknown>): StoreConfig => ({
   monthlyTarget: typeof row.monthly_target === 'string' ? parseInt(row.monthly_target) : (row.monthly_target as number) || 500000000,
   updatedAt: row.updated_at as string,
 });
-
-const connectionString = process.env.DATABASE_URL || '';
-const client = postgres(connectionString, { prepare: false });
 
 let initialized = false;
 const initializeDatabase = async () => {

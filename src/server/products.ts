@@ -1,5 +1,4 @@
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
+import { client, db } from '../db';
 import { products, serialNumbers, auditLogs } from '../db/schema';
 import { eq, desc, sql } from 'drizzle-orm';
 import { 
@@ -11,23 +10,6 @@ import {
   parseDbSerialNumber,
   Product
 } from '../../app/schemas/product.schema';
-import dotenv from 'dotenv';
-
-dotenv.config();
-
-const connectionString = process.env.DATABASE_URL;
-
-if (!connectionString) {
-  console.error('DATABASE_URL is not set! Available env vars:', Object.keys(process.env).filter(k => k.includes('DATABASE')));
-  throw new Error('DATABASE_URL is not set');
-}
-
-console.log('Connecting to database with URL:', connectionString.substring(0, 50) + '...');
-
-const client = postgres(connectionString, { prepare: false });
-const db = drizzle(client, { schema: { products, serialNumbers, auditLogs } });
-
-console.log('Database client initialized');
 
 // Ensure has_serial_number column exists and fix all products based on actual serial numbers
 try {

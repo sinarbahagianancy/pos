@@ -1,4 +1,4 @@
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig, loadEnv } from 'vite-plus';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import tsconfigPaths from 'vite-tsconfig-paths';
@@ -21,6 +21,10 @@ export default defineConfig(({ mode }) => {
   }
 
   return {
+    staged: {
+      "*": "vp check --fix"
+    },
+    fmt: {},
     plugins: basePlugins,
     server: {
       port: 3000,
@@ -34,5 +38,5 @@ export default defineConfig(({ mode }) => {
     define: {
       'process.env.DATABASE_URL': JSON.stringify(env.DATABASE_URL)
     }
-  };
+  }
 });
