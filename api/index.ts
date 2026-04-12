@@ -577,12 +577,41 @@ const db = {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { method, url } = req;
 
+  // Helper to parse pagination query params
+  const getPageLimit = (req: VercelRequest): { page: number; limit: number } => {
+    const query = req.query as Record<string, string> || {};
+    const page = parseInt(query.page as string) || 1;
+    const limit = parseInt(query.limit as string) || 20;
+    return { page, limit };
+  };
+
+  // Helper to get paginated results
+  const getPaginatedResults = async (table: string, whereClause: string, orderBy: string, page: number, limit: number) => {
+    const offset = (page - 1) * limit;
+    const result = await client.unsafe(`SELECT * FROM ${table} WHERE ${whereClause} ORDER BY ${orderBy} LIMIT ${limit} OFFSET ${offset}`);
+    const countResult = await client.unsafe(`SELECT COUNT(*) as count FROM ${table} WHERE ${whereClause}`);
+    const total = Number(countResult[0]?.count) || 0;
+    return {
+      data: result,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  };
+
   try {
-    // GET /api/products
-    if (method === 'GET' && url === '/api/products') {
-      const result = await client.unsafe('SELECT * FROM products WHERE deleted = false ORDER BY created_at DESC');
-      console.log('[DEBUG] Products fetched, sample row:', JSON.stringify(result[0]));
-      return res.status(200).json(result.map(parseDbProduct));
+    // GET /api/products with pagination
+    if (method === 'GET' && (url === '/api/products' || url?.startsWith('/api/products?'))) {
+      const { page, limit } = getPageLimit(req);
+      const { data, total, totalPages } = await getPaginatedResults('products', 'deleted = false', 'created_at DESC', page, limit);
+      return res.status(200).json({
+        products: data.map(parseDbProduct),
+        total,
+        page,
+        limit,
+        totalPages
+      });
     }
 
     // POST /api/products
@@ -1057,18 +1086,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // === SUPPLIER ROUTES ===
 
-    // GET /api/suppliers
-    if (method === 'GET' && url === '/api/suppliers') {
+    // GET /api/suppliers with pagination
+    if (method === 'GET' && (url === '/api/suppliers' || url?.startsWith('/api/suppliers?'))) {
       await initializeDatabase();
-      const result = await client.unsafe('SELECT * FROM suppliers WHERE deleted = false ORDER BY name');
-      return res.status(200).json(result.map((row: Record<string, unknown>) => ({
-        id: row.id,
-        name: row.name,
-        phone: row.phone,
-        address: row.address,
-        deleted: row.deleted,
-        createdAt: row.created_at,
-      })));
+      const { page, limit } = getPageLimit(req);
+      const offset = (page - 1) * limit;
+      const result = await client.unsafe(`SELECT * FROM suppliers WHERE deleted = false ORDER BY name LIMIT ${limit} OFFSET ${offset}`);
+      const countResult = await client.unsafe('SELECT COUNT(*) as count FROM suppliers WHERE deleted = false');
+      const total = Number(countResult[0]?.count) || 0;
+      return res.status(200).json({
+        suppliers: result.map((row: Record<string, unknown>) => ({
+          id: row.id,
+          name: row.name,
+          phone: row.phone,
+          address: row.address,
+          deleted: row.deleted,
+          createdAt: row.created_at,
+        })),
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      });
     }
 
     // POST /api/suppliers
@@ -1164,11 +1203,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // === CUSTOMER ROUTES ===
 
-    // GET /api/customers
-    if (method === 'GET' && url === '/api/customers') {
+    // GET /api/customers with pagination
+    if (method === 'GET' && (url === '/api/customers' || url?.startsWith('/api/customers?'))) {
       await initializeDatabase();
-      const result = await client.unsafe('SELECT * FROM customers WHERE deleted = false ORDER BY name');
-      return res.status(200).json(result.map(parseDbCustomer));
+      const { page, limit } = getPageLimit(req);
+      const offset = (page - 1) * limit;
+      const result = await client.unsafe(`SELECT * FROM customers WHERE deleted = false ORDER BY name LIMIT ${limit} OFFSET ${offset}`);
+      const countResult = await client.unsafe('SELECT COUNT(*) as count FROM customers WHERE deleted = false');
+      const total = Number(countResult[0]?.count) || 0;
+      return res.status(200).json({
+        customers: result.map(parseDbCustomer),
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      });
     }
 
     // GET /api/customers/:id
@@ -1295,10 +1344,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // === SALES ROUTES ===
 
-    // GET /api/sales
-    if (method === 'GET' && url === '/api/sales') {
+    // GET /api/sales with pagination
+    if (method === 'GET' && (url === '/api/sales' || url?.startsWith('/api/sales?'))) {
       await initializeDatabase();
-      const salesResult = await client.unsafe('SELECT * FROM sales ORDER BY timestamp DESC');
+      const { page, limit } = getPageLimit(req);
+      const offset = (page - 1) * limit;
+      const salesResult = await client.unsafe(`SELECT * FROM sales ORDER BY timestamp DESC LIMIT ${limit} OFFSET ${offset}`);
+      const countResult = await client.unsafe('SELECT COUNT(*) as count FROM sales');
+      const total = Number(countResult[0]?.count) || 0;
+      
       const salesWithItems = await Promise.all(salesResult.map(async (sale: Record<string, unknown>) => {
         const itemsResult = await client.unsafe(
           'SELECT * FROM sale_items WHERE sale_id = $1',
@@ -1309,7 +1363,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           items: itemsResult.map((item: Record<string, unknown>) => parseDbSaleItem(item)),
         };
       }));
-      return res.status(200).json(salesWithItems);
+      
+      return res.status(200).json({
+        sales: salesWithItems,
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      });
     }
 
     // GET /api/sales/customer/:customerId
@@ -1453,11 +1514,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // === WARRANTY CLAIMS ROUTES ===
 
-    // GET /api/warranty-claims
-    if (method === 'GET' && url === '/api/warranty-claims') {
+    // GET /api/warranty-claims with pagination
+    if (method === 'GET' && (url === '/api/warranty-claims' || url?.startsWith('/api/warranty-claims?'))) {
       await initializeDatabase();
-      const result = await client.unsafe('SELECT * FROM warranty_claims ORDER BY created_at DESC');
-      return res.status(200).json(result.map(parseDbWarrantyClaim));
+      const { page, limit } = getPageLimit(req);
+      const offset = (page - 1) * limit;
+      const result = await client.unsafe(`SELECT * FROM warranty_claims ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`);
+      const countResult = await client.unsafe('SELECT COUNT(*) as count FROM warranty_claims');
+      const total = Number(countResult[0]?.count) || 0;
+      return res.status(200).json({
+        claims: result.map(parseDbWarrantyClaim),
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      });
     }
 
     // POST /api/warranty-claims
@@ -1501,10 +1572,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json(parseDbWarrantyClaim(result[0]));
     }
 
-    // GET /api/audit-logs
-    if (method === 'GET' && url === '/api/audit-logs') {
+    // GET /api/audit-logs with pagination
+    if (method === 'GET' && (url === '/api/audit-logs' || url?.startsWith('/api/audit-logs?'))) {
       await initializeDatabase();
-      const result = await db.select('audit_logs');
+      const { page, limit } = getPageLimit(req);
+      const offset = (page - 1) * limit;
+      const result = await client.unsafe(`SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT ${limit} OFFSET ${offset}`);
+      const countResult = await client.unsafe('SELECT COUNT(*) as count FROM audit_logs');
+      const total = Number(countResult[0]?.count) || 0;
       const logs = result.map((row: Record<string, unknown>) => ({
         id: String(row.id),
         staffName: String(row.staff_name),
@@ -1513,10 +1588,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         relatedId: row.related_id ? String(row.related_id) : undefined,
         timestamp: String(row.timestamp),
       }));
-      logs.sort((a, b) => 
-        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-      );
-      return res.status(200).json(logs);
+      return res.status(200).json({
+        logs,
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      });
     }
 
     return res.status(404).json({ error: 'Not found' });
