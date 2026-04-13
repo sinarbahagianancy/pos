@@ -1,6 +1,6 @@
-import type { Supplier } from '../types';
+import type { Supplier } from "../types";
 
-const API_BASE = '/api';
+const API_BASE = "/api";
 
 export interface PaginatedSuppliersResult {
   suppliers: Supplier[];
@@ -15,17 +15,19 @@ export interface SuppliersParams {
   limit?: number;
 }
 
-export const getAllSuppliers = async (params: SuppliersParams = {}): Promise<PaginatedSuppliersResult> => {
+export const getAllSuppliers = async (
+  params: SuppliersParams = {},
+): Promise<PaginatedSuppliersResult> => {
   const { page = 1, limit = 20 } = params;
   const queryString = new URLSearchParams({
     page: page.toString(),
     limit: limit.toString(),
   }).toString();
-  
+
   const response = await fetch(`${API_BASE}/suppliers?${queryString}`);
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to fetch suppliers');
+    throw new Error(error.error || "Failed to fetch suppliers");
   }
   return response.json();
 };
@@ -36,40 +38,43 @@ export const createSupplier = async (input: {
   address?: string;
 }): Promise<Supplier> => {
   const response = await fetch(`${API_BASE}/suppliers`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to create supplier');
+    throw new Error(error.error || "Failed to create supplier");
   }
   return response.json();
 };
 
-export const updateSupplier = async (id: string, input: {
-  name?: string;
-  phone?: string;
-  address?: string;
-}): Promise<Supplier> => {
+export const updateSupplier = async (
+  id: string,
+  input: {
+    name?: string;
+    phone?: string;
+    address?: string;
+  },
+): Promise<Supplier> => {
   const response = await fetch(`${API_BASE}/suppliers/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to update supplier');
+    throw new Error(error.error || "Failed to update supplier");
   }
   return response.json();
 };
 
 export const deleteSupplier = async (id: string): Promise<void> => {
   const response = await fetch(`${API_BASE}/suppliers/${id}`, {
-    method: 'DELETE',
+    method: "DELETE",
   });
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to delete supplier');
+    throw new Error(error.error || "Failed to delete supplier");
   }
 };

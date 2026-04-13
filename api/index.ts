@@ -1,115 +1,120 @@
-import type { VercelRequest, VercelResponse} from '@vercel/node';
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
-import { eq } from 'drizzle-orm';
+import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+import { eq } from "drizzle-orm";
 
-const connectionString = process.env.DATABASE_URL || '';
+const connectionString = process.env.DATABASE_URL || "";
 
 const client = postgres(connectionString, { prepare: false });
 
 // Inline schema definitions for API route
 const productsTable = {
-  tableName: 'products',
+  tableName: "products",
   columns: {
-    id: { name: 'id' },
-    brand: { name: 'brand' },
-    model: { name: 'model' },
-    category: { name: 'category' },
-    mount: { name: 'mount' },
-    condition: { name: 'condition' },
-    price: { name: 'price' },
-    cogs: { name: 'cogs' },
-    warrantyMonths: { name: 'warranty_months' },
-    warrantyType: { name: 'warranty_type' },
-    stock: { name: 'stock' },
-    createdAt: { name: 'created_at' },
-    updatedAt: { name: 'updated_at' },
-  }
+    id: { name: "id" },
+    brand: { name: "brand" },
+    model: { name: "model" },
+    category: { name: "category" },
+    mount: { name: "mount" },
+    condition: { name: "condition" },
+    price: { name: "price" },
+    cogs: { name: "cogs" },
+    warrantyMonths: { name: "warranty_months" },
+    warrantyType: { name: "warranty_type" },
+    stock: { name: "stock" },
+    createdAt: { name: "created_at" },
+    updatedAt: { name: "updated_at" },
+  },
 };
 
 const serialNumbersTable = {
-  tableName: 'serial_numbers',
+  tableName: "serial_numbers",
   columns: {
-    sn: { name: 'sn' },
-    productId: { name: 'product_id' },
-    status: { name: 'status' },
-    createdAt: { name: 'created_at' },
-  }
+    sn: { name: "sn" },
+    productId: { name: "product_id" },
+    status: { name: "status" },
+    createdAt: { name: "created_at" },
+  },
 };
 
 const auditLogsTable = {
-  tableName: 'audit_logs',
+  tableName: "audit_logs",
   columns: {
-    id: { name: 'id' },
-    staffName: { name: 'staff_name' },
-    action: { name: 'action' },
-    details: { name: 'details' },
-    relatedId: { name: 'related_id' },
-    timestamp: { name: 'timestamp' },
-  }
+    id: { name: "id" },
+    staffName: { name: "staff_name" },
+    action: { name: "action" },
+    details: { name: "details" },
+    relatedId: { name: "related_id" },
+    timestamp: { name: "timestamp" },
+  },
 };
 
 const customersTable = {
-  tableName: 'customers',
+  tableName: "customers",
   columns: {
-    id: { name: 'id' },
-    name: { name: 'name' },
-    phone: { name: 'phone' },
-    email: { name: 'email' },
-    address: { name: 'address' },
-    npwp: { name: 'npwp' },
-    loyaltyPoints: { name: 'loyalty_points' },
-    createdAt: { name: 'created_at' },
-    updatedAt: { name: 'updated_at' },
-  }
+    id: { name: "id" },
+    name: { name: "name" },
+    phone: { name: "phone" },
+    email: { name: "email" },
+    address: { name: "address" },
+    npwp: { name: "npwp" },
+    loyaltyPoints: { name: "loyalty_points" },
+    createdAt: { name: "created_at" },
+    updatedAt: { name: "updated_at" },
+  },
 };
 
 const salesTable = {
-  tableName: 'sales',
+  tableName: "sales",
   columns: {
-    id: { name: 'id' },
-    customerId: { name: 'customer_id' },
-    customerName: { name: 'customer_name' },
-    subtotal: { name: 'subtotal' },
-    tax: { name: 'tax' },
-    total: { name: 'total' },
-    paymentMethod: { name: 'payment_method' },
-    staffName: { name: 'staff_name' },
-    timestamp: { name: 'timestamp' },
-  }
+    id: { name: "id" },
+    customerId: { name: "customer_id" },
+    customerName: { name: "customer_name" },
+    subtotal: { name: "subtotal" },
+    tax: { name: "tax" },
+    total: { name: "total" },
+    paymentMethod: { name: "payment_method" },
+    staffName: { name: "staff_name" },
+    timestamp: { name: "timestamp" },
+  },
 };
 
 const warrantyClaimsTable = {
-  tableName: 'warranty_claims',
+  tableName: "warranty_claims",
   columns: {
-    id: { name: 'id' },
-    sn: { name: 'sn' },
-    productModel: { name: 'product_model' },
-    issue: { name: 'issue' },
-    status: { name: 'status' },
-    createdAt: { name: 'created_at' },
-  }
+    id: { name: "id" },
+    sn: { name: "sn" },
+    productModel: { name: "product_model" },
+    issue: { name: "issue" },
+    status: { name: "status" },
+    createdAt: { name: "created_at" },
+  },
 };
 
 const saleItemsTable = {
-  tableName: 'sale_items',
+  tableName: "sale_items",
   columns: {
-    id: { name: 'id' },
-    saleId: { name: 'sale_id' },
-    productId: { name: 'product_id' },
-    model: { name: 'model' },
-    sn: { name: 'sn' },
-    price: { name: 'price' },
-    cogs: { name: 'cogs' },
-    warrantyExpiry: { name: 'warranty_expiry' },
-  }
+    id: { name: "id" },
+    saleId: { name: "sale_id" },
+    productId: { name: "product_id" },
+    model: { name: "model" },
+    sn: { name: "sn" },
+    price: { name: "price" },
+    cogs: { name: "cogs" },
+    warrantyExpiry: { name: "warranty_expiry" },
+  },
 };
 
-type ProductCategory = 'Body' | 'Lens' | 'Accessory';
-type ConditionType = 'New' | 'Used';
-type WarrantyType = 'Official Sony Indonesia' | 'Official Canon Indonesia' | 'Official Fujifilm Indonesia' | 'Distributor' | 'Store Warranty';
-type MountType = 'E-mount' | 'RF-mount' | 'X-mount' | 'L-mount' | 'Z-mount' | 'M-mount' | undefined;
-type SNStatus = 'In Stock' | 'Sold' | 'Claimed';
+type ProductCategory = "Body" | "Lens" | "Accessory";
+type ConditionType = "New" | "Used";
+type WarrantyType =
+  | "Official Sony Indonesia"
+  | "Official Canon Indonesia"
+  | "Official Fujifilm Indonesia"
+  | "Distributor"
+  | "Store Warranty";
+type MountType = "E-mount" | "RF-mount" | "X-mount" | "L-mount" | "Z-mount" | "M-mount" | undefined;
+type SNStatus = "In Stock" | "Sold" | "Claimed";
 
 interface Product {
   id: string;
@@ -148,7 +153,7 @@ interface Customer {
   updatedAt: string;
 }
 
-type PaymentMethod = 'Cash' | 'Debit' | 'Credit Card' | 'QRIS' | 'Transfer';
+type PaymentMethod = "Cash" | "Debit" | "Credit Card" | "QRIS" | "Transfer";
 
 interface SaleItem {
   productId: string;
@@ -176,7 +181,7 @@ interface Sale {
   timestamp: string;
 }
 
-type ClaimStatus = 'Pending' | 'Ongoing' | 'Repairing' | 'Ready for Pickup' | 'Completed';
+type ClaimStatus = "Pending" | "Ongoing" | "Repairing" | "Ready for Pickup" | "Completed";
 
 interface WarrantyClaim {
   id: string;
@@ -206,12 +211,15 @@ const parseDbProduct = (row: Record<string, unknown>): Product => {
     category: row.category as ProductCategory,
     mount: row.mount as MountType,
     condition: row.condition as ConditionType,
-    price: typeof row.price === 'string' ? parseFloat(row.price) : (row.price as number),
-    cogs: typeof row.cogs === 'string' ? parseFloat(row.cogs) : (row.cogs as number),
+    price: typeof row.price === "string" ? parseFloat(row.price) : (row.price as number),
+    cogs: typeof row.cogs === "string" ? parseFloat(row.cogs) : (row.cogs as number),
     warrantyMonths: row.warranty_months as number,
     warrantyType: row.warranty_type as WarrantyType,
     stock: row.stock as number,
-    hasSerialNumber: row.has_serial_number === true || row.has_serial_number === 1 || row.has_serial_number === 'true',
+    hasSerialNumber:
+      row.has_serial_number === true ||
+      row.has_serial_number === 1 ||
+      row.has_serial_number === "true",
     supplier: row.supplier as string | undefined,
     dateRestocked: row.date_restocked as string | undefined,
     hidden: row.hidden as number | undefined,
@@ -232,7 +240,10 @@ const parseDbCustomer = (row: Record<string, unknown>): Customer => ({
   email: row.email as string | undefined,
   address: row.address as string | undefined,
   npwp: row.npwp as string | undefined,
-  loyaltyPoints: typeof row.loyalty_points === 'string' ? parseInt(row.loyalty_points) : (row.loyalty_points as number),
+  loyaltyPoints:
+    typeof row.loyalty_points === "string"
+      ? parseInt(row.loyalty_points)
+      : (row.loyalty_points as number),
   createdAt: row.created_at as string,
   updatedAt: row.updated_at as string,
 });
@@ -242,10 +253,10 @@ const parseDbSale = (row: Record<string, unknown>): Sale => ({
   customerId: row.customer_id as string,
   customerName: row.customer_name as string,
   items: [],
-  subtotal: typeof row.subtotal === 'string' ? parseFloat(row.subtotal) : (row.subtotal as number),
-  tax: typeof row.tax === 'string' ? parseFloat(row.tax) : (row.tax as number),
+  subtotal: typeof row.subtotal === "string" ? parseFloat(row.subtotal) : (row.subtotal as number),
+  tax: typeof row.tax === "string" ? parseFloat(row.tax) : (row.tax as number),
   taxEnabled: row.tax_enabled as boolean,
-  total: typeof row.total === 'string' ? parseFloat(row.total) : (row.total as number),
+  total: typeof row.total === "string" ? parseFloat(row.total) : (row.total as number),
   paymentMethod: row.payment_method as PaymentMethod,
   staffName: row.staff_name as string,
   notes: row.notes as string | undefined,
@@ -270,8 +281,8 @@ const parseDbSaleItem = (row: Record<string, unknown>): SaleItem => ({
   productId: row.product_id as string,
   model: row.model as string,
   sn: row.sn as string,
-  price: typeof row.price === 'string' ? parseFloat(row.price) : (row.price as number),
-  cogs: typeof row.cogs === 'string' ? parseFloat(row.cogs) : (row.cogs as number),
+  price: typeof row.price === "string" ? parseFloat(row.price) : (row.price as number),
+  cogs: typeof row.cogs === "string" ? parseFloat(row.cogs) : (row.cogs as number),
   warrantyExpiry: row.warranty_expiry as string,
 });
 
@@ -279,7 +290,7 @@ const parseDbSaleItem = (row: Record<string, unknown>): SaleItem => ({
 interface StaffMember {
   id: string;
   name: string;
-  role: 'Admin' | 'Staff';
+  role: "Admin" | "Staff";
   createdAt: string;
 }
 
@@ -288,7 +299,7 @@ interface StoreConfig {
   storeName: string;
   address: string;
   ppnRate: number;
-  currency: 'IDR' | 'USD';
+  currency: "IDR" | "USD";
   monthlyTarget: number;
   updatedAt: string;
 }
@@ -296,7 +307,7 @@ interface StoreConfig {
 const parseDbStaffMember = (row: Record<string, unknown>): StaffMember => ({
   id: row.id as string,
   name: row.name as string,
-  role: row.role as 'Admin' | 'Staff',
+  role: row.role as "Admin" | "Staff",
   createdAt: row.created_at as string,
 });
 
@@ -304,9 +315,12 @@ const parseDbStoreConfig = (row: Record<string, unknown>): StoreConfig => ({
   id: row.id as number,
   storeName: row.store_name as string,
   address: row.address as string,
-  ppnRate: typeof row.ppn_rate === 'string' ? parseFloat(row.ppn_rate) : (row.ppn_rate as number),
-  currency: row.currency as 'IDR' | 'USD',
-  monthlyTarget: typeof row.monthly_target === 'string' ? parseInt(row.monthly_target) : (row.monthly_target as number) || 500000000,
+  ppnRate: typeof row.ppn_rate === "string" ? parseFloat(row.ppn_rate) : (row.ppn_rate as number),
+  currency: row.currency as "IDR" | "USD",
+  monthlyTarget:
+    typeof row.monthly_target === "string"
+      ? parseInt(row.monthly_target)
+      : (row.monthly_target as number) || 500000000,
   updatedAt: row.updated_at as string,
 });
 
@@ -314,13 +328,16 @@ const parseDbStoreConfig = (row: Record<string, unknown>): StoreConfig => ({
 let initialized = false;
 const initializeDatabase = async () => {
   if (initialized) return;
-  
+
   try {
     // Add password_hash column if not exists
-    await client.unsafe(`ALTER TABLE staff_members ADD COLUMN IF NOT EXISTS password_hash TEXT`).catch(() => {});
-    
+    await client
+      .unsafe(`ALTER TABLE staff_members ADD COLUMN IF NOT EXISTS password_hash TEXT`)
+      .catch(() => {});
+
     // Create suppliers table if not exists
-    await client.unsafe(`
+    await client
+      .unsafe(`
       CREATE TABLE IF NOT EXISTS suppliers (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         name text NOT NULL UNIQUE,
@@ -329,68 +346,109 @@ const initializeDatabase = async () => {
         deleted boolean DEFAULT false,
         created_at timestamp DEFAULT NOW()
       )
-    `).catch(() => {});
-    
+    `)
+      .catch(() => {});
+
     // Add new columns to products if not exists
-    await client.unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS has_serial_number boolean DEFAULT true`).catch(() => {});
-    await client.unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS supplier text`).catch(() => {});
-    await client.unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS date_restocked timestamp`).catch(() => {});
-    await client.unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS tax_enabled boolean DEFAULT true`).catch(() => {});
+    await client
+      .unsafe(
+        `ALTER TABLE products ADD COLUMN IF NOT EXISTS has_serial_number boolean DEFAULT true`,
+      )
+      .catch(() => {});
+    await client
+      .unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS supplier text`)
+      .catch(() => {});
+    await client
+      .unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS date_restocked timestamp`)
+      .catch(() => {});
+    await client
+      .unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS tax_enabled boolean DEFAULT true`)
+      .catch(() => {});
     await client.unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS notes text`).catch(() => {});
-    
+
     // Add new columns to sales if not exists
-    await client.unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS tax_enabled boolean DEFAULT true`).catch(() => {});
+    await client
+      .unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS tax_enabled boolean DEFAULT true`)
+      .catch(() => {});
     await client.unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS notes text`).catch(() => {});
-    await client.unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS due_date timestamp with time zone`).catch(() => {});
-    await client.unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS is_paid boolean DEFAULT false`).catch(() => {});
-    await client.unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS paid_at timestamp with time zone`).catch(() => {});
-    
+    await client
+      .unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS due_date timestamp with time zone`)
+      .catch(() => {});
+    await client
+      .unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS is_paid boolean DEFAULT false`)
+      .catch(() => {});
+    await client
+      .unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS paid_at timestamp with time zone`)
+      .catch(() => {});
+
     // Add Utang to payment_method enum
-    await client.unsafe(`ALTER TYPE payment_method ADD VALUE IF NOT EXISTS 'Utang'`).catch(() => {});
-    
+    await client
+      .unsafe(`ALTER TYPE payment_method ADD VALUE IF NOT EXISTS 'Utang'`)
+      .catch(() => {});
+
     // Add created_at to warranty_claims if not exists (missing from original migration)
-    await client.unsafe(`ALTER TABLE warranty_claims ADD COLUMN IF NOT EXISTS created_at timestamp with time zone DEFAULT now()`).catch(() => {});
-    
+    await client
+      .unsafe(
+        `ALTER TABLE warranty_claims ADD COLUMN IF NOT EXISTS created_at timestamp with time zone DEFAULT now()`,
+      )
+      .catch(() => {});
+
     // Create default admin accounts if they don't exist
     const defaultAdmins = [
-      { name: 'Nancy', password: 'nancy123', role: 'Admin' },
-      { name: 'Mami', password: 'mami123', role: 'Admin' },
-      { name: 'Vita', password: 'vita123', role: 'Admin' },
+      { name: "Nancy", password: "nancy123", role: "Admin" },
+      { name: "Mami", password: "mami123", role: "Admin" },
+      { name: "Vita", password: "vita123", role: "Admin" },
     ];
-    
+
     for (const admin of defaultAdmins) {
       const hash = btoa(admin.password); // Simple base64 encoding for demo
-      await client.unsafe(`
+      await client
+        .unsafe(
+          `
         INSERT INTO staff_members (name, role, password_hash) 
         VALUES ($1, $2, $3)
         ON CONFLICT (name) DO UPDATE SET role = EXCLUDED.role
-      `, [admin.name, admin.role, hash]).catch(() => {});
+      `,
+          [admin.name, admin.role, hash],
+        )
+        .catch(() => {});
     }
-    
+
     // Create default store config if not exists
-    await client.unsafe(`
+    await client
+      .unsafe(`
       INSERT INTO store_config (id, store_name, address, ppn_rate, currency)
       VALUES (1, 'Sinar Bahagia Surabaya', 'Jl. Kramat Gantung No. 63, Genteng, Surabaya, Jawa Timur 60174, Indonesia', 11.00, 'IDR')
       ON CONFLICT (id) DO NOTHING
-    `).catch(() => {});
-    
+    `)
+      .catch(() => {});
+
     initialized = true;
-    console.log('Database initialized');
+    console.log("Database initialized");
   } catch (error) {
-    console.error('Failed to initialize database:', error);
+    console.error("Failed to initialize database:", error);
   }
 };
 
 // Validation functions
-const ProductCategories: ProductCategory[] = ['Body', 'Lens', 'Accessory'];
-const ConditionTypes: ConditionType[] = ['New', 'Used'];
-const WarrantyTypes: WarrantyType[] = ['Official Sony Indonesia', 'Official Canon Indonesia', 'Official Fujifilm Indonesia', 'Distributor', 'Store Warranty'];
-const MountTypes: MountType[] = ['E-mount', 'RF-mount', 'X-mount', 'L-mount', 'Z-mount', 'M-mount'];
+const ProductCategories: ProductCategory[] = ["Body", "Lens", "Accessory"];
+const ConditionTypes: ConditionType[] = ["New", "Used"];
+const WarrantyTypes: WarrantyType[] = [
+  "Official Sony Indonesia",
+  "Official Canon Indonesia",
+  "Official Fujifilm Indonesia",
+  "Distributor",
+  "Store Warranty",
+];
+const MountTypes: MountType[] = ["E-mount", "RF-mount", "X-mount", "L-mount", "Z-mount", "M-mount"];
 
-const isProductCategory = (v: unknown): v is ProductCategory => ProductCategories.includes(v as ProductCategory);
-const isConditionType = (v: unknown): v is ConditionType => ConditionTypes.includes(v as ConditionType);
+const isProductCategory = (v: unknown): v is ProductCategory =>
+  ProductCategories.includes(v as ProductCategory);
+const isConditionType = (v: unknown): v is ConditionType =>
+  ConditionTypes.includes(v as ConditionType);
 const isWarrantyType = (v: unknown): v is WarrantyType => WarrantyTypes.includes(v as WarrantyType);
-const isMountType = (v: unknown): v is MountType => v === undefined || MountTypes.includes(v as MountType);
+const isMountType = (v: unknown): v is MountType =>
+  v === undefined || MountTypes.includes(v as MountType);
 
 interface CreateProductInput {
   id: string;
@@ -437,39 +495,46 @@ interface CreateSerialNumberInput {
 }
 
 const validateCreateProductInput = (input: unknown): CreateProductInput => {
-  if (!input || typeof input !== 'object') throw new Error('Invalid input');
+  if (!input || typeof input !== "object") throw new Error("Invalid input");
   const obj = input as Record<string, unknown>;
-  
-  if (typeof obj.id !== 'string' || !obj.id) throw new Error('Invalid id');
-  if (typeof obj.brand !== 'string' || !obj.brand) throw new Error('Invalid brand');
-  if (typeof obj.model !== 'string' || !obj.model) throw new Error('Invalid model');
-  if (!isProductCategory(obj.category)) throw new Error('Invalid category');
-  if (!isConditionType(obj.condition)) throw new Error('Invalid condition');
-  if (typeof obj.price !== 'number' || obj.price <= 0) throw new Error('Invalid price');
-  if (typeof obj.cogs !== 'number' || obj.cogs < 0) throw new Error('Invalid cogs');
-  if (typeof obj.warrantyMonths !== 'number' || obj.warrantyMonths < 0) throw new Error('Invalid warrantyMonths');
-  if (!isWarrantyType(obj.warrantyType)) throw new Error('Invalid warrantyType');
-  
+
+  if (typeof obj.id !== "string" || !obj.id) throw new Error("Invalid id");
+  if (typeof obj.brand !== "string" || !obj.brand) throw new Error("Invalid brand");
+  if (typeof obj.model !== "string" || !obj.model) throw new Error("Invalid model");
+  if (!isProductCategory(obj.category)) throw new Error("Invalid category");
+  if (!isConditionType(obj.condition)) throw new Error("Invalid condition");
+  if (typeof obj.price !== "number" || obj.price <= 0) throw new Error("Invalid price");
+  if (typeof obj.cogs !== "number" || obj.cogs < 0) throw new Error("Invalid cogs");
+  if (typeof obj.warrantyMonths !== "number" || obj.warrantyMonths < 0)
+    throw new Error("Invalid warrantyMonths");
+  if (!isWarrantyType(obj.warrantyType)) throw new Error("Invalid warrantyType");
+
   const hasSerialNumber = obj.hasSerialNumber === true;
-  
-  if (hasSerialNumber && (!obj.serialNumbers || !Array.isArray(obj.serialNumbers) || obj.serialNumbers.length === 0)) {
-    throw new Error('serialNumbers is required for products with serial numbers');
+
+  if (
+    hasSerialNumber &&
+    (!obj.serialNumbers || !Array.isArray(obj.serialNumbers) || obj.serialNumbers.length === 0)
+  ) {
+    throw new Error("serialNumbers is required for products with serial numbers");
   }
-  
-  if (!hasSerialNumber && (!obj.quantity || typeof obj.quantity !== 'number' || obj.quantity <= 0)) {
-    throw new Error('quantity is required for products without serial numbers');
+
+  if (
+    !hasSerialNumber &&
+    (!obj.quantity || typeof obj.quantity !== "number" || obj.quantity <= 0)
+  ) {
+    throw new Error("quantity is required for products without serial numbers");
   }
-  
+
   if (!obj.supplier) {
-    throw new Error('supplier is required');
+    throw new Error("supplier is required");
   }
-  
+
   return {
     id: obj.id as string,
     brand: obj.brand as string,
     model: obj.model as string,
     category: obj.category as ProductCategory,
-    mount: obj.mount === '' || obj.mount === null ? undefined : obj.mount as MountType,
+    mount: obj.mount === "" || obj.mount === null ? undefined : (obj.mount as MountType),
     condition: obj.condition as ConditionType,
     price: obj.price as number,
     cogs: obj.cogs as number,
@@ -485,17 +550,17 @@ const validateCreateProductInput = (input: unknown): CreateProductInput => {
 };
 
 const validateUpdateProductInput = (input: unknown): UpdateProductInput => {
-  if (!input || typeof input !== 'object') throw new Error('Invalid input');
+  if (!input || typeof input !== "object") throw new Error("Invalid input");
   const obj = input as Record<string, unknown>;
   const result: UpdateProductInput = {};
-  
+
   if (obj.brand !== undefined) result.brand = obj.brand as string;
   if (obj.model !== undefined) result.model = obj.model as string;
   if (obj.category !== undefined) result.category = obj.category as ProductCategory;
   if (obj.mount !== undefined) {
     // Allow empty string to be treated as undefined (no mount)
     const mountVal = obj.mount;
-    result.mount = (mountVal === '' || mountVal === null) ? undefined : mountVal as MountType;
+    result.mount = mountVal === "" || mountVal === null ? undefined : (mountVal as MountType);
   }
   if (obj.condition !== undefined) result.condition = obj.condition as ConditionType;
   if (obj.price !== undefined) result.price = obj.price as number;
@@ -504,74 +569,87 @@ const validateUpdateProductInput = (input: unknown): UpdateProductInput => {
   if (obj.warrantyType !== undefined) result.warrantyType = obj.warrantyType as WarrantyType;
   if (obj.stock !== undefined) result.stock = obj.stock as number;
   if (obj.taxEnabled !== undefined) result.taxEnabled = obj.taxEnabled as boolean;
-  
+
   return result;
 };
 
 const validateStockAdjustmentInput = (input: unknown): StockAdjustmentInput => {
-  if (!input || typeof input !== 'object') throw new Error('Invalid input');
+  if (!input || typeof input !== "object") throw new Error("Invalid input");
   const obj = input as Record<string, unknown>;
-  
-  if (typeof obj.productId !== 'string' || !obj.productId) throw new Error('Invalid productId');
-  if (typeof obj.newStock !== 'number' || obj.newStock < 0) throw new Error('Invalid newStock');
-  if (typeof obj.reason !== 'string' || !obj.reason) throw new Error('Invalid reason');
-  
+
+  if (typeof obj.productId !== "string" || !obj.productId) throw new Error("Invalid productId");
+  if (typeof obj.newStock !== "number" || obj.newStock < 0) throw new Error("Invalid newStock");
+  if (typeof obj.reason !== "string" || !obj.reason) throw new Error("Invalid reason");
+
   return { productId: obj.productId, newStock: obj.newStock, reason: obj.reason };
 };
 
 const validateCreateSerialNumberInput = (input: unknown): CreateSerialNumberInput => {
-  if (!input || typeof input !== 'object') throw new Error('Invalid input');
+  if (!input || typeof input !== "object") throw new Error("Invalid input");
   const obj = input as Record<string, unknown>;
-  
-  if (typeof obj.sn !== 'string' || !obj.sn) throw new Error('Invalid sn');
-  if (typeof obj.productId !== 'string' || !obj.productId) throw new Error('Invalid productId');
-  
+
+  if (typeof obj.sn !== "string" || !obj.sn) throw new Error("Invalid sn");
+  if (typeof obj.productId !== "string" || !obj.productId) throw new Error("Invalid productId");
+
   return { sn: obj.sn, productId: obj.productId };
 };
 
 // DB Query helpers
 const db = {
-  select: async (table: string, columns: string[] = ['*'], where?: { column: string; value: unknown }) => {
-    const cols = columns.join(', ');
+  select: async (
+    table: string,
+    columns: string[] = ["*"],
+    where?: { column: string; value: unknown },
+  ) => {
+    const cols = columns.join(", ");
     let query = `SELECT ${cols} FROM ${table}`;
     const params: (string | number | boolean | null)[] = [];
-    
+
     if (where) {
       params.push(where.value as string | number | boolean | null);
       query += ` WHERE ${where.column} = $${params.length}`;
     }
-    
+
     const result = await client.unsafe(query, params);
     return result;
   },
-  
+
   insert: async (table: string, data: Record<string, unknown>[]) => {
     if (data.length === 0) return [];
-    
+
     const keys = Object.keys(data[0]);
-    const values = data.map(d => keys.map(k => d[k]));
-    const placeholders = values.map((_, i) => 
-      `(${keys.map((_, j) => `$${i * keys.length + j + 1}`).join(', ')})`
-    ).join(', ');
-    
-    const query = `INSERT INTO ${table} (${keys.join(', ')}) VALUES ${placeholders} RETURNING *`;
+    const values = data.map((d) => keys.map((k) => d[k]));
+    const placeholders = values
+      .map((_, i) => `(${keys.map((_, j) => `$${i * keys.length + j + 1}`).join(", ")})`)
+      .join(", ");
+
+    const query = `INSERT INTO ${table} (${keys.join(", ")}) VALUES ${placeholders} RETURNING *`;
     const flatValues = values.flat() as (string | number | boolean | null)[];
     const result = await client.unsafe(query, flatValues);
     return result;
   },
-  
-  update: async (table: string, data: Record<string, unknown>, where: { column: string; value: unknown }) => {
-    const sets = Object.keys(data).map((k, i) => `${k} = $${i + 1}`).join(', ');
+
+  update: async (
+    table: string,
+    data: Record<string, unknown>,
+    where: { column: string; value: unknown },
+  ) => {
+    const sets = Object.keys(data)
+      .map((k, i) => `${k} = $${i + 1}`)
+      .join(", ");
     const query = `UPDATE ${table} SET ${sets}, updated_at = NOW() WHERE ${where.column} = $${Object.keys(data).length + 1} RETURNING *`;
-    const result = await client.unsafe(query, [...Object.values(data) as (string | number | boolean | null)[], where.value as string | number | boolean | null]);
+    const result = await client.unsafe(query, [
+      ...(Object.values(data) as (string | number | boolean | null)[]),
+      where.value as string | number | boolean | null,
+    ]);
     return result;
   },
-  
+
   delete: async (table: string, where: { column: string; value: unknown }) => {
     const query = `DELETE FROM ${table} WHERE ${where.column} = $1`;
     await client.unsafe(query, [where.value as string | number | boolean | null]);
     return [];
-  }
+  },
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -579,17 +657,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Helper to parse pagination query params
   const getPageLimit = (req: VercelRequest): { page: number; limit: number } => {
-    const query = req.query as Record<string, string> || {};
+    const query = (req.query as Record<string, string>) || {};
     const page = parseInt(query.page as string) || 1;
     const limit = parseInt(query.limit as string) || 20;
     return { page, limit };
   };
 
   // Helper to get paginated results
-  const getPaginatedResults = async (table: string, whereClause: string, orderBy: string, page: number, limit: number) => {
+  const getPaginatedResults = async (
+    table: string,
+    whereClause: string,
+    orderBy: string,
+    page: number,
+    limit: number,
+  ) => {
     const offset = (page - 1) * limit;
-    const result = await client.unsafe(`SELECT * FROM ${table} WHERE ${whereClause} ORDER BY ${orderBy} LIMIT ${limit} OFFSET ${offset}`);
-    const countResult = await client.unsafe(`SELECT COUNT(*) as count FROM ${table} WHERE ${whereClause}`);
+    const result = await client.unsafe(
+      `SELECT * FROM ${table} WHERE ${whereClause} ORDER BY ${orderBy} LIMIT ${limit} OFFSET ${offset}`,
+    );
+    const countResult = await client.unsafe(
+      `SELECT COUNT(*) as count FROM ${table} WHERE ${whereClause}`,
+    );
     const total = Number(countResult[0]?.count) || 0;
     return {
       data: result,
@@ -602,91 +690,108 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     // GET /api/products with pagination
-    if (method === 'GET' && (url === '/api/products' || url?.startsWith('/api/products?'))) {
+    if (method === "GET" && (url === "/api/products" || url?.startsWith("/api/products?"))) {
       const { page, limit } = getPageLimit(req);
-      const { data, total, totalPages } = await getPaginatedResults('products', 'deleted = false', 'created_at DESC', page, limit);
+      const { data, total, totalPages } = await getPaginatedResults(
+        "products",
+        "deleted = false",
+        "created_at DESC",
+        page,
+        limit,
+      );
       return res.status(200).json({
         products: data.map(parseDbProduct),
         total,
         page,
         limit,
-        totalPages
+        totalPages,
       });
     }
 
     // POST /api/products
-    if (method === 'POST' && url === '/api/products') {
-      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+    if (method === "POST" && url === "/api/products") {
+      const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const validated = validateCreateProductInput(input);
-      const staffName = (input as Record<string, unknown>)?.staffName as string || 'System';
+      const staffName = ((input as Record<string, unknown>)?.staffName as string) || "System";
 
       const hasSerialNumber = validated.hasSerialNumber === true;
       const stockCount = hasSerialNumber
-        ? (validated.serialNumbers?.length || 0)
-        : (validated.quantity || 0);
+        ? validated.serialNumbers?.length || 0
+        : validated.quantity || 0;
 
-      const result = await db.insert('products', [{
-        id: validated.id,
-        brand: validated.brand,
-        model: validated.model,
-        category: validated.category,
-        mount: validated.mount ?? null,
-        condition: validated.condition,
-        price: validated.price.toString(),
-        cogs: validated.cogs.toString(),
-        warranty_months: validated.warrantyMonths,
-        warranty_type: validated.warrantyType,
-        stock: stockCount,
-        has_serial_number: hasSerialNumber,
-        supplier: validated.supplier,
-        date_restocked: validated.dateRestocked ? new Date(validated.dateRestocked) : new Date(),
-        tax_enabled: validated.taxEnabled ?? true,
-      }]);
+      const result = await db.insert("products", [
+        {
+          id: validated.id,
+          brand: validated.brand,
+          model: validated.model,
+          category: validated.category,
+          mount: validated.mount ?? null,
+          condition: validated.condition,
+          price: validated.price.toString(),
+          cogs: validated.cogs.toString(),
+          warranty_months: validated.warrantyMonths,
+          warranty_type: validated.warrantyType,
+          stock: stockCount,
+          has_serial_number: hasSerialNumber,
+          supplier: validated.supplier,
+          date_restocked: validated.dateRestocked ? new Date(validated.dateRestocked) : new Date(),
+          tax_enabled: validated.taxEnabled ?? true,
+        },
+      ]);
 
       const newProduct = result[0];
 
       if (hasSerialNumber && validated.serialNumbers && validated.serialNumbers.length > 0) {
         for (const sn of validated.serialNumbers) {
-          await db.insert('serial_numbers', [{
-            sn: sn,
-            product_id: newProduct.id,
-            status: 'In Stock',
-          }]);
+          await db.insert("serial_numbers", [
+            {
+              sn: sn,
+              product_id: newProduct.id,
+              status: "In Stock",
+            },
+          ]);
         }
       }
 
       // Create audit log
-      const details = hasSerialNumber && validated.serialNumbers
-        ? `Created product ${validated.brand} ${validated.model} with ${validated.serialNumbers.length} serial numbers from supplier ${validated.supplier}`
-        : `Created product ${validated.brand} ${validated.model} with ${validated.quantity || 0} units from supplier ${validated.supplier}`;
+      const details =
+        hasSerialNumber && validated.serialNumbers
+          ? `Created product ${validated.brand} ${validated.model} with ${validated.serialNumbers.length} serial numbers from supplier ${validated.supplier}`
+          : `Created product ${validated.brand} ${validated.model} with ${validated.quantity || 0} units from supplier ${validated.supplier}`;
 
       await client.unsafe(
-        'INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())',
-        [`LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`, staffName, 'Stock Addition', details, newProduct.id]
+        "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
+        [
+          `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          staffName,
+          "Stock Addition",
+          details,
+          newProduct.id,
+        ],
       );
 
       return res.status(201).json(parseDbProduct(newProduct));
     }
 
     // PUT /api/products/:id
-    if (method === 'PUT' && url?.startsWith('/api/products/')) {
-      const productId = url.replace('/api/products/', '');
-      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-      console.log('[DEBUG PUT] Input:', JSON.stringify(input));
-      const { staffName = 'System', ...productInput } = input;
-      console.log('[DEBUG PUT] productInput:', JSON.stringify(productInput));
+    if (method === "PUT" && url?.startsWith("/api/products/")) {
+      const productId = url.replace("/api/products/", "");
+      const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+      console.log("[DEBUG PUT] Input:", JSON.stringify(input));
+      const { staffName = "System", ...productInput } = input;
+      console.log("[DEBUG PUT] productInput:", JSON.stringify(productInput));
       const validated = validateUpdateProductInput(productInput);
-      console.log('[DEBUG PUT] validated:', JSON.stringify(validated));
-      
+      console.log("[DEBUG PUT] validated:", JSON.stringify(validated));
+
       // Get old product for audit logging
-      const [oldProduct] = await db.select('products', ['*'], { column: 'id', value: productId });
+      const [oldProduct] = await db.select("products", ["*"], { column: "id", value: productId });
       if (!oldProduct) {
-        return res.status(404).json({ error: 'Product not found' });
+        return res.status(404).json({ error: "Product not found" });
       }
-      
+
       const updateData: Record<string, unknown> = {};
       const changes: string[] = [];
-      
+
       if (validated.brand !== undefined && validated.brand !== oldProduct.brand) {
         updateData.brand = validated.brand;
         changes.push(`brand: ${oldProduct.brand} -> ${validated.brand}`);
@@ -721,11 +826,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           changes.push(`cogs: ${oldProduct.cogs} -> ${newCogs}`);
         }
       }
-      if (validated.warrantyMonths !== undefined && validated.warrantyMonths !== oldProduct.warranty_months) {
+      if (
+        validated.warrantyMonths !== undefined &&
+        validated.warrantyMonths !== oldProduct.warranty_months
+      ) {
         updateData.warranty_months = validated.warrantyMonths;
-        changes.push(`warrantyMonths: ${oldProduct.warranty_months} -> ${validated.warrantyMonths}`);
+        changes.push(
+          `warrantyMonths: ${oldProduct.warranty_months} -> ${validated.warrantyMonths}`,
+        );
       }
-      if (validated.warrantyType !== undefined && validated.warrantyType !== oldProduct.warranty_type) {
+      if (
+        validated.warrantyType !== undefined &&
+        validated.warrantyType !== oldProduct.warranty_type
+      ) {
         updateData.warranty_type = validated.warrantyType;
         changes.push(`warrantyType: ${oldProduct.warranty_type} -> ${validated.warrantyType}`);
       }
@@ -733,40 +846,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         updateData.tax_enabled = validated.taxEnabled;
         changes.push(`taxEnabled: ${oldProduct.tax_enabled} -> ${validated.taxEnabled}`);
       }
-      
+
       if (changes.length > 0) {
-        await db.insert('audit_logs', [{
-          id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-          staff_name: staffName,
-          action: 'Product Update',
-          details: `Updated ${oldProduct.brand} ${oldProduct.model}: ${changes.join(', ')}`,
-          related_id: productId,
-        }]);
+        await db.insert("audit_logs", [
+          {
+            id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            staff_name: staffName,
+            action: "Product Update",
+            details: `Updated ${oldProduct.brand} ${oldProduct.model}: ${changes.join(", ")}`,
+            related_id: productId,
+          },
+        ]);
       }
-      
-      const result = await db.update('products', updateData, { column: 'id', value: productId });
-      
+
+      const result = await db.update("products", updateData, { column: "id", value: productId });
+
       if (!result[0]) {
-        return res.status(404).json({ error: 'Product not found' });
+        return res.status(404).json({ error: "Product not found" });
       }
       return res.status(200).json(parseDbProduct(result[0]));
     }
 
     // POST /api/products/adjust-stock
-    if (method === 'POST' && url === '/api/products/adjust-stock') {
-      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+    if (method === "POST" && url === "/api/products/adjust-stock") {
+      const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       validateStockAdjustmentInput(input);
-      
-      const { productId, newStock, reason, staffName = 'System', supplier, dateRestocked } = input;
-      
-      const [product] = await db.select('products', ['*'], { column: 'id', value: productId });
+
+      const { productId, newStock, reason, staffName = "System", supplier, dateRestocked } = input;
+
+      const [product] = await db.select("products", ["*"], { column: "id", value: productId });
       if (!product) {
-        return res.status(404).json({ error: 'Product not found' });
+        return res.status(404).json({ error: "Product not found" });
       }
-      
+
       const diff = newStock - Number(product.stock);
-      const actionType = diff > 0 ? 'Stock Addition' : 'Manual Correction';
-      
+      const actionType = diff > 0 ? "Stock Addition" : "Manual Correction";
+
       // Update fields - only update supplier and dateRestocked when adding stock (positive diff)
       const updateData: any = { stock: newStock };
       if (diff > 0 && supplier) {
@@ -775,9 +890,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (diff > 0 && dateRestocked) {
         updateData.date_restocked = new Date(dateRestocked);
       }
-      
-      const [result] = await db.update('products', updateData, { column: 'id', value: productId });
-      
+
+      const [result] = await db.update("products", updateData, { column: "id", value: productId });
+
       // Build audit log details with supplier and date info
       let auditDetails = `Manual adjust ${product.brand} ${product.model}: ${product.stock} -> ${newStock}. Reason: ${reason}`;
       if (diff > 0) {
@@ -788,268 +903,299 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           auditDetails += `. Date: ${dateRestocked}`;
         }
       }
-      
-      await db.insert('audit_logs', [{
-        id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-        staff_name: staffName,
-        action: actionType,
-        details: auditDetails,
-        related_id: productId,
-      }]);
-      
+
+      await db.insert("audit_logs", [
+        {
+          id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          staff_name: staffName,
+          action: actionType,
+          details: auditDetails,
+          related_id: productId,
+        },
+      ]);
+
       return res.status(200).json(parseDbProduct(result));
     }
 
     // DELETE /api/products/:id
-    if (method === 'DELETE' && url?.startsWith('/api/products/')) {
-      const productId = url.replace('/api/products/', '');
-      
+    if (method === "DELETE" && url?.startsWith("/api/products/")) {
+      const productId = url.replace("/api/products/", "");
+
       // Check if there are In Stock serial numbers
-      const sns = await client.unsafe('SELECT id FROM serial_numbers WHERE product_id = $1 AND status = $2', [productId, 'In Stock']);
+      const sns = await client.unsafe(
+        "SELECT id FROM serial_numbers WHERE product_id = $1 AND status = $2",
+        [productId, "In Stock"],
+      );
       if (sns.length > 0) {
-        return res.status(400).json({ error: `Produk memiliki ${sns.length} nomor seri yang belum terjual. Hapus atau jual nomor seri tersebut terlebih dahulu.` });
+        return res.status(400).json({
+          error: `Produk memiliki ${sns.length} nomor seri yang belum terjual. Hapus atau jual nomor seri tersebut terlebih dahulu.`,
+        });
       }
-      
+
       // Check for NOSN stock (stock without serial numbers)
-      const product = await client.unsafe('SELECT stock FROM products WHERE id = $1', [productId]);
+      const product = await client.unsafe("SELECT stock FROM products WHERE id = $1", [productId]);
       if (product.length > 0) {
         const stock = Number(product[0].stock);
-        const totalSNs = await client.unsafe('SELECT COUNT(*) as count FROM serial_numbers WHERE product_id = $1', [productId]);
+        const totalSNs = await client.unsafe(
+          "SELECT COUNT(*) as count FROM serial_numbers WHERE product_id = $1",
+          [productId],
+        );
         const trackedStock = Number(totalSNs[0]?.count || 0);
         const nosnStock = stock - trackedStock;
-        
+
         if (nosnStock > 0) {
-          return res.status(400).json({ error: `Produk memiliki ${nosnStock} unit stok tanpa nomor seri (NOSN). Kurangi stok terlebih dahulu sebelum menghapus produk.` });
+          return res.status(400).json({
+            error: `Produk memiliki ${nosnStock} unit stok tanpa nomor seri (NOSN). Kurangi stok terlebih dahulu sebelum menghapus produk.`,
+          });
         }
       }
-      
-      await db.delete('products', { column: 'id', value: productId });
+
+      await db.delete("products", { column: "id", value: productId });
       return res.status(204).send(null);
     }
 
     // POST /api/products/:id/toggle-hidden
-    if (method === 'POST' && url?.startsWith('/api/products/') && url.includes('/toggle-hidden')) {
-      const productId = url.replace('/api/products/', '').replace('/toggle-hidden', '');
-      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+    if (method === "POST" && url?.startsWith("/api/products/") && url.includes("/toggle-hidden")) {
+      const productId = url.replace("/api/products/", "").replace("/toggle-hidden", "");
+      const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const { hidden } = input;
-      
+
       try {
-        await db.update('products', { hidden: hidden ? 1 : 0 }, { column: 'id', value: productId });
+        await db.update("products", { hidden: hidden ? 1 : 0 }, { column: "id", value: productId });
       } catch (err) {
         // Column might not exist, try to add it first
         try {
-          await client.unsafe('ALTER TABLE products ADD COLUMN IF NOT EXISTS hidden INTEGER DEFAULT 0');
-          await db.update('products', { hidden: hidden ? 1 : 0 }, { column: 'id', value: productId });
+          await client.unsafe(
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS hidden INTEGER DEFAULT 0",
+          );
+          await db.update(
+            "products",
+            { hidden: hidden ? 1 : 0 },
+            { column: "id", value: productId },
+          );
         } catch (addErr) {
-          console.error('Failed to toggle hidden:', addErr);
-          return res.status(500).json({ error: 'Failed to toggle product visibility' });
+          console.error("Failed to toggle hidden:", addErr);
+          return res.status(500).json({ error: "Failed to toggle product visibility" });
         }
       }
-      
-      const result = await client.unsafe('SELECT * FROM products WHERE id = $1', [productId]);
+
+      const result = await client.unsafe("SELECT * FROM products WHERE id = $1", [productId]);
       return res.status(200).json(parseDbProduct(result[0]));
     }
 
     // POST /api/products/:id/restore
-    if (method === 'POST' && url?.startsWith('/api/products/') && url.includes('/restore')) {
-      const productId = url.replace('/api/products/', '').replace('/restore', '');
-      
+    if (method === "POST" && url?.startsWith("/api/products/") && url.includes("/restore")) {
+      const productId = url.replace("/api/products/", "").replace("/restore", "");
+
       try {
-        await db.update('products', { deleted: false }, { column: 'id', value: productId });
+        await db.update("products", { deleted: false }, { column: "id", value: productId });
       } catch (err) {
         try {
-          await client.unsafe('ALTER TABLE products ADD COLUMN IF NOT EXISTS deleted BOOLEAN DEFAULT false');
-          await db.update('products', { deleted: false }, { column: 'id', value: productId });
+          await client.unsafe(
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS deleted BOOLEAN DEFAULT false",
+          );
+          await db.update("products", { deleted: false }, { column: "id", value: productId });
         } catch (addErr) {
-          console.error('Failed to restore product:', addErr);
-          return res.status(500).json({ error: 'Failed to restore product' });
+          console.error("Failed to restore product:", addErr);
+          return res.status(500).json({ error: "Failed to restore product" });
         }
       }
-      
-      const result = await client.unsafe('SELECT * FROM products WHERE id = $1', [productId]);
+
+      const result = await client.unsafe("SELECT * FROM products WHERE id = $1", [productId]);
       return res.status(200).json(parseDbProduct(result[0]));
     }
 
     // GET /api/serial-numbers
-    if (method === 'GET' && url === '/api/serial-numbers') {
-      const result = await client.unsafe('SELECT * FROM serial_numbers');
+    if (method === "GET" && url === "/api/serial-numbers") {
+      const result = await client.unsafe("SELECT * FROM serial_numbers");
       return res.status(200).json(result.map(parseDbSerialNumber));
     }
 
     // POST /api/serial-numbers/bulk
-    if (method === 'POST' && url === '/api/serial-numbers/bulk') {
-      const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+    if (method === "POST" && url === "/api/serial-numbers/bulk") {
+      const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const { inputs, supplier, date, reason } = body;
-      const validated = inputs.map((v: CreateSerialNumberInput) => validateCreateSerialNumberInput(v));
-      
+      const validated = inputs.map((v: CreateSerialNumberInput) =>
+        validateCreateSerialNumberInput(v),
+      );
+
       const values = validated.map((v: CreateSerialNumberInput) => ({
         sn: v.sn,
         product_id: v.productId,
-        status: 'In Stock',
+        status: "In Stock",
       }));
-      
-      const result = await db.insert('serial_numbers', values);
-      
+
+      const result = await db.insert("serial_numbers", values);
+
       // Create audit log with supplier, date, and reason info
       if (validated.length > 0 && validated[0].productId) {
-        const [product] = await client.unsafe('SELECT brand, model FROM products WHERE id = $1', [validated[0].productId]);
-        const snList = validated.map((v: CreateSerialNumberInput) => v.sn).join(', ');
-        const supplierInfo = supplier || 'Unknown';
-        const dateInfo = date || new Date().toISOString().split('T')[0];
-        const reasonInfo = reason || 'Not specified';
-        
+        const [product] = await client.unsafe("SELECT brand, model FROM products WHERE id = $1", [
+          validated[0].productId,
+        ]);
+        const snList = validated.map((v: CreateSerialNumberInput) => v.sn).join(", ");
+        const supplierInfo = supplier || "Unknown";
+        const dateInfo = date || new Date().toISOString().split("T")[0];
+        const reasonInfo = reason || "Not specified";
+
         await client.unsafe(
           `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) 
            VALUES ($1, $2, $3, $4, $5, NOW())`,
           [
             `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-            'System',
-            'Stock Addition',
-            `Added ${validated.length} serial number(s) to ${product?.brand || ''} ${product?.model || ''} from supplier ${supplierInfo} on ${dateInfo}, reason: ${reasonInfo}. SN: ${snList}`,
-            validated[0].productId
-          ]
+            "System",
+            "Stock Addition",
+            `Added ${validated.length} serial number(s) to ${product?.brand || ""} ${product?.model || ""} from supplier ${supplierInfo} on ${dateInfo}, reason: ${reasonInfo}. SN: ${snList}`,
+            validated[0].productId,
+          ],
         );
       }
-      
+
       return res.status(201).json(result.map(parseDbSerialNumber));
     }
 
     // PUT /api/serial-numbers/:sn/status
-    if (method === 'PUT' && url?.startsWith('/api/serial-numbers/') && url?.includes('/status')) {
-      const sn = url.replace('/api/serial-numbers/', '').replace('/status', '');
-      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+    if (method === "PUT" && url?.startsWith("/api/serial-numbers/") && url?.includes("/status")) {
+      const sn = url.replace("/api/serial-numbers/", "").replace("/status", "");
+      const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const { status, reason } = input;
-      
-      console.log('=== DEBUG: Update SN status ===');
-      console.log('SN:', sn, 'Status:', status);
-      
+
+      console.log("=== DEBUG: Update SN status ===");
+      console.log("SN:", sn, "Status:", status);
+
       // Get the SN to find product info before updating
-      const [existingSN] = await client.unsafe('SELECT product_id FROM serial_numbers WHERE sn = $1', [sn]);
-      
-      const result = await client.unsafe(
-        'UPDATE serial_numbers SET status = $1 WHERE sn = $2 RETURNING *',
-        [status, sn]
+      const [existingSN] = await client.unsafe(
+        "SELECT product_id FROM serial_numbers WHERE sn = $1",
+        [sn],
       );
-      console.log('Update result:', result);
-      
+
+      const result = await client.unsafe(
+        "UPDATE serial_numbers SET status = $1 WHERE sn = $2 RETURNING *",
+        [status, sn],
+      );
+      console.log("Update result:", result);
+
       if (!result || result.length === 0) {
-        return res.status(404).json({ error: 'Serial number not found' });
+        return res.status(404).json({ error: "Serial number not found" });
       }
-      
+
       // Create audit log for status change
       if (existingSN) {
-        const [product] = await client.unsafe('SELECT brand, model FROM products WHERE id = $1', [existingSN.product_id]);
-        const reasonInfo = reason || 'Not specified';
-        
+        const [product] = await client.unsafe("SELECT brand, model FROM products WHERE id = $1", [
+          existingSN.product_id,
+        ]);
+        const reasonInfo = reason || "Not specified";
+
         await client.unsafe(
           `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) 
            VALUES ($1, $2, $3, $4, $5, NOW())`,
           [
             `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-            'System',
-            'Manual Correction',
-            `Marked serial number ${sn} as ${status} for ${product?.brand || ''} ${product?.model || ''}, reason: ${reasonInfo}`,
-            existingSN.product_id
-          ]
+            "System",
+            "Manual Correction",
+            `Marked serial number ${sn} as ${status} for ${product?.brand || ""} ${product?.model || ""}, reason: ${reasonInfo}`,
+            existingSN.product_id,
+          ],
         );
       }
-      
+
       return res.status(200).json(parseDbSerialNumber(result[0]));
     }
 
     // === AUTH ROUTES ===
-    
+
     // POST /api/auth/login
-    if (method === 'POST' && url === '/api/auth/login') {
+    if (method === "POST" && url === "/api/auth/login") {
       await initializeDatabase();
-      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const { name, password } = input;
-      
+
       if (!name || !password) {
-        return res.status(400).json({ error: 'Name and password required' });
+        return res.status(400).json({ error: "Name and password required" });
       }
-      
+
       const passwordHash = btoa(password);
       const result = await client.unsafe(
-        'SELECT id, name, role FROM staff_members WHERE name = $1 AND password_hash = $2',
-        [name, passwordHash]
+        "SELECT id, name, role FROM staff_members WHERE name = $1 AND password_hash = $2",
+        [name, passwordHash],
       );
-      
+
       if (!result || result.length === 0) {
-        return res.status(401).json({ error: 'Invalid credentials' });
+        return res.status(401).json({ error: "Invalid credentials" });
       }
-      
+
       const user = result[0];
       return res.status(200).json({
         id: user.id,
         name: user.name,
-        role: user.role
+        role: user.role,
       });
     }
 
     // === STAFF ROUTES ===
-    
+
     // GET /api/staff
-    if (method === 'GET' && url === '/api/staff') {
+    if (method === "GET" && url === "/api/staff") {
       await initializeDatabase();
-      const result = await client.unsafe('SELECT id, name, role, created_at FROM staff_members ORDER BY name');
+      const result = await client.unsafe(
+        "SELECT id, name, role, created_at FROM staff_members ORDER BY name",
+      );
       return res.status(200).json(result.map(parseDbStaffMember));
     }
 
     // POST /api/staff
-    if (method === 'POST' && url === '/api/staff') {
+    if (method === "POST" && url === "/api/staff") {
       await initializeDatabase();
-      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-      const { name, password, role = 'Staff' } = input;
-      
+      const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+      const { name, password, role = "Staff" } = input;
+
       if (!name || !password) {
-        return res.status(400).json({ error: 'Name and password required' });
+        return res.status(400).json({ error: "Name and password required" });
       }
-      
+
       const passwordHash = btoa(password);
-      
+
       try {
         const result = await client.unsafe(
-          'INSERT INTO staff_members (name, role, password_hash) VALUES ($1, $2, $3) RETURNING id, name, role, created_at',
-          [name, role, passwordHash]
+          "INSERT INTO staff_members (name, role, password_hash) VALUES ($1, $2, $3) RETURNING id, name, role, created_at",
+          [name, role, passwordHash],
         );
         return res.status(201).json(parseDbStaffMember(result[0]));
       } catch (error: unknown) {
-        if (error && typeof error === 'object' && 'code' in error && error.code === '23505') {
-          return res.status(400).json({ error: 'Staff name already exists' });
+        if (error && typeof error === "object" && "code" in error && error.code === "23505") {
+          return res.status(400).json({ error: "Staff name already exists" });
         }
         throw error;
       }
     }
 
     // DELETE /api/staff/:id
-    if (method === 'DELETE' && url?.startsWith('/api/staff/')) {
-      const staffId = url.replace('/api/staff/', '');
-      await client.unsafe('DELETE FROM staff_members WHERE id = $1', [staffId]);
+    if (method === "DELETE" && url?.startsWith("/api/staff/")) {
+      const staffId = url.replace("/api/staff/", "");
+      await client.unsafe("DELETE FROM staff_members WHERE id = $1", [staffId]);
       return res.status(204).send(null);
     }
 
     // PUT /api/staff/:id
-    if (method === 'PUT' && url?.startsWith('/api/staff/')) {
-      const staffId = url.replace('/api/staff/', '');
+    if (method === "PUT" && url?.startsWith("/api/staff/")) {
+      const staffId = url.replace("/api/staff/", "");
       await initializeDatabase();
-      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const { name, role, password } = input;
-      
-      const [current] = await client.unsafe('SELECT * FROM staff_members WHERE id = $1', [staffId]);
+
+      const [current] = await client.unsafe("SELECT * FROM staff_members WHERE id = $1", [staffId]);
       if (!current) {
-        return res.status(404).json({ error: 'Staff not found' });
+        return res.status(404).json({ error: "Staff not found" });
       }
-      
+
       const newName = name ?? current.name;
       const newRole = role ?? current.role;
       const newPasswordHash = password ? btoa(password) : current.password_hash;
-      
+
       const result = await client.unsafe(
-        'UPDATE staff_members SET name = $1, role = $2, password_hash = $3 WHERE id = $4 RETURNING id, name, role, created_at',
-        [newName, newRole, newPasswordHash, staffId]
+        "UPDATE staff_members SET name = $1, role = $2, password_hash = $3 WHERE id = $4 RETURNING id, name, role, created_at",
+        [newName, newRole, newPasswordHash, staffId],
       );
-      
+
       return res.status(200).json({
         id: result[0].id,
         name: result[0].name,
@@ -1059,40 +1205,44 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // === STORE CONFIG ROUTES ===
-    
+
     // GET /api/store-config
-    if (method === 'GET' && url === '/api/store-config') {
+    if (method === "GET" && url === "/api/store-config") {
       await initializeDatabase();
-      const result = await client.unsafe('SELECT * FROM store_config WHERE id = 1');
+      const result = await client.unsafe("SELECT * FROM store_config WHERE id = 1");
       if (!result || result.length === 0) {
-        return res.status(404).json({ error: 'Store config not found' });
+        return res.status(404).json({ error: "Store config not found" });
       }
       return res.status(200).json(parseDbStoreConfig(result[0]));
     }
 
     // PUT /api/store-config
-    if (method === 'PUT' && url === '/api/store-config') {
+    if (method === "PUT" && url === "/api/store-config") {
       await initializeDatabase();
-      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const { storeName, address, ppnRate, currency, monthlyTarget } = input;
-      
+
       const result = await client.unsafe(
-        'UPDATE store_config SET store_name = $1, address = $2, ppn_rate = $3, currency = $4, monthly_target = $5, updated_at = NOW() WHERE id = 1 RETURNING *',
-        [storeName, address, ppnRate, currency, monthlyTarget || 500000000]
+        "UPDATE store_config SET store_name = $1, address = $2, ppn_rate = $3, currency = $4, monthly_target = $5, updated_at = NOW() WHERE id = 1 RETURNING *",
+        [storeName, address, ppnRate, currency, monthlyTarget || 500000000],
       );
-      
+
       return res.status(200).json(parseDbStoreConfig(result[0]));
     }
 
     // === SUPPLIER ROUTES ===
 
     // GET /api/suppliers with pagination
-    if (method === 'GET' && (url === '/api/suppliers' || url?.startsWith('/api/suppliers?'))) {
+    if (method === "GET" && (url === "/api/suppliers" || url?.startsWith("/api/suppliers?"))) {
       await initializeDatabase();
       const { page, limit } = getPageLimit(req);
       const offset = (page - 1) * limit;
-      const result = await client.unsafe(`SELECT * FROM suppliers WHERE deleted = false ORDER BY name LIMIT ${limit} OFFSET ${offset}`);
-      const countResult = await client.unsafe('SELECT COUNT(*) as count FROM suppliers WHERE deleted = false');
+      const result = await client.unsafe(
+        `SELECT * FROM suppliers WHERE deleted = false ORDER BY name LIMIT ${limit} OFFSET ${offset}`,
+      );
+      const countResult = await client.unsafe(
+        "SELECT COUNT(*) as count FROM suppliers WHERE deleted = false",
+      );
       const total = Number(countResult[0]?.count) || 0;
       return res.status(200).json({
         suppliers: result.map((row: Record<string, unknown>) => ({
@@ -1106,27 +1256,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         total,
         page,
         limit,
-        totalPages: Math.ceil(total / limit)
+        totalPages: Math.ceil(total / limit),
       });
     }
 
     // POST /api/suppliers
-    if (method === 'POST' && url === '/api/suppliers') {
+    if (method === "POST" && url === "/api/suppliers") {
       await initializeDatabase();
-      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const { name, phone, address } = input as { name: string; phone?: string; address?: string };
-      
+
       if (!name) {
-        return res.status(400).json({ error: 'Name is required' });
+        return res.status(400).json({ error: "Name is required" });
       }
-      
+
       try {
-        await client.unsafe(
-          'INSERT INTO suppliers (name, phone, address) VALUES ($1, $2, $3)',
-          [name, phone || null, address || null]
-        );
-        
-        const result = await client.unsafe('SELECT * FROM suppliers WHERE name = $1', [name]);
+        await client.unsafe("INSERT INTO suppliers (name, phone, address) VALUES ($1, $2, $3)", [
+          name,
+          phone || null,
+          address || null,
+        ]);
+
+        const result = await client.unsafe("SELECT * FROM suppliers WHERE name = $1", [name]);
         return res.status(201).json({
           id: result[0].id,
           name: result[0].name,
@@ -1136,23 +1287,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           createdAt: result[0].created_at,
         });
       } catch (err: unknown) {
-        console.error('Supplier insert error:', err);
+        console.error("Supplier insert error:", err);
         const errorMessage = err instanceof Error ? err.message : String(err);
         return res.status(500).json({ error: errorMessage });
       }
     }
 
     // PUT /api/suppliers/:id
-    if (method === 'PUT' && url?.startsWith('/api/suppliers/')) {
+    if (method === "PUT" && url?.startsWith("/api/suppliers/")) {
       await initializeDatabase();
-      const supplierId = url.replace('/api/suppliers/', '');
-      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const supplierId = url.replace("/api/suppliers/", "");
+      const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const { name, phone, address } = input as { name?: string; phone?: string; address?: string };
-      
+
       const updates: string[] = [];
       const values: unknown[] = [];
       let paramIndex = 1;
-      
+
       if (name !== undefined) {
         updates.push(`name = $${paramIndex++}`);
         values.push(name);
@@ -1165,19 +1316,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         updates.push(`address = $${paramIndex++}`);
         values.push(address);
       }
-      
+
       if (updates.length === 0) {
-        return res.status(400).json({ error: 'No fields to update' });
+        return res.status(400).json({ error: "No fields to update" });
       }
-      
+
       values.push(supplierId);
-      
+
       await client.unsafe(
-        `UPDATE suppliers SET ${updates.join(', ')} WHERE id = $${paramIndex}`,
-        values
+        `UPDATE suppliers SET ${updates.join(", ")} WHERE id = $${paramIndex}`,
+        values,
       );
-      
-      const result = await client.unsafe('SELECT * FROM suppliers WHERE id = $1', [supplierId]);
+
+      const result = await client.unsafe("SELECT * FROM suppliers WHERE id = $1", [supplierId]);
       return res.status(200).json({
         id: result[0].id,
         name: result[0].name,
@@ -1189,77 +1340,80 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // DELETE /api/suppliers/:id
-    if (method === 'DELETE' && url?.startsWith('/api/suppliers/')) {
+    if (method === "DELETE" && url?.startsWith("/api/suppliers/")) {
       await initializeDatabase();
-      const supplierId = url.replace('/api/suppliers/', '');
-      
-      await client.unsafe(
-        'UPDATE suppliers SET deleted = true WHERE id = $1',
-        [supplierId]
-      );
-      
+      const supplierId = url.replace("/api/suppliers/", "");
+
+      await client.unsafe("UPDATE suppliers SET deleted = true WHERE id = $1", [supplierId]);
+
       return res.status(200).json({ success: true });
     }
 
     // === CUSTOMER ROUTES ===
 
     // GET /api/customers with pagination
-    if (method === 'GET' && (url === '/api/customers' || url?.startsWith('/api/customers?'))) {
+    if (method === "GET" && (url === "/api/customers" || url?.startsWith("/api/customers?"))) {
       await initializeDatabase();
       const { page, limit } = getPageLimit(req);
       const offset = (page - 1) * limit;
-      const result = await client.unsafe(`SELECT * FROM customers WHERE deleted = false ORDER BY name LIMIT ${limit} OFFSET ${offset}`);
-      const countResult = await client.unsafe('SELECT COUNT(*) as count FROM customers WHERE deleted = false');
+      const result = await client.unsafe(
+        `SELECT * FROM customers WHERE deleted = false ORDER BY name LIMIT ${limit} OFFSET ${offset}`,
+      );
+      const countResult = await client.unsafe(
+        "SELECT COUNT(*) as count FROM customers WHERE deleted = false",
+      );
       const total = Number(countResult[0]?.count) || 0;
       return res.status(200).json({
         customers: result.map(parseDbCustomer),
         total,
         page,
         limit,
-        totalPages: Math.ceil(total / limit)
+        totalPages: Math.ceil(total / limit),
       });
     }
 
     // GET /api/customers/:id
-    if (method === 'GET' && url?.startsWith('/api/customers/')) {
-      const customerId = url.replace('/api/customers/', '');
+    if (method === "GET" && url?.startsWith("/api/customers/")) {
+      const customerId = url.replace("/api/customers/", "");
       await initializeDatabase();
-      const result = await client.unsafe('SELECT * FROM customers WHERE id = $1', [customerId]);
+      const result = await client.unsafe("SELECT * FROM customers WHERE id = $1", [customerId]);
       if (!result || result.length === 0) {
-        return res.status(404).json({ error: 'Customer not found' });
+        return res.status(404).json({ error: "Customer not found" });
       }
       return res.status(200).json(parseDbCustomer(result[0]));
     }
 
     // POST /api/customers
-    if (method === 'POST' && url === '/api/customers') {
+    if (method === "POST" && url === "/api/customers") {
       await initializeDatabase();
-      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const { id, name, phone, email, address, npwp, loyaltyPoints = 0 } = input;
 
       if (!id || !name) {
-        return res.status(400).json({ error: 'ID and name are required' });
+        return res.status(400).json({ error: "ID and name are required" });
       }
 
       const result = await client.unsafe(
-        'INSERT INTO customers (id, name, phone, email, address, npwp, loyalty_points) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-        [id, name, phone || null, email || null, address || null, npwp || null, loyaltyPoints]
+        "INSERT INTO customers (id, name, phone, email, address, npwp, loyalty_points) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *",
+        [id, name, phone || null, email || null, address || null, npwp || null, loyaltyPoints],
       );
 
       return res.status(201).json(parseDbCustomer(result[0]));
     }
 
     // PUT /api/customers/:id
-    if (method === 'PUT' && url?.startsWith('/api/customers/')) {
-      const customerId = url.replace('/api/customers/', '');
+    if (method === "PUT" && url?.startsWith("/api/customers/")) {
+      const customerId = url.replace("/api/customers/", "");
       await initializeDatabase();
-      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-      const { name, phone, email, address, npwp, loyaltyPoints, staffName = 'System' } = input;
+      const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+      const { name, phone, email, address, npwp, loyaltyPoints, staffName = "System" } = input;
 
       // Get old customer for audit logging
-      const [oldCustomer] = await client.unsafe('SELECT * FROM customers WHERE id = $1', [customerId]);
+      const [oldCustomer] = await client.unsafe("SELECT * FROM customers WHERE id = $1", [
+        customerId,
+      ]);
       if (!oldCustomer) {
-        return res.status(404).json({ error: 'Customer not found' });
+        return res.status(404).json({ error: "Customer not found" });
       }
 
       const updates: string[] = [];
@@ -1286,299 +1440,378 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         updates.push(`npwp = $${paramIndex++}`);
         values.push(npwp);
       }
-      if (loyaltyPoints !== undefined && loyaltyPoints !== parseInt(oldCustomer.loyalty_points || '0')) {
+      if (
+        loyaltyPoints !== undefined &&
+        loyaltyPoints !== parseInt(oldCustomer.loyalty_points || "0")
+      ) {
         updates.push(`loyalty_points = $${paramIndex++}`);
         values.push(loyaltyPoints);
       }
 
       if (updates.length === 0) {
-        return res.status(400).json({ error: 'No fields to update' });
+        return res.status(400).json({ error: "No fields to update" });
       }
 
       updates.push(`updated_at = NOW()`);
       values.push(customerId);
 
       const result = await client.unsafe(
-        `UPDATE customers SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
-        values as (string | number | null)[]
+        `UPDATE customers SET ${updates.join(", ")} WHERE id = $${paramIndex} RETURNING *`,
+        values as (string | number | null)[],
       );
 
       if (!result || result.length === 0) {
-        return res.status(404).json({ error: 'Customer not found' });
+        return res.status(404).json({ error: "Customer not found" });
       }
 
       // Audit log for customer update
-      const changes = updates.filter(u => !u.includes('updated_at')).join(', ');
+      const changes = updates.filter((u) => !u.includes("updated_at")).join(", ");
       await client.unsafe(
-        'INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())',
-        [`LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`, staffName, 'General', `Updated customer: ${changes}`, customerId]
+        "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
+        [
+          `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          staffName,
+          "General",
+          `Updated customer: ${changes}`,
+          customerId,
+        ],
       );
 
       return res.status(200).json(parseDbCustomer(result[0]));
     }
 
     // DELETE /api/customers/:id
-    if (method === 'DELETE' && url?.startsWith('/api/customers/')) {
-      const customerId = url.replace('/api/customers/', '');
+    if (method === "DELETE" && url?.startsWith("/api/customers/")) {
+      const customerId = url.replace("/api/customers/", "");
       await initializeDatabase();
-      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-      const { staffName = 'System' } = input || {};
-      
+      const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+      const { staffName = "System" } = input || {};
+
       // Get customer name for audit logging
-      const [customer] = await client.unsafe('SELECT name FROM customers WHERE id = $1', [customerId]);
+      const [customer] = await client.unsafe("SELECT name FROM customers WHERE id = $1", [
+        customerId,
+      ]);
       if (!customer) {
-        return res.status(404).json({ error: 'Customer not found' });
+        return res.status(404).json({ error: "Customer not found" });
       }
-      
+
       // Soft delete - set deleted = true
-      await client.unsafe('UPDATE customers SET deleted = true, updated_at = NOW() WHERE id = $1', [customerId]);
-      
+      await client.unsafe("UPDATE customers SET deleted = true, updated_at = NOW() WHERE id = $1", [
+        customerId,
+      ]);
+
       // Audit log for customer deletion
       await client.unsafe(
-        'INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())',
-        [`LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`, staffName, 'General', `Deleted customer: ${customer.name}`, customerId]
+        "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
+        [
+          `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          staffName,
+          "General",
+          `Deleted customer: ${customer.name}`,
+          customerId,
+        ],
       );
-      
+
       return res.status(204).send(null);
     }
 
     // === SALES ROUTES ===
 
     // GET /api/sales with pagination
-    if (method === 'GET' && (url === '/api/sales' || url?.startsWith('/api/sales?'))) {
+    if (method === "GET" && (url === "/api/sales" || url?.startsWith("/api/sales?"))) {
       await initializeDatabase();
       const { page, limit } = getPageLimit(req);
       const offset = (page - 1) * limit;
-      const salesResult = await client.unsafe(`SELECT * FROM sales ORDER BY timestamp DESC LIMIT ${limit} OFFSET ${offset}`);
-      const countResult = await client.unsafe('SELECT COUNT(*) as count FROM sales');
+      const salesResult = await client.unsafe(
+        `SELECT * FROM sales ORDER BY timestamp DESC LIMIT ${limit} OFFSET ${offset}`,
+      );
+      const countResult = await client.unsafe("SELECT COUNT(*) as count FROM sales");
       const total = Number(countResult[0]?.count) || 0;
-      
-      const salesWithItems = await Promise.all(salesResult.map(async (sale: Record<string, unknown>) => {
-        const itemsResult = await client.unsafe(
-          'SELECT * FROM sale_items WHERE sale_id = $1',
-          [sale.id]
-        );
-        return {
-          ...parseDbSale(sale),
-          items: itemsResult.map((item: Record<string, unknown>) => parseDbSaleItem(item)),
-        };
-      }));
-      
+
+      const salesWithItems = await Promise.all(
+        salesResult.map(async (sale: Record<string, unknown>) => {
+          const itemsResult = await client.unsafe("SELECT * FROM sale_items WHERE sale_id = $1", [
+            sale.id,
+          ]);
+          return {
+            ...parseDbSale(sale),
+            items: itemsResult.map((item: Record<string, unknown>) => parseDbSaleItem(item)),
+          };
+        }),
+      );
+
       return res.status(200).json({
         sales: salesWithItems,
         total,
         page,
         limit,
-        totalPages: Math.ceil(total / limit)
+        totalPages: Math.ceil(total / limit),
       });
     }
 
     // GET /api/sales/customer/:customerId
-    if (method === 'GET' && url?.startsWith('/api/sales/customer/')) {
-      const customerId = url.replace('/api/sales/customer/', '');
+    if (method === "GET" && url?.startsWith("/api/sales/customer/")) {
+      const customerId = url.replace("/api/sales/customer/", "");
       await initializeDatabase();
       const result = await client.unsafe(
-        'SELECT * FROM sales WHERE customer_id = $1 ORDER BY timestamp DESC',
-        [customerId]
+        "SELECT * FROM sales WHERE customer_id = $1 ORDER BY timestamp DESC",
+        [customerId],
       );
       return res.status(200).json(result.map(parseDbSale));
     }
 
     // POST /api/sales - Create new sale
-    if (method === 'POST' && url === '/api/sales') {
+    if (method === "POST" && url === "/api/sales") {
       await initializeDatabase();
-      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-      const { id, customerId, customerName, items, subtotal, tax, total, paymentMethod, staffName, notes, dueDate, isPaid } = input;
+      const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+      const {
+        id,
+        customerId,
+        customerName,
+        items,
+        subtotal,
+        tax,
+        total,
+        paymentMethod,
+        staffName,
+        notes,
+        dueDate,
+        isPaid,
+      } = input;
 
       if (!id || !customerId || !items || items.length === 0 || !paymentMethod || !staffName) {
-        return res.status(400).json({ error: 'Missing required fields' });
+        return res.status(400).json({ error: "Missing required fields" });
       }
 
       try {
         // Insert sale
         await client.unsafe(
-          'INSERT INTO sales (id, customer_id, customer_name, subtotal, tax, total, payment_method, staff_name, notes, due_date, is_paid) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)',
-          [id, customerId, customerName, String(subtotal), String(tax), String(total), paymentMethod, staffName, notes || null, dueDate || null, isPaid ?? false]
+          "INSERT INTO sales (id, customer_id, customer_name, subtotal, tax, total, payment_method, staff_name, notes, due_date, is_paid) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+          [
+            id,
+            customerId,
+            customerName,
+            String(subtotal),
+            String(tax),
+            String(total),
+            paymentMethod,
+            staffName,
+            notes || null,
+            dueDate || null,
+            isPaid ?? false,
+          ],
         );
 
         // Insert sale items, update serial numbers, deduct stock
         for (const item of items) {
           await client.unsafe(
-            'INSERT INTO sale_items (sale_id, product_id, model, sn, price, cogs, warranty_expiry) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-            [id, item.productId, item.model, item.sn, String(item.price), String(item.cogs), item.warrantyExpiry]
+            "INSERT INTO sale_items (sale_id, product_id, model, sn, price, cogs, warranty_expiry) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+            [
+              id,
+              item.productId,
+              item.model,
+              item.sn,
+              String(item.price),
+              String(item.cogs),
+              item.warrantyExpiry,
+            ],
           );
 
           // Only update SN status if it's a real serial number (not NOSN-xxx)
-          if (!item.sn.startsWith('NOSN-')) {
-            await client.unsafe(
-              'UPDATE serial_numbers SET status = $1 WHERE sn = $2',
-              ['Sold', item.sn]
-            );
+          if (!item.sn.startsWith("NOSN-")) {
+            await client.unsafe("UPDATE serial_numbers SET status = $1 WHERE sn = $2", [
+              "Sold",
+              item.sn,
+            ]);
           }
 
           // Deduct stock
-          await client.unsafe(
-            'UPDATE products SET stock = stock - 1 WHERE id = $1',
-            [item.productId]
-          );
+          await client.unsafe("UPDATE products SET stock = stock - 1 WHERE id = $1", [
+            item.productId,
+          ]);
 
           // Audit log - differentiate between SN and non-SN items
-          const snLabel = item.sn.startsWith('NOSN-') ? 'tanpa SN' : `SN: ${item.sn}`;
+          const snLabel = item.sn.startsWith("NOSN-") ? "tanpa SN" : `SN: ${item.sn}`;
           await client.unsafe(
-            'INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())',
-            [`LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`, staffName, 'Sales Deduction', `Sold 1 unit of ${item.model} (${snLabel}) to ${customerName}`, item.productId]
+            "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
+            [
+              `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+              staffName,
+              "Sales Deduction",
+              `Sold 1 unit of ${item.model} (${snLabel}) to ${customerName}`,
+              item.productId,
+            ],
           );
         }
 
         // Audit log for sale
         await client.unsafe(
-          'INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())',
-          [`LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`, staffName, 'Sale Created', `Sale ${id} - ${items.length} item(s), Total: ${total}, Customer: ${customerName}`, id]
+          "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
+          [
+            `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+            staffName,
+            "Sale Created",
+            `Sale ${id} - ${items.length} item(s), Total: ${total}, Customer: ${customerName}`,
+            id,
+          ],
         );
 
         // Update customer loyalty points (1 point per 1000 IDR)
         const pointsEarned = Math.floor(total / 1000);
         await client.unsafe(
-          'UPDATE customers SET loyalty_points = loyalty_points + $1, updated_at = NOW() WHERE id = $2',
-          [pointsEarned, customerId]
+          "UPDATE customers SET loyalty_points = loyalty_points + $1, updated_at = NOW() WHERE id = $2",
+          [pointsEarned, customerId],
         );
 
         // Return the created sale
-        const result = await client.unsafe('SELECT * FROM sales WHERE id = $1', [id]);
+        const result = await client.unsafe("SELECT * FROM sales WHERE id = $1", [id]);
         return res.status(201).json(parseDbSale(result[0]));
       } catch (err) {
-        console.error('Sale error:', err);
-        return res.status(500).json({ error: 'Failed to create sale' });
+        console.error("Sale error:", err);
+        return res.status(500).json({ error: "Failed to create sale" });
       }
     }
 
     // PUT /api/sales/:id/mark-paid
-    if (method === 'PUT' && url?.startsWith('/api/sales/') && url.endsWith('/mark-paid')) {
+    if (method === "PUT" && url?.startsWith("/api/sales/") && url.endsWith("/mark-paid")) {
       await initializeDatabase();
-      const saleId = url.replace('/api/sales/', '').replace('/mark-paid', '');
-      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const saleId = url.replace("/api/sales/", "").replace("/mark-paid", "");
+      const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const { staffName } = input;
 
       if (!staffName) {
-        return res.status(400).json({ error: 'Missing staffName' });
+        return res.status(400).json({ error: "Missing staffName" });
       }
 
       try {
         const now = new Date().toISOString();
         const updateResult = await client.unsafe(
-          'UPDATE sales SET is_paid = true, paid_at = $1 WHERE id = $2 RETURNING *',
-          [now, saleId]
+          "UPDATE sales SET is_paid = true, paid_at = $1 WHERE id = $2 RETURNING *",
+          [now, saleId],
         );
 
         if (updateResult.length === 0) {
-          return res.status(404).json({ error: 'Sale not found' });
+          return res.status(404).json({ error: "Sale not found" });
         }
 
         const sale = updateResult[0];
         const pointsEarned = Math.floor(Number(sale.total) / 1000);
         if (pointsEarned > 0) {
           await client.unsafe(
-            'UPDATE customers SET loyalty_points = loyalty_points + $1, updated_at = NOW() WHERE id = $2',
-            [pointsEarned, sale.customer_id]
+            "UPDATE customers SET loyalty_points = loyalty_points + $1, updated_at = NOW() WHERE id = $2",
+            [pointsEarned, sale.customer_id],
           );
         }
 
         await client.unsafe(
-          'INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())',
-          [`LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`, staffName, 'General', `Marked sale ${saleId} as paid. Loyalty points awarded: ${pointsEarned}`, saleId]
+          "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
+          [
+            `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+            staffName,
+            "General",
+            `Marked sale ${saleId} as paid. Loyalty points awarded: ${pointsEarned}`,
+            saleId,
+          ],
         );
 
         return res.status(200).json(parseDbSale(sale));
       } catch (err) {
-        console.error('Mark paid error:', err);
-        return res.status(500).json({ error: 'Failed to mark sale as paid' });
+        console.error("Mark paid error:", err);
+        return res.status(500).json({ error: "Failed to mark sale as paid" });
       }
     }
 
     // === SALE ITEMS ROUTES ===
 
     // GET /api/sale-items
-    if (method === 'GET' && url === '/api/sale-items') {
+    if (method === "GET" && url === "/api/sale-items") {
       await initializeDatabase();
-      const result = await client.unsafe('SELECT * FROM sale_items ORDER BY id DESC');
+      const result = await client.unsafe("SELECT * FROM sale_items ORDER BY id DESC");
       return res.status(200).json(result.map(parseDbSaleItem));
     }
 
     // GET /api/sale-items/:saleId
-    if (method === 'GET' && url?.startsWith('/api/sale-items/')) {
-      const saleId = url.replace('/api/sale-items/', '');
+    if (method === "GET" && url?.startsWith("/api/sale-items/")) {
+      const saleId = url.replace("/api/sale-items/", "");
       await initializeDatabase();
-      const result = await client.unsafe('SELECT * FROM sale_items WHERE sale_id = $1', [saleId]);
+      const result = await client.unsafe("SELECT * FROM sale_items WHERE sale_id = $1", [saleId]);
       return res.status(200).json(result.map(parseDbSaleItem));
     }
 
     // === WARRANTY CLAIMS ROUTES ===
 
     // GET /api/warranty-claims with pagination
-    if (method === 'GET' && (url === '/api/warranty-claims' || url?.startsWith('/api/warranty-claims?'))) {
+    if (
+      method === "GET" &&
+      (url === "/api/warranty-claims" || url?.startsWith("/api/warranty-claims?"))
+    ) {
       await initializeDatabase();
       const { page, limit } = getPageLimit(req);
       const offset = (page - 1) * limit;
-      const result = await client.unsafe(`SELECT * FROM warranty_claims ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`);
-      const countResult = await client.unsafe('SELECT COUNT(*) as count FROM warranty_claims');
+      const result = await client.unsafe(
+        `SELECT * FROM warranty_claims ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`,
+      );
+      const countResult = await client.unsafe("SELECT COUNT(*) as count FROM warranty_claims");
       const total = Number(countResult[0]?.count) || 0;
       return res.status(200).json({
         claims: result.map(parseDbWarrantyClaim),
         total,
         page,
         limit,
-        totalPages: Math.ceil(total / limit)
+        totalPages: Math.ceil(total / limit),
       });
     }
 
     // POST /api/warranty-claims
-    if (method === 'POST' && url === '/api/warranty-claims') {
+    if (method === "POST" && url === "/api/warranty-claims") {
       await initializeDatabase();
-      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-      const { id, sn, productModel, issue, status = 'Pending' } = input;
+      const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+      const { id, sn, productModel, issue, status = "Pending" } = input;
 
       if (!id || !sn || !productModel || !issue) {
-        return res.status(400).json({ error: 'Missing required fields' });
+        return res.status(400).json({ error: "Missing required fields" });
       }
 
       const result = await client.unsafe(
-        'INSERT INTO warranty_claims (id, sn, product_model, issue, status) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-        [id, sn, productModel, issue, status]
+        "INSERT INTO warranty_claims (id, sn, product_model, issue, status) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+        [id, sn, productModel, issue, status],
       );
 
       return res.status(201).json(parseDbWarrantyClaim(result[0]));
     }
 
     // PUT /api/warranty-claims/:id
-    if (method === 'PUT' && url?.startsWith('/api/warranty-claims/')) {
-      const claimId = url.replace('/api/warranty-claims/', '');
+    if (method === "PUT" && url?.startsWith("/api/warranty-claims/")) {
+      const claimId = url.replace("/api/warranty-claims/", "");
       await initializeDatabase();
-      const input = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+      const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const { status } = input;
 
       if (!status) {
-        return res.status(400).json({ error: 'Status is required' });
+        return res.status(400).json({ error: "Status is required" });
       }
 
       const result = await client.unsafe(
-        'UPDATE warranty_claims SET status = $1 WHERE id = $2 RETURNING *',
-        [status, claimId]
+        "UPDATE warranty_claims SET status = $1 WHERE id = $2 RETURNING *",
+        [status, claimId],
       );
 
       if (!result || result.length === 0) {
-        return res.status(404).json({ error: 'Claim not found' });
+        return res.status(404).json({ error: "Claim not found" });
       }
 
       return res.status(200).json(parseDbWarrantyClaim(result[0]));
     }
 
     // GET /api/audit-logs with pagination
-    if (method === 'GET' && (url === '/api/audit-logs' || url?.startsWith('/api/audit-logs?'))) {
+    if (method === "GET" && (url === "/api/audit-logs" || url?.startsWith("/api/audit-logs?"))) {
       await initializeDatabase();
       const { page, limit } = getPageLimit(req);
       const offset = (page - 1) * limit;
-      const result = await client.unsafe(`SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT ${limit} OFFSET ${offset}`);
-      const countResult = await client.unsafe('SELECT COUNT(*) as count FROM audit_logs');
+      const result = await client.unsafe(
+        `SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT ${limit} OFFSET ${offset}`,
+      );
+      const countResult = await client.unsafe("SELECT COUNT(*) as count FROM audit_logs");
       const total = Number(countResult[0]?.count) || 0;
       const logs = result.map((row: Record<string, unknown>) => ({
         id: String(row.id),
@@ -1593,13 +1826,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         total,
         page,
         limit,
-        totalPages: Math.ceil(total / limit)
+        totalPages: Math.ceil(total / limit),
       });
     }
 
-    return res.status(404).json({ error: 'Not found' });
+    return res.status(404).json({ error: "Not found" });
   } catch (error) {
-    console.error('API Error:', error);
+    console.error("API Error:", error);
     return res.status(500).json({ error: String(error) });
   }
 }

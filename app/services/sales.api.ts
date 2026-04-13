@@ -1,6 +1,6 @@
-import type { Sale, SaleItem } from '../types';
+import type { Sale, SaleItem } from "../types";
 
-const API_BASE = '/api';
+const API_BASE = "/api";
 
 export interface PaginatedSalesResult {
   sales: Sale[];
@@ -21,11 +21,11 @@ export const getAllSales = async (params: SalesParams = {}): Promise<PaginatedSa
     page: page.toString(),
     limit: limit.toString(),
   }).toString();
-  
+
   const response = await fetch(`${API_BASE}/sales?${queryString}`);
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to fetch sales');
+    throw new Error(error.error || "Failed to fetch sales");
   }
   return response.json();
 };
@@ -34,7 +34,7 @@ export const getSalesByCustomer = async (customerId: string): Promise<Sale[]> =>
   const response = await fetch(`${API_BASE}/sales/customer/${customerId}`);
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to fetch customer sales');
+    throw new Error(error.error || "Failed to fetch customer sales");
   }
   return response.json();
 };
@@ -55,13 +55,13 @@ export const createSale = async (input: {
   isPaid?: boolean;
 }): Promise<Sale> => {
   const response = await fetch(`${API_BASE}/sales`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to create sale');
+    throw new Error(error.error || "Failed to create sale");
   }
   return response.json();
 };
@@ -70,20 +70,20 @@ export const getAllSaleItems = async (): Promise<SaleItem[]> => {
   const response = await fetch(`${API_BASE}/sale-items`);
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to fetch sale items');
+    throw new Error(error.error || "Failed to fetch sale items");
   }
   return response.json();
 };
 
 export const markSaleAsPaid = async (saleId: string, staffName: string): Promise<Sale> => {
   const response = await fetch(`${API_BASE}/sales/${saleId}/mark-paid`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ staffName }),
   });
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to mark sale as paid');
+    throw new Error(error.error || "Failed to mark sale as paid");
   }
   return response.json();
 };

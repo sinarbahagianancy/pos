@@ -1,10 +1,26 @@
-export type MountType = 'E-mount' | 'RF-mount' | 'X-mount' | 'L-mount' | 'Z-mount' | 'M-mount';
-export type ConditionType = 'New' | 'Used';
-export type PaymentMethod = 'Cash' | 'Debit' | 'QRIS' | 'Utang';
-export type WarrantyType = 'Official Sony Indonesia' | 'Official Canon Indonesia' | 'Official Fujifilm Indonesia' | 'Distributor' | 'Store Warranty';
-export type ClaimStatus = 'Received' | 'Sent to HQ' | 'Repairing' | 'Ready for Pickup' | 'Completed';
-export type ProductCategory = 'Body' | 'Lens' | 'Accessory';
-export type AuditAction = 'Stock Addition' | 'Sales Deduction' | 'Manual Correction' | 'General' | 'Settings Update' | 'Product Update';
+export type MountType = "E-mount" | "RF-mount" | "X-mount" | "L-mount" | "Z-mount" | "M-mount";
+export type ConditionType = "New" | "Used";
+export type PaymentMethod = "Cash" | "Debit" | "QRIS" | "Utang";
+export type WarrantyType =
+  | "Official Sony Indonesia"
+  | "Official Canon Indonesia"
+  | "Official Fujifilm Indonesia"
+  | "Distributor"
+  | "Store Warranty";
+export type ClaimStatus =
+  | "Received"
+  | "Sent to HQ"
+  | "Repairing"
+  | "Ready for Pickup"
+  | "Completed";
+export type ProductCategory = "Body" | "Lens" | "Accessory";
+export type AuditAction =
+  | "Stock Addition"
+  | "Sales Deduction"
+  | "Manual Correction"
+  | "General"
+  | "Settings Update"
+  | "Product Update";
 
 export interface Supplier {
   id: string;
@@ -38,7 +54,7 @@ export interface Product {
 export interface SerialNumber {
   sn: string;
   productId: string;
-  status: 'In Stock' | 'Sold' | 'Claimed' | 'Damaged';
+  status: "In Stock" | "Sold" | "Claimed" | "Damaged";
   createdAt?: string;
 }
 
@@ -106,7 +122,7 @@ export interface StoreConfig {
   storeName: string;
   address: string;
   ppnRate: number;
-  currency: 'IDR' | 'USD';
+  currency: "IDR" | "USD";
   monthlyTarget: number;
   updatedAt?: string;
 }

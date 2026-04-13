@@ -1,5 +1,10 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { login as apiLogin, logout as apiLogout, getCurrentUser, LoginResponse } from '../services/auth.service';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import {
+  login as apiLogin,
+  logout as apiLogout,
+  getCurrentUser,
+  LoginResponse,
+} from "../services/auth.service";
 
 interface AuthContextType {
   user: LoginResponse | null;
@@ -35,23 +40,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const value: AuthContextType = {
     user,
-    isAdmin: user?.role === 'Admin',
+    isAdmin: user?.role === "Admin",
     isLoading,
     login,
     logout,
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
 };

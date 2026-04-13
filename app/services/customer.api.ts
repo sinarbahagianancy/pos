@@ -1,6 +1,6 @@
-import type { Customer } from '../types';
+import type { Customer } from "../types";
 
-const API_BASE = '/api';
+const API_BASE = "/api";
 
 export interface PaginatedCustomersResult {
   customers: Customer[];
@@ -15,17 +15,19 @@ export interface CustomersParams {
   limit?: number;
 }
 
-export const getAllCustomers = async (params: CustomersParams = {}): Promise<PaginatedCustomersResult> => {
+export const getAllCustomers = async (
+  params: CustomersParams = {},
+): Promise<PaginatedCustomersResult> => {
   const { page = 1, limit = 20 } = params;
   const queryString = new URLSearchParams({
     page: page.toString(),
     limit: limit.toString(),
   }).toString();
-  
+
   const response = await fetch(`${API_BASE}/customers?${queryString}`);
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to fetch customers');
+    throw new Error(error.error || "Failed to fetch customers");
   }
   return response.json();
 };
@@ -35,7 +37,7 @@ export const getCustomerById = async (id: string): Promise<Customer | null> => {
   if (!response.ok) {
     if (response.status === 404) return null;
     const error = await response.json();
-    throw new Error(error.error || 'Failed to fetch customer');
+    throw new Error(error.error || "Failed to fetch customer");
   }
   return response.json();
 };
@@ -50,13 +52,13 @@ export const createCustomer = async (input: {
   loyaltyPoints?: number;
 }): Promise<Customer> => {
   const response = await fetch(`${API_BASE}/customers`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to create customer');
+    throw new Error(error.error || "Failed to create customer");
   }
   return response.json();
 };
@@ -71,29 +73,29 @@ export const updateCustomer = async (
     npwp?: string;
     loyaltyPoints?: number;
     staffName?: string;
-  }
+  },
 ): Promise<Customer> => {
   const response = await fetch(`${API_BASE}/customers/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to update customer');
+    throw new Error(error.error || "Failed to update customer");
   }
   return response.json();
 };
 
-export const deleteCustomer = async (id: string, staffName: string = 'System'): Promise<void> => {
+export const deleteCustomer = async (id: string, staffName: string = "System"): Promise<void> => {
   const response = await fetch(`${API_BASE}/customers/${id}`, {
-    method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ staffName }),
   });
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Failed to delete customer');
+    throw new Error(error.error || "Failed to delete customer");
   }
 };
 

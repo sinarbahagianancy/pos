@@ -41,6 +41,7 @@
   },
   "devDependencies": {
     "@tanstack/devtools-vite": "^0.3.11",
+    "@tanstack/react-virtual": "^3.13.23",
     "@tanstack/router-plugin": "^1.132.0",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.2.0",
@@ -53,13 +54,13 @@
     "react-currency-input-field": "^4.0.5",
     "typescript": "^5.7.2",
     "vite": "npm:@voidzero-dev/vite-plus-core@latest",
+    "vite-plus": "latest",
     "vite-tsconfig-paths": "^5.1.4",
-    "vitest": "npm:@voidzero-dev/vite-plus-test@latest",
-    "vite-plus": "latest"
+    "vitest": "npm:@voidzero-dev/vite-plus-test@latest"
   },
-  "packageManager": "npm@11.12.1",
   "overrides": {
     "vite": "npm:@voidzero-dev/vite-plus-core@latest",
     "vitest": "npm:@voidzero-dev/vite-plus-test@latest"
-  }
+  },
+  "packageManager": "npm@11.12.1"
 }

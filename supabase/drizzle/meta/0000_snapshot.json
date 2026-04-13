@@ -284,12 +284,8 @@
           "name": "sale_items_sale_id_sales_id_fk",
           "tableFrom": "sale_items",
           "tableTo": "sales",
-          "columnsFrom": [
-            "sale_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["sale_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -297,12 +293,8 @@
           "name": "sale_items_product_id_products_id_fk",
           "tableFrom": "sale_items",
           "tableTo": "products",
-          "columnsFrom": [
-            "product_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["product_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -380,12 +372,8 @@
           "name": "sales_customer_id_customers_id_fk",
           "tableFrom": "sales",
           "tableTo": "customers",
-          "columnsFrom": [
-            "customer_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["customer_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -434,12 +422,8 @@
           "name": "serial_numbers_product_id_products_id_fk",
           "tableFrom": "serial_numbers",
           "tableTo": "products",
-          "columnsFrom": [
-            "product_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["product_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -502,9 +486,7 @@
         "staff_members_name_unique": {
           "name": "staff_members_name_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "name"
-          ]
+          "columns": ["name"]
         }
       },
       "policies": {},
@@ -652,69 +634,37 @@
     "public.claim_status": {
       "name": "claim_status",
       "schema": "public",
-      "values": [
-        "Received",
-        "Sent to HQ",
-        "Repairing",
-        "Ready for Pickup",
-        "Completed"
-      ]
+      "values": ["Received", "Sent to HQ", "Repairing", "Ready for Pickup", "Completed"]
     },
     "public.condition_type": {
       "name": "condition_type",
       "schema": "public",
-      "values": [
-        "New",
-        "Used"
-      ]
+      "values": ["New", "Used"]
     },
     "public.currency_type": {
       "name": "currency_type",
       "schema": "public",
-      "values": [
-        "IDR",
-        "USD"
-      ]
+      "values": ["IDR", "USD"]
     },
     "public.mount_type": {
       "name": "mount_type",
       "schema": "public",
-      "values": [
-        "E-mount",
-        "RF-mount",
-        "X-mount",
-        "L-mount",
-        "Z-mount",
-        "M-mount"
-      ]
+      "values": ["E-mount", "RF-mount", "X-mount", "L-mount", "Z-mount", "M-mount"]
     },
     "public.payment_method": {
       "name": "payment_method",
       "schema": "public",
-      "values": [
-        "Cash",
-        "Debit",
-        "QRIS",
-        "Credit"
-      ]
+      "values": ["Cash", "Debit", "QRIS", "Credit"]
     },
     "public.product_category": {
       "name": "product_category",
       "schema": "public",
-      "values": [
-        "Body",
-        "Lens",
-        "Accessory"
-      ]
+      "values": ["Body", "Lens", "Accessory"]
     },
     "public.sn_status": {
       "name": "sn_status",
       "schema": "public",
-      "values": [
-        "In Stock",
-        "Sold",
-        "Claimed"
-      ]
+      "values": ["In Stock", "Sold", "Claimed"]
     },
     "public.warranty_type": {
       "name": "warranty_type",

@@ -1,6 +1,6 @@
-import { db } from '../../src/db';
-import { customers } from '../../src/db/schema';
-import { eq } from 'drizzle-orm';
+import { db } from "../../src/db";
+import { customers } from "../../src/db/schema";
+import { eq } from "drizzle-orm";
 
 export async function getAllCustomers() {
   return db.select().from(customers);
@@ -33,7 +33,7 @@ export async function updateCustomer(
     address?: string;
     npwp?: string;
     loyaltyPoints?: number;
-  }
+  },
 ) {
   const result = await db
     .update(customers)

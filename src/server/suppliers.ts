@@ -1,6 +1,6 @@
-import { client, db } from '../db';
-import { suppliers } from '../db/schema';
-import { eq, sql } from 'drizzle-orm';
+import { client, db } from "../db";
+import { suppliers } from "../db/schema";
+import { eq, sql } from "drizzle-orm";
 
 const parseDbSupplier = (row: Record<string, unknown>) => ({
   id: row.id as string,
@@ -19,13 +19,25 @@ export interface PaginatedSuppliersResult {
   totalPages: number;
 }
 
-export const getAllSuppliers = async (page: number = 1, limit: number = 20): Promise<PaginatedSuppliersResult> => {
+export const getAllSuppliers = async (
+  page: number = 1,
+  limit: number = 20,
+): Promise<PaginatedSuppliersResult> => {
   const offset = (page - 1) * limit;
-  
-  const result = await db.select().from(suppliers).where(eq(suppliers.deleted, false)).orderBy(suppliers.name).limit(limit).offset(offset);
-  const countResult = await db.select({ count: sql<number>`count(*)` }).from(suppliers).where(eq(suppliers.deleted, false));
+
+  const result = await db
+    .select()
+    .from(suppliers)
+    .where(eq(suppliers.deleted, false))
+    .orderBy(suppliers.name)
+    .limit(limit)
+    .offset(offset);
+  const countResult = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(suppliers)
+    .where(eq(suppliers.deleted, false));
   const total = Number(countResult[0]?.count) || 0;
-  
+
   return {
     suppliers: result.map(parseDbSupplier),
     total,
@@ -41,36 +53,38 @@ export const getSupplierById = async (id: string) => {
   return parseDbSupplier(result[0]);
 };
 
-export const createSupplier = async (data: {
-  name: string;
-  phone?: string;
-  address?: string;
-}) => {
-  const result = await db.insert(suppliers).values({
-    name: data.name,
-    phone: data.phone,
-    address: data.address,
-  }).returning();
-  
+export const createSupplier = async (data: { name: string; phone?: string; address?: string }) => {
+  const result = await db
+    .insert(suppliers)
+    .values({
+      name: data.name,
+      phone: data.phone,
+      address: data.address,
+    })
+    .returning();
+
   return parseDbSupplier(result[0]);
 };
 
-export const updateSupplier = async (id: string, data: {
-  name?: string;
-  phone?: string;
-  address?: string;
-}) => {
+export const updateSupplier = async (
+  id: string,
+  data: {
+    name?: string;
+    phone?: string;
+    address?: string;
+  },
+) => {
   const updates: Record<string, unknown> = {};
-  
+
   if (data.name !== undefined) updates.name = data.name;
   if (data.phone !== undefined) updates.phone = data.phone;
   if (data.address !== undefined) updates.address = data.address;
-  
+
   if (Object.keys(updates).length === 0) {
     const result = await db.select().from(suppliers).where(eq(suppliers.id, id));
     return result.length > 0 ? parseDbSupplier(result[0]) : null;
   }
-  
+
   const result = await db.update(suppliers).set(updates).where(eq(suppliers.id, id)).returning();
   return result.length > 0 ? parseDbSupplier(result[0]) : null;
 };

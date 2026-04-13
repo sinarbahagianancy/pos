@@ -1,34 +1,36 @@
-import { client, db } from '../db';
-import { products, serialNumbers, auditLogs } from '../db/schema';
-import { eq, desc, sql } from 'drizzle-orm';
-import { 
+import { client, db } from "../db";
+import { products, serialNumbers, auditLogs } from "../db/schema";
+import { eq, desc, sql } from "drizzle-orm";
+import {
   validateCreateProductInput,
   validateUpdateProductInput,
   validateStockAdjustmentInput,
   validateCreateSerialNumberInput,
   parseDbProduct,
   parseDbSerialNumber,
-  Product
-} from '../../app/schemas/product.schema';
+  Product,
+} from "../../app/schemas/product.schema";
 
 // Ensure has_serial_number column exists and fix all products based on actual serial numbers
 try {
-  await client.unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS has_serial_number boolean DEFAULT true`);
-  
+  await client.unsafe(
+    `ALTER TABLE products ADD COLUMN IF NOT EXISTS has_serial_number boolean DEFAULT true`,
+  );
+
   // Fix ALL products based on whether they have serial numbers in the serial_numbers table
   await client.unsafe(`
     UPDATE products 
     SET has_serial_number = true 
     WHERE EXISTS (SELECT 1 FROM serial_numbers WHERE serial_numbers.product_id = products.id)
   `);
-  
+
   await client.unsafe(`
     UPDATE products 
     SET has_serial_number = false 
     WHERE NOT EXISTS (SELECT 1 FROM serial_numbers WHERE serial_numbers.product_id = products.id)
   `);
 } catch (e) {
-  console.log('Migration check (may be ok):', e);
+  console.log("Migration check (may be ok):", e);
 }
 
 export interface PaginatedProductsResult {
@@ -39,13 +41,18 @@ export interface PaginatedProductsResult {
   totalPages: number;
 }
 
-export const getAllProducts = async (page: number = 1, limit: number = 20): Promise<PaginatedProductsResult> => {
+export const getAllProducts = async (
+  page: number = 1,
+  limit: number = 20,
+): Promise<PaginatedProductsResult> => {
   const offset = (page - 1) * limit;
-  
+
   // Get total count
-  const countResult = await client.unsafe('SELECT COUNT(*) as count FROM products WHERE deleted = false');
-  const total = parseInt(countResult[0]?.count || '0', 10);
-  
+  const countResult = await client.unsafe(
+    "SELECT COUNT(*) as count FROM products WHERE deleted = false",
+  );
+  const total = parseInt(countResult[0]?.count || "0", 10);
+
   // Use direct SQL to avoid any Drizzle ORM issues
   const rawResult = await client.unsafe(`
     SELECT
@@ -76,57 +83,60 @@ export const getProductById = async (id: string) => {
 
 export const createProduct = async (input: unknown) => {
   const validated = validateCreateProductInput(input);
-  const staffName = (input as Record<string, unknown>)?.staffName as string || 'System';
+  const staffName = ((input as Record<string, unknown>)?.staffName as string) || "System";
 
   const hasSerialNumber = validated.hasSerialNumber === true;
-  const stockCount = hasSerialNumber 
-    ? (validated.serialNumbers?.length || 0) 
-    : (validated.quantity || 0);
-  
-  const result = await db.insert(products).values({
-    id: validated.id,
-    brand: validated.brand,
-    model: validated.model,
-    category: validated.category,
-    mount: validated.mount ?? null,
-    condition: validated.condition,
-    price: validated.price.toString(),
-    cogs: validated.cogs.toString(),
-    warrantyMonths: validated.warrantyMonths,
-    warrantyType: validated.warrantyType,
-    stock: stockCount,
-    hasSerialNumber: hasSerialNumber,
-    supplier: validated.supplier || null,
-    dateRestocked: validated.dateRestocked ? new Date(validated.dateRestocked) : new Date(),
-    taxEnabled: validated.taxEnabled === true,
-  }).returning();
-  
+  const stockCount = hasSerialNumber
+    ? validated.serialNumbers?.length || 0
+    : validated.quantity || 0;
+
+  const result = await db
+    .insert(products)
+    .values({
+      id: validated.id,
+      brand: validated.brand,
+      model: validated.model,
+      category: validated.category,
+      mount: validated.mount ?? null,
+      condition: validated.condition,
+      price: validated.price.toString(),
+      cogs: validated.cogs.toString(),
+      warrantyMonths: validated.warrantyMonths,
+      warrantyType: validated.warrantyType,
+      stock: stockCount,
+      hasSerialNumber: hasSerialNumber,
+      supplier: validated.supplier || null,
+      dateRestocked: validated.dateRestocked ? new Date(validated.dateRestocked) : new Date(),
+      taxEnabled: validated.taxEnabled === true,
+    })
+    .returning();
+
   const newProduct = result[0];
-  
+
   if (hasSerialNumber && validated.serialNumbers && validated.serialNumbers.length > 0) {
     for (const sn of validated.serialNumbers) {
       // Check if SN already exists
       const existing = await db.select().from(serialNumbers).where(eq(serialNumbers.sn, sn));
       if (existing.length > 0) {
-        console.error('SN already exists:', sn, 'belongs to product:', existing[0].productId);
+        console.error("SN already exists:", sn, "belongs to product:", existing[0].productId);
         throw new Error(`Serial number ${sn} already exists in the system`);
       }
       try {
         await db.insert(serialNumbers).values({
           sn: sn,
           productId: newProduct.id,
-          status: 'In Stock',
+          status: "In Stock",
         });
       } catch (err: any) {
-        console.error('Error inserting SN:', sn, err);
+        console.error("Error inserting SN:", sn, err);
         throw new Error(`Failed to insert serial number ${sn}: ${err.message}`);
       }
     }
-    
+
     await db.insert(auditLogs).values({
       id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       staffName,
-      action: 'Stock Addition',
+      action: "Stock Addition",
       details: `Created product ${validated.brand} ${validated.model} with ${validated.serialNumbers.length} serial numbers from supplier ${validated.supplier}`,
       relatedId: newProduct.id,
     });
@@ -134,30 +144,35 @@ export const createProduct = async (input: unknown) => {
     await db.insert(auditLogs).values({
       id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       staffName,
-      action: 'Stock Addition',
+      action: "Stock Addition",
       details: `Created product ${validated.brand} ${validated.model} with ${validated.quantity} units from supplier ${validated.supplier}`,
       relatedId: newProduct.id,
     });
   }
-  
+
   return parseDbProduct(newProduct);
 };
 
-export const updateProduct = async (id: string, input: unknown, staffName: string = 'System') => {
-  console.log('[SERVER products.ts] updateProduct called, id:', id, 'input:', JSON.stringify(input));
+export const updateProduct = async (id: string, input: unknown, staffName: string = "System") => {
+  console.log(
+    "[SERVER products.ts] updateProduct called, id:",
+    id,
+    "input:",
+    JSON.stringify(input),
+  );
   const validated = validateUpdateProductInput(input);
-  console.log('[SERVER products.ts] validated:', JSON.stringify(validated));
-  
+  console.log("[SERVER products.ts] validated:", JSON.stringify(validated));
+
   // Get old product for audit logging
   const [oldProduct] = await db.select().from(products).where(eq(products.id, id));
-  console.log('[SERVER products.ts] oldProduct taxEnabled:', oldProduct?.taxEnabled);
+  console.log("[SERVER products.ts] oldProduct taxEnabled:", oldProduct?.taxEnabled);
   if (!oldProduct) {
-    throw new Error('Product not found');
+    throw new Error("Product not found");
   }
-  
+
   const updateData: Record<string, unknown> = { updatedAt: new Date() };
   const changes: string[] = [];
-  
+
   if (validated.brand !== undefined && validated.brand !== oldProduct.brand) {
     updateData.brand = validated.brand;
     changes.push(`brand: ${oldProduct.brand} -> ${validated.brand}`);
@@ -192,7 +207,10 @@ export const updateProduct = async (id: string, input: unknown, staffName: strin
       changes.push(`cogs: ${oldProduct.cogs} -> ${newCogs}`);
     }
   }
-  if (validated.warrantyMonths !== undefined && validated.warrantyMonths !== oldProduct.warrantyMonths) {
+  if (
+    validated.warrantyMonths !== undefined &&
+    validated.warrantyMonths !== oldProduct.warrantyMonths
+  ) {
     updateData.warrantyMonths = validated.warrantyMonths;
     changes.push(`warrantyMonths: ${oldProduct.warrantyMonths} -> ${validated.warrantyMonths}`);
   }
@@ -204,47 +222,47 @@ export const updateProduct = async (id: string, input: unknown, staffName: strin
     updateData.taxEnabled = validated.taxEnabled;
     changes.push(`taxEnabled: ${oldProduct.taxEnabled} -> ${validated.taxEnabled}`);
   }
-  
+
   if (changes.length > 0) {
     await db.insert(auditLogs).values({
       id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       staffName,
-      action: 'Product Update',
-      details: `Updated ${oldProduct.brand} ${oldProduct.model}: ${changes.join(', ')}`,
+      action: "Product Update",
+      details: `Updated ${oldProduct.brand} ${oldProduct.model}: ${changes.join(", ")}`,
       relatedId: id,
     });
   }
-  
+
   await db.update(products).set(updateData).where(eq(products.id, id));
-  
+
   const [updatedProduct] = await db.select().from(products).where(eq(products.id, id));
-  console.log('[SERVER products.ts] Fresh fetch after update:', JSON.stringify(updatedProduct));
-  
+  console.log("[SERVER products.ts] Fresh fetch after update:", JSON.stringify(updatedProduct));
+
   const parsed = updatedProduct ? parseDbProduct(updatedProduct) : null;
-  console.log('[SERVER products.ts] parseDbProduct returned:', JSON.stringify(parsed));
-  
+  console.log("[SERVER products.ts] parseDbProduct returned:", JSON.stringify(parsed));
+
   return parsed;
 };
 
 export const adjustStock = async (
-  productId: string, 
-  newStock: number, 
-  reason: string, 
-  staffName: string = 'System',
+  productId: string,
+  newStock: number,
+  reason: string,
+  staffName: string = "System",
   supplier?: string,
-  dateRestocked?: string
+  dateRestocked?: string,
 ) => {
   validateStockAdjustmentInput({ productId, newStock, reason });
-  
+
   const [product] = await db.select().from(products).where(eq(products.id, productId));
-  
+
   if (!product) {
-    throw new Error('Product not found');
+    throw new Error("Product not found");
   }
-  
+
   const diff = newStock - Number(product.stock);
-  const actionType = diff > 0 ? 'Stock Addition' : 'Manual Correction';
-  
+  const actionType = diff > 0 ? "Stock Addition" : "Manual Correction";
+
   // Update fields - only update supplier and dateRestocked when adding stock (positive diff)
   const updateData: any = { stock: newStock, updatedAt: new Date() };
   if (diff > 0 && supplier) {
@@ -253,13 +271,13 @@ export const adjustStock = async (
   if (diff > 0 && dateRestocked) {
     updateData.dateRestocked = new Date(dateRestocked);
   }
-  
+
   const [result] = await db
     .update(products)
     .set(updateData)
     .where(eq(products.id, productId))
     .returning();
-  
+
   // Build audit log details with supplier and date info
   let auditDetails = `Manual adjust ${product.brand} ${product.model}: ${product.stock} -> ${newStock}. Reason: ${reason}`;
   if (diff > 0) {
@@ -270,7 +288,7 @@ export const adjustStock = async (
       auditDetails += `. Date: ${dateRestocked}`;
     }
   }
-  
+
   await db.insert(auditLogs).values({
     id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     staffName,
@@ -278,7 +296,7 @@ export const adjustStock = async (
     details: auditDetails,
     relatedId: productId,
   });
-  
+
   return result ? parseDbProduct(result) : null;
 };
 
@@ -288,31 +306,38 @@ export const deleteProduct = async (id: string) => {
 };
 
 export const toggleProductHidden = async (id: string, hidden: boolean) => {
-  const result = await db.update(products).set({ hidden: hidden ? 1 : 0 }).where(eq(products.id, id)).returning();
+  const result = await db
+    .update(products)
+    .set({ hidden: hidden ? 1 : 0 })
+    .where(eq(products.id, id))
+    .returning();
   return result[0] ? parseDbProduct(result[0]) : null;
 };
 
 export const restoreProduct = async (id: string) => {
-  const result = await db.update(products).set({ deleted: false }).where(eq(products.id, id)).returning();
+  const result = await db
+    .update(products)
+    .set({ deleted: false })
+    .where(eq(products.id, id))
+    .returning();
   return result[0] ? parseDbProduct(result[0]) : null;
 };
 
 export const getAllSerialNumbers = async () => {
-  const result = await db.select({
-    sn: serialNumbers.sn,
-    productId: serialNumbers.productId,
-    status: serialNumbers.status,
-    createdAt: serialNumbers.createdAt,
-  }).from(serialNumbers);
-  
+  const result = await db
+    .select({
+      sn: serialNumbers.sn,
+      productId: serialNumbers.productId,
+      status: serialNumbers.status,
+      createdAt: serialNumbers.createdAt,
+    })
+    .from(serialNumbers);
+
   return result.map(parseDbSerialNumber);
 };
 
 export const getAvailableSerialNumbers = async () => {
-  const result = await db
-    .select()
-    .from(serialNumbers)
-    .where(eq(serialNumbers.status, 'In Stock'));
+  const result = await db.select().from(serialNumbers).where(eq(serialNumbers.status, "In Stock"));
   return result.map(parseDbSerialNumber);
 };
 
@@ -326,13 +351,16 @@ export const getSerialNumbersByProduct = async (productId: string) => {
 
 export const createSerialNumber = async (input: unknown) => {
   const validated = validateCreateSerialNumberInput(input);
-  
-  const result = await db.insert(serialNumbers).values({
-    sn: validated.sn,
-    productId: validated.productId,
-    status: 'In Stock',
-  }).returning();
-  
+
+  const result = await db
+    .insert(serialNumbers)
+    .values({
+      sn: validated.sn,
+      productId: validated.productId,
+      status: "In Stock",
+    })
+    .returning();
+
   return parseDbSerialNumber(result[0]);
 };
 
@@ -340,66 +368,69 @@ export const createSerialNumbersBulk = async (
   inputs: unknown[],
   supplier?: string,
   date?: string,
-  reason?: string
+  reason?: string,
 ) => {
   const validated = inputs.map(validateCreateSerialNumberInput);
-  
-  const values = validated.map(v => ({
+
+  const values = validated.map((v) => ({
     sn: v.sn,
     productId: v.productId,
-    status: 'In Stock' as const,
+    status: "In Stock" as const,
   }));
-  
+
   const result = await db.insert(serialNumbers).values(values).returning();
-  
+
   // Create audit log with supplier, date, and reason info
   if (validated.length > 0 && validated[0].productId) {
-    const [product] = await db.select().from(products).where(eq(products.id, validated[0].productId));
-    const snList = validated.map(v => v.sn).join(', ');
-    const supplierInfo = supplier || 'Unknown';
-    const dateInfo = date || new Date().toISOString().split('T')[0];
-    const reasonInfo = reason || 'Not specified';
-    
+    const [product] = await db
+      .select()
+      .from(products)
+      .where(eq(products.id, validated[0].productId));
+    const snList = validated.map((v) => v.sn).join(", ");
+    const supplierInfo = supplier || "Unknown";
+    const dateInfo = date || new Date().toISOString().split("T")[0];
+    const reasonInfo = reason || "Not specified";
+
     await db.insert(auditLogs).values({
       id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      staffName: 'System',
-      action: 'Stock Addition',
-      details: `Added ${validated.length} serial number(s) to ${product?.brand || ''} ${product?.model || ''} from supplier ${supplierInfo} on ${dateInfo}, reason: ${reasonInfo}. SN: ${snList}`,
+      staffName: "System",
+      action: "Stock Addition",
+      details: `Added ${validated.length} serial number(s) to ${product?.brand || ""} ${product?.model || ""} from supplier ${supplierInfo} on ${dateInfo}, reason: ${reasonInfo}. SN: ${snList}`,
       relatedId: validated[0].productId,
     });
   }
-  
+
   return result.map(parseDbSerialNumber);
 };
 
 export const updateSerialNumberStatus = async (
-  sn: string, 
-  status: 'In Stock' | 'Sold' | 'Claimed' | 'Damaged',
-  reason?: string
+  sn: string,
+  status: "In Stock" | "Sold" | "Claimed" | "Damaged",
+  reason?: string,
 ) => {
   // Get the SN to find product info before updating
   const [existingSN] = await db.select().from(serialNumbers).where(eq(serialNumbers.sn, sn));
-  
+
   const [result] = await db
     .update(serialNumbers)
     .set({ status })
     .where(eq(serialNumbers.sn, sn))
     .returning();
-  
+
   // Create audit log for status change
   if (existingSN) {
     const [product] = await db.select().from(products).where(eq(products.id, existingSN.productId));
-    const reasonInfo = reason || 'Not specified';
-    
+    const reasonInfo = reason || "Not specified";
+
     await db.insert(auditLogs).values({
       id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      staffName: 'System',
-      action: 'Manual Correction',
-      details: `Marked serial number ${sn} as ${status} for ${product?.brand || ''} ${product?.model || ''}, reason: ${reasonInfo}`,
+      staffName: "System",
+      action: "Manual Correction",
+      details: `Marked serial number ${sn} as ${status} for ${product?.brand || ""} ${product?.model || ""}, reason: ${reasonInfo}`,
       relatedId: existingSN.productId,
     });
   }
-  
+
   return result ? parseDbSerialNumber(result) : null;
 };
 
@@ -409,8 +440,8 @@ export const getAuditLogsByProduct = async (productId: string) => {
     .from(auditLogs)
     .where(eq(auditLogs.relatedId, productId))
     .orderBy(desc(auditLogs.timestamp));
-  
-  return result.map(r => ({
+
+  return result.map((r) => ({
     id: r.id,
     staffName: r.staffName,
     action: r.action,
@@ -421,28 +452,38 @@ export const getAuditLogsByProduct = async (productId: string) => {
 };
 
 export interface PaginatedAuditLogsResult {
-  logs: { id: string; staffName: string; action: string; details: string; timestamp: string | null; relatedId: string | null }[];
+  logs: {
+    id: string;
+    staffName: string;
+    action: string;
+    details: string;
+    timestamp: string | null;
+    relatedId: string | null;
+  }[];
   total: number;
   page: number;
   limit: number;
   totalPages: number;
 }
 
-export const getAllAuditLogs = async (page: number = 1, limit: number = 20): Promise<PaginatedAuditLogsResult> => {
+export const getAllAuditLogs = async (
+  page: number = 1,
+  limit: number = 20,
+): Promise<PaginatedAuditLogsResult> => {
   const offset = (page - 1) * limit;
-  
+
   const result = await db
     .select()
     .from(auditLogs)
     .orderBy(desc(auditLogs.timestamp))
     .limit(limit)
     .offset(offset);
-  
+
   const countResult = await db.select({ count: sql<number>`count(*)` }).from(auditLogs);
   const total = Number(countResult[0]?.count) || 0;
-  
+
   return {
-    logs: result.map(r => ({
+    logs: result.map((r) => ({
       id: r.id,
       staffName: r.staffName,
       action: r.action,
