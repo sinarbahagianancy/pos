@@ -1,16 +1,13 @@
-import { defineConfig, loadEnv } from "vite-plus";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import tsconfigPaths from "vite-tsconfig-paths";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   const isDev = mode === "development";
 
-  const basePlugins = [
-    react(),
-    tailwindcss(),
-    // Native tsconfig paths resolution (no plugin needed!)
-  ];
+  const basePlugins = [react(), tailwindcss(), tsconfigPaths()];
 
   if (isDev) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -20,10 +17,6 @@ export default defineConfig(({ mode }) => {
   }
 
   return {
-    resolve: {
-      // Native TypeScript path resolution
-      tsconfigPaths: true,
-    },
     plugins: basePlugins,
     server: {
       port: 3000,

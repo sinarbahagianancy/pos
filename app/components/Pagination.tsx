@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 
 interface PaginationProps {
   currentPage: number;
@@ -17,7 +17,7 @@ const Pagination: React.FC<PaginationProps> = ({
   onPageChange,
   perPage = 20,
   onPerPageChange,
-  itemLabel = 'items',
+  itemLabel = "items",
 }) => {
   if (totalPages <= 1 && totalItems <= perPage) {
     return null;
@@ -27,7 +27,7 @@ const Pagination: React.FC<PaginationProps> = ({
   const getVisiblePages = () => {
     const pages: number[] = [];
     const maxVisible = 5;
-    
+
     if (totalPages <= maxVisible) {
       // Show all pages if 5 or fewer
       for (let i = 1; i <= totalPages; i++) pages.push(i);
@@ -41,7 +41,7 @@ const Pagination: React.FC<PaginationProps> = ({
       // Show current page and around it
       for (let i = currentPage - 2; i <= currentPage + 2; i++) pages.push(i);
     }
-    
+
     return pages;
   };
 
@@ -53,7 +53,7 @@ const Pagination: React.FC<PaginationProps> = ({
           <span className="font-medium">{currentPage}</span> of{" "}
           <span className="font-medium">{totalPages}</span>
         </span>
-        
+
         {onPerPageChange && (
           <select
             value={perPage}
@@ -67,7 +67,7 @@ const Pagination: React.FC<PaginationProps> = ({
           </select>
         )}
       </div>
-      
+
       <div className="flex items-center gap-2">
         <button
           onClick={() => onPageChange(currentPage - 1)}
@@ -76,7 +76,7 @@ const Pagination: React.FC<PaginationProps> = ({
         >
           Prev
         </button>
-        
+
         {getVisiblePages().map((pageNum) => (
           <button
             key={pageNum}
@@ -90,7 +90,7 @@ const Pagination: React.FC<PaginationProps> = ({
             {pageNum}
           </button>
         ))}
-        
+
         <button
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage >= totalPages}

@@ -928,7 +928,7 @@ const AuditComponent = () => {
   }
 
   return (
-    <AuditLogsView 
+    <AuditLogsView
       logs={logs}
       currentPage={logsPage}
       totalPages={totalLogsPages}

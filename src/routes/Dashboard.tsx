@@ -1,17 +1,7 @@
 import React from "react";
 import { Sale, WarrantyClaim, Product } from "../../app/types";
 import { formatIDR } from "../../app/utils/formatters";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-} from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 interface DashboardProps {
   sales: Sale[];
@@ -22,7 +12,6 @@ interface DashboardProps {
 
 const DashboardView: React.FC<DashboardProps> = ({
   sales,
-  claims,
   products,
   monthlyTarget = 500000000,
 }) => {
@@ -44,7 +33,6 @@ const DashboardView: React.FC<DashboardProps> = ({
     })
     .reduce((acc, s) => acc + s.total, 0);
 
-  const activeClaims = claims.filter((c) => c.status !== "Completed").length;
   const lowStockItems = products.filter((p) => p.stock <= 2);
 
   const last7DaysSales = [...Array(7)].map((_, i) => {
@@ -69,18 +57,6 @@ const DashboardView: React.FC<DashboardProps> = ({
 
     return { label: dayStr, revenue: dayRevenue, profit: dayProfit };
   });
-
-  const maxRevenue = Math.max(...last7DaysSales.map((d) => d.revenue), 10000000);
-
-  const staffStats = sales.reduce(
-    (acc: Record<string, { revenue: number; count: number }>, sale) => {
-      if (!acc[sale.staffName]) acc[sale.staffName] = { revenue: 0, count: 0 };
-      acc[sale.staffName].revenue += sale.total;
-      acc[sale.staffName].count += 1;
-      return acc;
-    },
-    {},
-  );
 
   const productPerformance = allItems.reduce(
     (acc: Record<string, { count: number; revenue: number; profit: number }>, item) => {
@@ -195,8 +171,8 @@ const DashboardView: React.FC<DashboardProps> = ({
             </div>
           </div>
 
-          <div className="flex-1 min-h-[250px]">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="flex-1" style={{ minHeight: 250 }}>
+            <ResponsiveContainer width="100%" height={250}>
               <BarChart data={last7DaysSales} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                 <XAxis
