@@ -279,41 +279,69 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
                     <td className="px-6 py-4">
                       {isInstallment ? (
                         <div className="flex flex-col gap-1">
-                          <span className="px-3 py-1.5 rounded-full text-xs font-bold uppercase bg-amber-100 text-amber-700 inline-block w-fit">
-                            Cicilan {entry.installmentIndex}x
+                          <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                            <span className="text-amber-700">Cicilan {entry.installmentIndex}x</span>
                           </span>
-                          <span className="text-[10px] text-slate-400 font-bold">
+                          <span className="text-[10px] text-slate-400 font-bold pl-3.5">
                             Terbayar: {formatIDR(entry.sale.amountPaid || 0)} / {formatIDR(entry.total)}
                           </span>
+                          {entry.sale.notes && (
+                            <span className="text-[10px] text-slate-500 font-medium pl-3.5 italic truncate max-w-[200px]">
+                              {entry.sale.notes}
+                            </span>
+                          )}
                         </div>
                       ) : (
                         <div className="flex flex-col gap-1">
-                          <span
-                            className={`px-3 py-1.5 rounded-full text-xs font-bold uppercase inline-block w-fit ${
-                              entry.paymentMethod === "Cash"
-                                ? "bg-green-100 text-green-700"
-                                : entry.paymentMethod === "Debit"
-                                  ? "bg-blue-100 text-blue-700"
-                                  : entry.paymentMethod === "QRIS"
-                                    ? "bg-purple-100 text-purple-700"
-                                    : entry.isPaid
-                                      ? "bg-green-100 text-green-700"
-                                      : (entry.sale.amountPaid || 0) > 0
-                                        ? "bg-amber-100 text-amber-700"
-                                        : "bg-orange-100 text-orange-700"
-                            }`}
-                          >
-                            {entry.paymentMethod === "Utang"
-                              ? entry.isPaid
-                                ? "Lunas"
-                                : (entry.sale.amountPaid || 0) > 0
-                                  ? `Cicilan (${entry.sale.installments?.length || 0}x)`
-                                  : "Utang"
-                              : entry.paymentMethod}
+                          <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider">
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                entry.paymentMethod === "Cash"
+                                  ? "bg-green-500"
+                                  : entry.paymentMethod === "Debit"
+                                    ? "bg-blue-500"
+                                    : entry.paymentMethod === "QRIS"
+                                      ? "bg-purple-500"
+                                      : entry.isPaid
+                                        ? "bg-green-500"
+                                        : (entry.sale.amountPaid || 0) > 0
+                                          ? "bg-amber-500"
+                                          : "bg-orange-500"
+                              }`}
+                            />
+                            <span
+                              className={
+                                entry.paymentMethod === "Cash"
+                                  ? "text-green-700"
+                                  : entry.paymentMethod === "Debit"
+                                    ? "text-blue-700"
+                                    : entry.paymentMethod === "QRIS"
+                                      ? "text-purple-700"
+                                      : entry.isPaid
+                                        ? "text-green-700"
+                                        : (entry.sale.amountPaid || 0) > 0
+                                          ? "text-amber-700"
+                                          : "text-orange-700"
+                              }
+                            >
+                              {entry.paymentMethod === "Utang"
+                                ? entry.isPaid
+                                  ? "Lunas"
+                                  : (entry.sale.amountPaid || 0) > 0
+                                    ? `Cicilan (${entry.sale.installments?.length || 0}x)`
+                                    : "Utang"
+                                : entry.paymentMethod}
+                            </span>
                           </span>
                           {entry.paymentMethod === "Utang" && !entry.isPaid && (
-                            <span className="text-[10px] text-slate-400 font-bold">
+                            <span className="text-[10px] text-slate-400 font-bold pl-3.5">
                               {formatIDR(entry.sale.amountPaid || 0)} / {formatIDR(entry.total)}
+                            </span>
+                          )}
+                          {entry.sale.notes && (
+                            <span className="text-[10px] text-slate-500 font-medium pl-3.5 italic truncate max-w-[200px]">
+                              {entry.sale.notes}
                             </span>
                           )}
                         </div>

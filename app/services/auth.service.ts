@@ -48,7 +48,19 @@ export const login = async (name: string, password: string): Promise<LoginRespon
   return data;
 };
 
-export const logout = () => {
+export const logout = async () => {
+  const user = getCurrentUser();
+  if (user) {
+    try {
+      await fetch(`${API_BASE}/auth/logout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: user.name }),
+      });
+    } catch {
+      // Still clear local state even if server call fails
+    }
+  }
   localStorage.removeItem("currentUser");
 };
 

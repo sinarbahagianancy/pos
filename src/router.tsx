@@ -150,8 +150,8 @@ const AppLayout = () => {
   const user = getCurrentUser();
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    authLogout();
+  const handleLogout = async () => {
+    await authLogout();
     navigate({ to: "/login" });
   };
 

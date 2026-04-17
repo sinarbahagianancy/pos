@@ -25,6 +25,8 @@ const AuditLogView: React.FC<AuditLogProps> = ({
 
   const filterOptions = [
     "All",
+    "Login",
+    "Logout",
     "Stock Addition",
     "Sales Deduction",
     "Manual Correction",
@@ -89,20 +91,47 @@ const AuditLogView: React.FC<AuditLogProps> = ({
                       </span>
                     </td>
                     <td className="px-10 py-6">
-                      <span
-                        className={`px-3 py-1.5 rounded-full text-xs font-bold uppercase ${
-                          log.action === "Stock Addition"
-                            ? "bg-green-100 text-green-700"
-                            : log.action === "Sales Deduction"
-                              ? "bg-red-100 text-red-700"
-                              : log.action === "Manual Correction"
-                                ? "bg-amber-100 text-amber-700"
-                                : log.action === "Product Update"
-                                  ? "bg-blue-100 text-blue-700"
-                                  : "bg-slate-100 text-slate-600"
-                        }`}
-                      >
-                        {log.action}
+                      <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider">
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full ${
+                            log.action === "Login"
+                              ? "bg-emerald-500"
+                              : log.action === "Logout"
+                                ? "bg-slate-400"
+                                : log.action === "Stock Addition"
+                                  ? "bg-green-500"
+                                  : log.action === "Sales Deduction"
+                                    ? "bg-red-500"
+                                    : log.action === "Manual Correction"
+                                      ? "bg-amber-500"
+                                      : log.action === "Product Update"
+                                        ? "bg-blue-500"
+                                        : log.action === "Settings Update"
+                                          ? "bg-indigo-500"
+                                          : "bg-slate-300"
+                          }`}
+                        />
+                        <span
+                          className={
+                            log.action === "Login"
+                              ? "text-emerald-700"
+                              : log.action === "Logout"
+                                ? "text-slate-500"
+                                : log.action === "Stock Addition"
+                                  ? "text-green-700"
+                                  : log.action === "Sales Deduction"
+                                    ? "text-red-700"
+                                    : log.action === "Manual Correction"
+                                      ? "text-amber-700"
+                                      : log.action === "Product Update"
+                                        ? "text-blue-700"
+                                        : log.action === "Settings Update"
+                                          ? "text-indigo-700"
+                                          : "text-slate-600"
+                          }
+                        >
+                          {log.action}
+                        </span>
                       </span>
                     </td>
                     <td className="px-10 py-6">

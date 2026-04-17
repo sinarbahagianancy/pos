@@ -109,6 +109,17 @@ export const loginHandler = async (name: string, password: string) => {
         user.id,
       ]);
     }
+
+    // Record login audit log
+    try {
+      await client.unsafe(
+        `INSERT INTO audit_logs (id, staff_name, action, details) VALUES ($1, $2, $3, $4)`,
+        [`LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`, user.name, "Login", `Staff ${user.name} logged in`],
+      );
+    } catch (e) {
+      console.warn("Failed to record login audit log:", e);
+    }
+
     return {
       id: user.id,
       name: user.name,
@@ -117,6 +128,18 @@ export const loginHandler = async (name: string, password: string) => {
   }
 
   throw new Error("Invalid credentials");
+};
+
+export const logoutHandler = async (name: string) => {
+  if (!name) return;
+  try {
+    await client.unsafe(
+      `INSERT INTO audit_logs (id, staff_name, action, details) VALUES ($1, $2, $3, $4)`,
+      [`LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`, name, "Logout", `Staff ${name} logged out`],
+    );
+  } catch (e) {
+    console.warn("Failed to record logout audit log:", e);
+  }
 };
 
 // Staff handlers

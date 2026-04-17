@@ -47,6 +47,8 @@ export const auditActionEnum = pgEnum("audit_action", [
   "General",
   "Settings Update",
   "Product Update",
+  "Login",
+  "Logout",
 ]);
 
 export const currencyTypeEnum = pgEnum("currency_type", ["IDR", "USD"]);

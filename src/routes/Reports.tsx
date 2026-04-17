@@ -390,12 +390,11 @@ const ReportsView: React.FC<ReportsProps> = ({
           </span>
         </div>
         <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-left min-w-[1100px]">
+          <table className="w-full text-left min-w-[950px]">
             <thead className="bg-orange-50 text-orange-400 uppercase text-[10px] font-black tracking-widest">
               <tr>
                 <th className="px-8 py-6">Invoice ID</th>
-                <th className="px-8 py-6">Tanggal Bon</th>
-                <th className="px-8 py-6">Due Date</th>
+                <th className="px-8 py-6">Tanggal</th>
                 <th className="px-8 py-6">Pelanggan</th>
                 <th className="px-8 py-6 text-right">Total</th>
                 <th className="px-8 py-6 text-right">Dibayar</th>
@@ -413,21 +412,27 @@ const ReportsView: React.FC<ReportsProps> = ({
                       <td className="px-8 py-6 font-mono text-orange-600 text-xs font-bold">
                         {s.id}
                       </td>
-                      <td className="px-8 py-6 text-slate-600">{formatDate(s.timestamp)}</td>
                       <td className="px-8 py-6">
-                        {s.dueDate ? (
-                          <span
-                            className={`px-3 py-1 rounded-lg text-xs font-black uppercase tracking-tight ${
-                              isOverdue ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
-                            }`}
-                          >
-                            {isOverdue ? "OVERDUE" : formatDate(s.dueDate)}
-                          </span>
-                        ) : (
-                          <span className="px-3 py-1 bg-slate-100 text-slate-500 rounded-lg text-xs font-black uppercase tracking-tight">
-                            Tanpa Due Date
-                          </span>
-                        )}
+                        <div className="flex flex-col gap-1.5">
+                          <span className="text-slate-600 text-sm">{formatDate(s.timestamp)}</span>
+                          {s.dueDate ? (
+                            <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider">
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full ${
+                                  isOverdue ? "bg-red-500" : "bg-amber-400"
+                                }`}
+                              />
+                              <span className={isOverdue ? "text-red-600" : "text-amber-600"}>
+                                {isOverdue ? "Overdue" : formatDate(s.dueDate)}
+                              </span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+                              Tanpa Jatuh Tempo
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-8 py-6 font-black text-slate-900 uppercase tracking-tighter">
                         {s.customerName}
@@ -475,7 +480,7 @@ const ReportsView: React.FC<ReportsProps> = ({
                 })
               ) : (
                 <tr>
-                  <td colSpan={7} className="p-20 text-center text-slate-300 italic">
+                  <td colSpan={8} className="p-20 text-center text-slate-300 italic">
                     Tidak ada piutang yang belum lunas.
                   </td>
                 </tr>

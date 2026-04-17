@@ -407,6 +407,14 @@ const initializeDatabase = async () => {
       .unsafe(`ALTER TYPE payment_method ADD VALUE IF NOT EXISTS 'Utang'`)
       .catch(() => {});
 
+    // Add Login and Logout to audit_action enum
+    await client
+      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Login'`)
+      .catch(() => {});
+    await client
+      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Logout'`)
+      .catch(() => {});
+
     // Add created_at to warranty_claims if not exists (missing from original migration)
     await client
       .unsafe(
@@ -1145,11 +1153,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const user = result[0];
+
+      // Record login audit log
+      try {
+        await client.unsafe(
+          "INSERT INTO audit_logs (id, staff_name, action, details, timestamp) VALUES ($1, $2, $3, $4, NOW())",
+          [`LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`, user.name, "Login", `Staff ${user.name} logged in`],
+        );
+      } catch (e) {
+        console.warn("Failed to record login audit log:", e);
+      }
+
       return res.status(200).json({
         id: user.id,
         name: user.name,
         role: user.role,
       });
+    }
+
+    // POST /api/auth/logout
+    if (method === "POST" && url === "/api/auth/logout") {
+      const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+      const { name } = input;
+
+      if (name) {
+        try {
+          await client.unsafe(
+            "INSERT INTO audit_logs (id, staff_name, action, details, timestamp) VALUES ($1, $2, $3, $4, NOW())",
+            [`LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`, name, "Logout", `Staff ${name} logged out`],
+          );
+        } catch (e) {
+          console.warn("Failed to record logout audit log:", e);
+        }
+      }
+
+      return res.status(200).json({ success: true });
     }
 
     // === STAFF ROUTES ===

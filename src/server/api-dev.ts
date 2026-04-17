@@ -44,6 +44,8 @@ export default function apiServerPlugin() {
             `ALTER TABLE sales ADD COLUMN IF NOT EXISTS paid_at timestamp with time zone`,
           );
           await pg.unsafe(`ALTER TYPE payment_method ADD VALUE IF NOT EXISTS 'Utang'`);
+          await pg.unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Login'`);
+          await pg.unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Logout'`);
           await pg.end();
           schemaMigrated = true;
         } catch (e) {
@@ -270,6 +272,24 @@ export default function apiServerPlugin() {
                 res.end(JSON.stringify(result));
               } catch (error) {
                 res.statusCode = 401;
+                res.end(JSON.stringify({ error: String(error) }));
+              }
+            });
+            return;
+          }
+
+          if (path === "auth/logout" && req.method === "POST") {
+            const { logoutHandler } = await import("./auth.js");
+            let body = "";
+            req.on("data", (chunk) => (body += chunk));
+            req.on("end", async () => {
+              try {
+                const data = JSON.parse(body);
+                await logoutHandler(data.name);
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ success: true }));
+              } catch (error) {
+                res.statusCode = 500;
                 res.end(JSON.stringify({ error: String(error) }));
               }
             });
