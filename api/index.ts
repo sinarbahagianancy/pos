@@ -76,6 +76,8 @@ const salesTable = {
     paymentMethod: { name: "payment_method" },
     staffName: { name: "staff_name" },
     timestamp: { name: "timestamp" },
+    amountPaid: { name: "amount_paid" },
+    installments: { name: "installments" },
   },
 };
 
@@ -178,6 +180,8 @@ interface Sale {
   dueDate?: string;
   isPaid?: boolean;
   paidAt?: string;
+  amountPaid?: number;
+  installments?: { amount: number; timestamp: string }[];
   timestamp: string;
 }
 
@@ -248,23 +252,32 @@ const parseDbCustomer = (row: Record<string, unknown>): Customer => ({
   updatedAt: row.updated_at as string,
 });
 
-const parseDbSale = (row: Record<string, unknown>): Sale => ({
-  id: row.id as string,
-  customerId: row.customer_id as string,
-  customerName: row.customer_name as string,
-  items: [],
-  subtotal: typeof row.subtotal === "string" ? parseFloat(row.subtotal) : (row.subtotal as number),
-  tax: typeof row.tax === "string" ? parseFloat(row.tax) : (row.tax as number),
-  taxEnabled: row.tax_enabled as boolean,
-  total: typeof row.total === "string" ? parseFloat(row.total) : (row.total as number),
-  paymentMethod: row.payment_method as PaymentMethod,
-  staffName: row.staff_name as string,
-  notes: row.notes as string | undefined,
-  dueDate: row.due_date as string | undefined,
-  isPaid: row.is_paid as boolean,
-  paidAt: row.paid_at as string | undefined,
-  timestamp: row.timestamp as string,
-});
+const parseDbSale = (row: Record<string, unknown>): Sale => {
+  let installments: { amount: number; timestamp: string }[] = [];
+  try {
+    const raw = row.installments;
+    installments = typeof raw === "string" ? JSON.parse(raw) : (raw as any[]) || [];
+  } catch { installments = []; }
+  return {
+    id: row.id as string,
+    customerId: row.customer_id as string,
+    customerName: row.customer_name as string,
+    items: [],
+    subtotal: typeof row.subtotal === "string" ? parseFloat(row.subtotal) : (row.subtotal as number),
+    tax: typeof row.tax === "string" ? parseFloat(row.tax) : (row.tax as number),
+    taxEnabled: row.tax_enabled as boolean,
+    total: typeof row.total === "string" ? parseFloat(row.total) : (row.total as number),
+    paymentMethod: row.payment_method as PaymentMethod,
+    staffName: row.staff_name as string,
+    notes: row.notes as string | undefined,
+    dueDate: row.due_date as string | undefined,
+    isPaid: row.is_paid as boolean,
+    paidAt: row.paid_at as string | undefined,
+    amountPaid: typeof row.amount_paid === "string" ? parseFloat(row.amount_paid) || 0 : (row.amount_paid as number) || 0,
+    installments,
+    timestamp: row.timestamp as string,
+  };
+};
 
 const parseDbWarrantyClaim = (row: Record<string, unknown>): WarrantyClaim => ({
   id: row.id as string,
@@ -379,6 +392,12 @@ const initializeDatabase = async () => {
       .catch(() => {});
     await client
       .unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS paid_at timestamp with time zone`)
+      .catch(() => {});
+    await client
+      .unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS amount_paid numeric(15,2) DEFAULT 0`)
+      .catch(() => {});
+    await client
+      .unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS installments text DEFAULT '[]'`)
       .catch(() => {});
 
     // Add Utang to payment_method enum
@@ -1577,6 +1596,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         notes,
         dueDate,
         isPaid,
+        amountPaid,
       } = input;
 
       if (!id || !customerId || !items || items.length === 0 || !paymentMethod || !staffName) {
@@ -1586,7 +1606,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       try {
         // Insert sale
         await client.unsafe(
-          "INSERT INTO sales (id, customer_id, customer_name, subtotal, tax, total, payment_method, staff_name, notes, due_date, is_paid) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+          "INSERT INTO sales (id, customer_id, customer_name, subtotal, tax, total, payment_method, staff_name, notes, due_date, is_paid, amount_paid, installments) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
           [
             id,
             customerId,
@@ -1599,6 +1619,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             notes || null,
             dueDate || null,
             isPaid ?? false,
+            String(amountPaid || 0),
+            amountPaid > 0 ? JSON.stringify([{ amount: amountPaid, timestamp: new Date().toISOString() }]) : "[]",
           ],
         );
 
@@ -1718,6 +1740,76 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } catch (err) {
         console.error("Mark paid error:", err);
         return res.status(500).json({ error: "Failed to mark sale as paid" });
+      }
+    }
+
+    // PUT /api/sales/:id/installment - Record an installment payment
+    if (method === "PUT" && url?.startsWith("/api/sales/") && url.endsWith("/installment")) {
+      await initializeDatabase();
+      const saleId = url.replace("/api/sales/", "").replace("/installment", "");
+      const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+      const { amount, staffName } = input;
+
+      if (!amount || amount <= 0) {
+        return res.status(400).json({ error: "Invalid amount" });
+      }
+      if (!staffName) {
+        return res.status(400).json({ error: "Missing staffName" });
+      }
+
+      try {
+        // Get current sale
+        const saleResult = await client.unsafe("SELECT * FROM sales WHERE id = $1", [saleId]);
+        if (saleResult.length === 0) {
+          return res.status(404).json({ error: "Sale not found" });
+        }
+        const sale = saleResult[0];
+
+        // Parse existing installments
+        let installments: { amount: number; timestamp: string }[] = [];
+        try {
+          installments = JSON.parse(sale.installments || "[]");
+        } catch { installments = []; }
+
+        // Add new installment
+        const now = new Date().toISOString();
+        installments.push({ amount, timestamp: now });
+
+        // Calculate new total paid
+        const oldTotal = parseFloat(sale.amount_paid || "0");
+        const newTotalPaid = oldTotal + amount;
+        const saleTotal = parseFloat(sale.total);
+
+        // Auto-mark as paid if total paid >= sale total
+        const isNowPaid = newTotalPaid >= saleTotal;
+        const updateFields = isNowPaid
+          ? "installments = $1, amount_paid = $2, is_paid = true, paid_at = $3"
+          : "installments = $1, amount_paid = $2";
+        const params = isNowPaid
+          ? [JSON.stringify(installments), String(newTotalPaid), now, saleId]
+          : [JSON.stringify(installments), String(newTotalPaid), saleId];
+
+        const updateResult = await client.unsafe(
+          `UPDATE sales SET ${updateFields} WHERE id = $${isNowPaid ? 4 : 3} RETURNING *`,
+          params,
+        );
+
+        // Audit log
+        await client.unsafe(
+          "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
+          [
+            `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+            staffName,
+            "General",
+            `Installment of ${amount} recorded for sale ${saleId}. Total paid: ${newTotalPaid}/${saleTotal}${isNowPaid ? " (FULLY PAID)" : ""}`,
+            saleId,
+          ],
+        );
+
+        return res.status(200).json(parseDbSale(updateResult[0]));
+      } catch (err) {
+        console.error("Installment error:", err);
+        return res.status(500).json({ error: "Failed to record installment" });
       }
     }
 

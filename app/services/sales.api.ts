@@ -53,6 +53,7 @@ export const createSale = async (input: {
   notes?: string;
   dueDate?: string;
   isPaid?: boolean;
+  amountPaid?: number;
 }): Promise<Sale> => {
   const response = await fetch(`${API_BASE}/sales`, {
     method: "POST",
@@ -84,6 +85,23 @@ export const markSaleAsPaid = async (saleId: string, staffName: string): Promise
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error || "Failed to mark sale as paid");
+  }
+  return response.json();
+};
+
+export const recordInstallment = async (
+  saleId: string,
+  amount: number,
+  staffName: string,
+): Promise<Sale> => {
+  const response = await fetch(`${API_BASE}/sales/${saleId}/installment`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ amount, staffName }),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to record installment");
   }
   return response.json();
 };

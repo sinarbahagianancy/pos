@@ -18,20 +18,31 @@ const parseDbCustomer = (row: Record<string, unknown>) => ({
   updatedAt: row.updated_at as string,
 });
 
-const parseDbSale = (row: Record<string, unknown>) => ({
-  id: row.id as string,
-  customerId: row.customer_id as string,
-  customerName: row.customer_name as string,
-  items: [],
-  subtotal: typeof row.subtotal === "string" ? parseFloat(row.subtotal) : (row.subtotal as number),
-  tax: typeof row.tax === "string" ? parseFloat(row.tax) : (row.tax as number),
-  taxEnabled: row.tax_enabled as boolean,
-  total: typeof row.total === "string" ? parseFloat(row.total) : (row.total as number),
-  paymentMethod: row.payment_method as string,
-  staffName: row.staff_name as string,
-  notes: row.notes as string | undefined,
-  timestamp: row.timestamp as string,
-});
+const parseDbSale = (row: Record<string, unknown>) => {
+  let installments: { amount: number; timestamp: string }[] = [];
+  try {
+    installments = JSON.parse((row.installments as string) || "[]");
+  } catch { installments = []; }
+  return {
+    id: row.id as string,
+    customerId: row.customer_id as string,
+    customerName: row.customer_name as string,
+    items: [],
+    subtotal: typeof row.subtotal === "string" ? parseFloat(row.subtotal) : (row.subtotal as number),
+    tax: typeof row.tax === "string" ? parseFloat(row.tax) : (row.tax as number),
+    taxEnabled: row.tax_enabled as boolean,
+    total: typeof row.total === "string" ? parseFloat(row.total) : (row.total as number),
+    paymentMethod: row.payment_method as string,
+    staffName: row.staff_name as string,
+    notes: row.notes as string | undefined,
+    dueDate: row.due_date as string | undefined,
+    isPaid: row.is_paid as boolean,
+    paidAt: row.paid_at as string | undefined,
+    amountPaid: typeof row.amount_paid === "string" ? parseFloat(row.amount_paid) || 0 : (row.amount_paid as number) || 0,
+    installments,
+    timestamp: row.timestamp as string,
+  };
+};
 
 export interface PaginatedCustomersResult {
   customers: ReturnType<typeof parseDbCustomer>[];
@@ -236,22 +247,8 @@ export const getAllSalesHandler = async (
       }));
 
       return {
-        id: sale.id as string,
-        customerId: sale.customer_id as string,
-        customerName: sale.customer_name as string,
+        ...parseDbSale(sale),
         items,
-        subtotal:
-          typeof sale.subtotal === "string" ? parseFloat(sale.subtotal) : (sale.subtotal as number),
-        tax: typeof sale.tax === "string" ? parseFloat(sale.tax) : (sale.tax as number),
-        taxEnabled: sale.tax_enabled as boolean,
-        total: typeof sale.total === "string" ? parseFloat(sale.total) : (sale.total as number),
-        paymentMethod: sale.payment_method as string,
-        staffName: sale.staff_name as string,
-        notes: sale.notes as string | undefined,
-        dueDate: sale.due_date as string | undefined,
-        isPaid: sale.is_paid as boolean,
-        paidAt: sale.paid_at as string | undefined,
-        timestamp: sale.timestamp as string,
       };
     }),
   );
@@ -294,10 +291,15 @@ export const createSaleHandler = async (data: {
   notes?: string;
   dueDate?: string;
   isPaid?: boolean;
+  amountPaid?: number;
 }) => {
+  const amountPaid = data.amountPaid || 0;
+  const installmentsJson = amountPaid > 0
+    ? JSON.stringify([{ amount: amountPaid, timestamp: new Date().toISOString() }])
+    : "[]";
   try {
     await client.unsafe(
-      "INSERT INTO sales (id, customer_id, customer_name, subtotal, tax, tax_enabled, total, payment_method, staff_name, notes, due_date, is_paid) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
+      "INSERT INTO sales (id, customer_id, customer_name, subtotal, tax, tax_enabled, total, payment_method, staff_name, notes, due_date, is_paid, amount_paid, installments) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
       [
         data.id,
         data.customerId,
@@ -311,6 +313,8 @@ export const createSaleHandler = async (data: {
         data.notes || null,
         data.dueDate || null,
         data.isPaid ?? false,
+        String(amountPaid),
+        installmentsJson,
       ],
     );
 
@@ -535,5 +539,77 @@ export const markSaleAsPaidHandler = async (saleId: string, staffName: string) =
     isPaid: true,
     paidAt: sale.paid_at as string,
     timestamp: sale.timestamp as string,
+  };
+};
+
+export const recordInstallmentHandler = async (saleId: string, amount: number, staffName: string) => {
+  // Get current sale
+  const saleResult = await client.unsafe("SELECT * FROM sales WHERE id = $1", [saleId]);
+  if (saleResult.length === 0) {
+    throw new Error("Sale not found");
+  }
+  const sale = saleResult[0];
+
+  // Parse existing installments
+  let installments: { amount: number; timestamp: string }[] = [];
+  try {
+    installments = JSON.parse(sale.installments || "[]");
+  } catch { installments = []; }
+
+  // Add new installment
+  const now = new Date().toISOString();
+  installments.push({ amount, timestamp: now });
+
+  // Calculate new total paid
+  const oldTotal = parseFloat(sale.amount_paid || "0");
+  const newTotalPaid = oldTotal + amount;
+  const saleTotal = parseFloat(sale.total);
+  const isNowPaid = newTotalPaid >= saleTotal;
+
+  const updateFields = isNowPaid
+    ? "installments = $1, amount_paid = $2, is_paid = true, paid_at = $3"
+    : "installments = $1, amount_paid = $2";
+  const params = isNowPaid
+    ? [JSON.stringify(installments), String(newTotalPaid), now, saleId]
+    : [JSON.stringify(installments), String(newTotalPaid), saleId];
+
+  const updateResult = await client.unsafe(
+    `UPDATE sales SET ${updateFields} WHERE id = $${isNowPaid ? 4 : 3} RETURNING *`,
+    params,
+  );
+
+  // Audit log
+  await client.unsafe(
+    "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
+    [
+      `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+      staffName,
+      "General",
+      `Installment of ${amount} recorded for sale ${saleId}. Total paid: ${newTotalPaid}/${saleTotal}${isNowPaid ? " (FULLY PAID)" : ""}`,
+      saleId,
+    ],
+  );
+
+  const updated = updateResult[0];
+  let parsedInstallments: { amount: number; timestamp: string }[] = [];
+  try {
+    parsedInstallments = JSON.parse(updated.installments || "[]");
+  } catch { parsedInstallments = []; }
+
+  return {
+    id: updated.id as string,
+    customerId: updated.customer_id as string,
+    customerName: updated.customer_name as string,
+    subtotal: typeof updated.subtotal === "string" ? parseFloat(updated.subtotal) : (updated.subtotal as number),
+    tax: typeof updated.tax === "string" ? parseFloat(updated.tax) : (updated.tax as number),
+    total: typeof updated.total === "string" ? parseFloat(updated.total) : (updated.total as number),
+    paymentMethod: updated.payment_method as string,
+    staffName: updated.staff_name as string,
+    dueDate: updated.due_date as string | undefined,
+    isPaid: updated.is_paid as boolean,
+    paidAt: updated.paid_at as string | undefined,
+    amountPaid: typeof updated.amount_paid === "string" ? parseFloat(updated.amount_paid) || 0 : (updated.amount_paid as number) || 0,
+    installments: parsedInstallments,
+    timestamp: updated.timestamp as string,
   };
 };

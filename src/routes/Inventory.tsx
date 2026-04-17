@@ -1,7 +1,103 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import { SortingState } from "@tanstack/react-table";
 import { Product, SerialNumber, AuditLog, Supplier } from "../../app/types";
 import { formatIDR } from "../../app/utils/formatters";
+
+// Reusable searchable combobox for supplier selection
+interface SearchableSelectProps {
+  suppliers: Supplier[];
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  required?: boolean;
+  className?: string;
+}
+
+const SearchableSelect: React.FC<SearchableSelectProps> = ({
+  suppliers,
+  value,
+  onChange,
+  placeholder = "Pilih Supplier...",
+  required = false,
+  className = "",
+}) => {
+  const [search, setSearch] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const filtered = useMemo(() => {
+    if (!search) return suppliers;
+    const q = search.toLowerCase();
+    return suppliers.filter((s) => s.name.toLowerCase().includes(q));
+  }, [search, suppliers]);
+
+  const handleSelect = (name: string) => {
+    onChange(name);
+    setSearch("");
+    setIsOpen(false);
+  };
+
+  const displayValue = value || "";
+
+  return (
+    <div ref={containerRef} className="relative">
+      <input
+        type="text"
+        className={`w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 ${className}`}
+        placeholder={placeholder}
+        value={isOpen ? search : displayValue}
+        onChange={(e) => {
+          setSearch(e.target.value);
+          setIsOpen(true);
+        }}
+        onFocus={() => {
+          setSearch("");
+          setIsOpen(true);
+        }}
+        required={required && !value}
+      />
+      {/* Dropdown arrow */}
+      <div
+        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" />
+        </svg>
+      </div>
+      {isOpen && (
+        <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto">
+          {filtered.length > 0 ? (
+            filtered.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => handleSelect(s.name)}
+                className={`w-full px-4 py-2.5 text-left text-sm font-bold hover:bg-indigo-50 hover:text-indigo-700 transition-colors ${
+                  value === s.name ? "bg-indigo-50 text-indigo-700" : "text-slate-900"
+                }`}
+              >
+                {s.name}
+              </button>
+            ))
+          ) : (
+            <div className="px-4 py-3 text-sm text-slate-400 italic">Tidak ada supplier ditemukan</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface InventoryProps {
   products: Product[];
@@ -921,19 +1017,12 @@ const InventoryView: React.FC<InventoryProps> = ({
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
                   Supplier
                 </label>
-                <select
-                  className="w-full px-6 py-4 rounded-2xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold focus:ring-4 focus:ring-green-500/10 outline-none appearance-none"
+                <SearchableSelect
+                  suppliers={suppliers}
                   value={snOperationSupplier}
-                  onChange={(e) => setSNOperationSupplier(e.target.value)}
+                  onChange={setSNOperationSupplier}
                   required
-                >
-                  <option value="">Pilih Supplier...</option>
-                  {suppliers.map((s) => (
-                    <option key={s.id} value={s.name}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
               <div className="space-y-4">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
@@ -1302,19 +1391,12 @@ const InventoryView: React.FC<InventoryProps> = ({
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
                   Supplier
                 </label>
-                <select
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold outline-none"
+                <SearchableSelect
+                  suppliers={suppliers}
                   value={newProductSupplier}
-                  onChange={(e) => setNewProductSupplier(e.target.value)}
+                  onChange={setNewProductSupplier}
                   required
-                >
-                  <option value="">Pilih Supplier...</option>
-                  {suppliers.map((s) => (
-                    <option key={s.id} value={s.name}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
               <div className="space-y-4">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
@@ -1795,18 +1877,11 @@ const InventoryView: React.FC<InventoryProps> = ({
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
                   Supplier
                 </label>
-                <select
-                  className="w-full px-6 py-4 rounded-2xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold focus:ring-4 focus:ring-indigo-500/10 outline-none appearance-none"
+                <SearchableSelect
+                  suppliers={suppliers}
                   value={simpleAdjustSupplier}
-                  onChange={(e) => setSimpleAdjustSupplier(e.target.value)}
-                >
-                  <option value="">Pilih Supplier...</option>
-                  {suppliers.map((s) => (
-                    <option key={s.id} value={s.name}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setSimpleAdjustSupplier}
+                />
               </div>
               <div className="space-y-4">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">

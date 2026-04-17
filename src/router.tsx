@@ -85,6 +85,7 @@ import {
   getAllSales,
   createSale as apiCreateSale,
   markSaleAsPaid,
+  recordInstallment,
 } from "../app/services/sales.api";
 import { getAllWarrantyClaims } from "../app/services/reports.api";
 import type { WarrantyClaim } from "../app/types";
@@ -712,6 +713,18 @@ const SalesLogsComponent = () => {
     }
   };
 
+  const handleRecordInstallment = async (saleId: string, amount: number) => {
+    const user = getCurrentUser();
+    const staffName = user?.name || "System";
+    try {
+      await recordInstallment(saleId, amount, staffName);
+      await queryClient.invalidateQueries({ queryKey: ["sales"] });
+    } catch (error) {
+      console.error("Failed to record installment:", error);
+      throw error;
+    }
+  };
+
   if (loading || !storeConfig) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -736,6 +749,7 @@ const SalesLogsComponent = () => {
       perPage={salesPerPage}
       onPerPageChange={setSalesPerPage}
       onMarkAsPaid={handleMarkAsPaid}
+      onRecordInstallment={handleRecordInstallment}
     />
   );
 };
@@ -877,6 +891,16 @@ const ReportsComponent = () => {
     }
   };
 
+  const handleRecordInstallment = async (saleId: string, amount: number) => {
+    try {
+      await recordInstallment(saleId, amount, staffName);
+      await queryClient.invalidateQueries({ queryKey: ["sales"] });
+    } catch (error) {
+      console.error("Failed to record installment:", error);
+      throw error;
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -893,6 +917,7 @@ const ReportsComponent = () => {
       claims={claims}
       canViewSensitive={true}
       onMarkAsPaid={handleMarkAsPaid}
+      onRecordInstallment={handleRecordInstallment}
       currentPage={salesPage}
       totalPages={totalSalesPages}
       totalItems={totalSales}
@@ -1085,6 +1110,7 @@ const POSComponent = () => {
         notes: sale.notes,
         dueDate: sale.dueDate,
         isPaid: sale.paymentMethod !== "Utang" ? true : false,
+        amountPaid: sale.amountPaid,
       });
 
       // Update local serial numbers status

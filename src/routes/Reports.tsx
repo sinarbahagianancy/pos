@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Sale, Product, SerialNumber, WarrantyClaim } from "../../app/types";
 import { formatIDR, exportToCSV, formatDate } from "../../app/utils/formatters";
 import Pagination from "../../app/components/Pagination";
@@ -10,6 +10,7 @@ interface ReportsProps {
   claims: WarrantyClaim[];
   canViewSensitive: boolean;
   onMarkAsPaid?: (saleId: string) => Promise<void>;
+  onRecordInstallment?: (saleId: string, amount: number) => Promise<void>;
   currentPage?: number;
   totalPages?: number;
   totalItems?: number;
@@ -25,6 +26,7 @@ const ReportsView: React.FC<ReportsProps> = ({
   claims,
   canViewSensitive,
   onMarkAsPaid,
+  onRecordInstallment,
   currentPage = 1,
   totalPages = 1,
   totalItems = 0,
@@ -37,6 +39,12 @@ const ReportsView: React.FC<ReportsProps> = ({
     saleId: string;
     customerName: string;
   } | null>(null);
+  const [installmentPopover, setInstallmentPopover] = useState<{
+    saleId: string;
+    customerName: string;
+    remaining: number;
+  } | null>(null);
+  const [installmentAmount, setInstallmentAmount] = useState("");
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
@@ -48,7 +56,10 @@ const ReportsView: React.FC<ReportsProps> = ({
   const grossProfit = totalRevenue - totalCogs;
 
   const unpaidUtang = sales.filter((s) => s.paymentMethod === "Utang" && !s.isPaid);
-  const totalReceivables = unpaidUtang.reduce((acc, s) => acc + s.total, 0);
+  const totalReceivables = unpaidUtang.reduce(
+    (acc, s) => acc + (s.total - (s.amountPaid || 0)),
+    0,
+  );
 
   const priorityReceivables = unpaidUtang.sort((a, b) => {
     const aOverdue = !a.dueDate || new Date(a.dueDate) < new Date();
@@ -57,6 +68,54 @@ const ReportsView: React.FC<ReportsProps> = ({
     if (!aOverdue && bOverdue) return 1;
     return new Date(a.dueDate || 0).getTime() - new Date(b.dueDate || 0).getTime();
   });
+
+  // Flatten sales + installments into individual log entries, sorted by time
+  const logEntries = useMemo(() => {
+    type LogEntry = {
+      saleId: string;
+      customerName: string;
+      timestamp: string;
+      amount: number;
+      type: "sale" | "installment";
+      installmentIndex?: number;
+      paymentMethod: string;
+      isPaid: boolean;
+      sale?: Sale;
+    };
+    const entries: LogEntry[] = [];
+    for (const s of sales) {
+      // Original sale entry
+      entries.push({
+        saleId: s.id,
+        customerName: s.customerName,
+        timestamp: s.timestamp,
+        amount: s.total,
+        type: "sale",
+        paymentMethod: s.paymentMethod,
+        isPaid: s.isPaid ?? false,
+        sale: s,
+      });
+      // Individual installment entries
+      if (s.paymentMethod === "Utang" && s.installments && s.installments.length > 0) {
+        s.installments.forEach((inst, i) => {
+          entries.push({
+            saleId: s.id,
+            customerName: s.customerName,
+            timestamp: inst.timestamp,
+            amount: inst.amount,
+            type: "installment",
+            installmentIndex: i + 1,
+            paymentMethod: "Utang",
+            isPaid: s.isPaid ?? false,
+            sale: s,
+          });
+        });
+      }
+    }
+    // Sort by timestamp descending (newest first)
+    entries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return entries;
+  }, [sales]);
 
   const handleMarkAsPaid = async () => {
     if (!confirmModal || !onMarkAsPaid) return;
@@ -67,6 +126,24 @@ const ReportsView: React.FC<ReportsProps> = ({
       setConfirmModal(null);
     } catch (error) {
       setToast({ message: "Gagal melakukan pelunasan", type: "error" });
+    } finally {
+      setLoading(false);
+      setTimeout(() => setToast(null), 3000);
+    }
+  };
+
+  const handleRecordInstallment = async () => {
+    if (!installmentPopover || !onRecordInstallment) return;
+    const amount = parseInt(installmentAmount, 10);
+    if (isNaN(amount) || amount <= 0) return;
+    setLoading(true);
+    try {
+      await onRecordInstallment(installmentPopover.saleId, amount);
+      setToast({ message: `Cicilan ${formatIDR(amount)} berhasil dicatat!`, type: "success" });
+      setInstallmentPopover(null);
+      setInstallmentAmount("");
+    } catch (error) {
+      setToast({ message: "Gagal mencatat cicilan", type: "error" });
     } finally {
       setLoading(false);
       setTimeout(() => setToast(null), 3000);
@@ -125,6 +202,67 @@ const ReportsView: React.FC<ReportsProps> = ({
                 disabled={loading}
               >
                 {loading ? "Memproses..." : "Ya, Lunaskan"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {installmentPopover && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-3xl p-8 max-w-md w-full mx-4 shadow-2xl">
+            <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight mb-2">
+              Catat Cicilan
+            </h3>
+            <p className="text-sm text-slate-500 mb-6">
+              Nota <span className="font-black text-amber-600">{installmentPopover.saleId}</span> dari{" "}
+              <span className="font-black">{installmentPopover.customerName}</span>
+            </p>
+            <div className="space-y-2 mb-6">
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                Jumlah Cicilan
+              </label>
+              <input
+                type="text"
+                inputMode="numeric"
+                autoFocus
+                value={installmentAmount}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/[^0-9]/g, "");
+                  setInstallmentAmount(raw);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleRecordInstallment();
+                }}
+                placeholder={`Sisa: ${formatIDR(installmentPopover.remaining)}`}
+                className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 text-lg font-bold placeholder-slate-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 tabular-nums"
+              />
+              {installmentAmount && (
+                <p className="text-[10px] text-slate-400 font-bold">
+                  Sisa setelah cicilan:{" "}
+                  <span className="text-amber-600">
+                    {formatIDR(installmentPopover.remaining - parseInt(installmentAmount, 10))}
+                  </span>
+                </p>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setInstallmentPopover(null);
+                  setInstallmentAmount("");
+                }}
+                className="flex-1 py-3 px-4 bg-slate-100 text-slate-600 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-slate-200 transition-all"
+                disabled={loading}
+              >
+                Batal
+              </button>
+              <button
+                onClick={handleRecordInstallment}
+                className="flex-1 py-3 px-4 bg-amber-500 text-white rounded-xl font-black text-sm uppercase tracking-widest hover:bg-amber-600 transition-all disabled:opacity-50"
+                disabled={loading || !installmentAmount}
+              >
+                {loading ? "Memproses..." : "Simpan Cicilan"}
               </button>
             </div>
           </div>
@@ -263,7 +401,9 @@ const ReportsView: React.FC<ReportsProps> = ({
                 <th className="px-8 py-6">Tanggal Bon</th>
                 <th className="px-8 py-6">Due Date</th>
                 <th className="px-8 py-6">Pelanggan</th>
-                <th className="px-8 py-6 text-right">Nilai Tagihan</th>
+                <th className="px-8 py-6 text-right">Total</th>
+                <th className="px-8 py-6 text-right">Dibayar</th>
+                <th className="px-8 py-6 text-right">Sisa Tagihan</th>
                 <th className="px-8 py-6">Staff</th>
                 <th className="px-8 py-6 text-center">Tindakan</th>
               </tr>
@@ -296,23 +436,43 @@ const ReportsView: React.FC<ReportsProps> = ({
                       <td className="px-8 py-6 font-black text-slate-900 uppercase tracking-tighter">
                         {s.customerName}
                       </td>
-                      <td className="px-8 py-6 text-right font-black text-orange-600 tabular-nums">
+                      <td className="px-8 py-6 font-black text-slate-400 tabular-nums text-right">
                         {formatIDR(s.total)}
+                      </td>
+                      <td className="px-8 py-6 font-black text-green-600 tabular-nums text-right">
+                        {formatIDR(s.amountPaid || 0)}
+                      </td>
+                      <td className="px-8 py-6 text-right font-black text-orange-600 tabular-nums">
+                        {formatIDR(s.total - (s.amountPaid || 0))}
                       </td>
                       <td className="px-8 py-6 text-slate-500">{s.staffName}</td>
                       <td className="px-8 py-6 text-center">
-                        <button
-                          onClick={() =>
-                            setConfirmModal({
-                              show: true,
-                              saleId: s.id,
-                              customerName: s.customerName,
-                            })
-                          }
-                          className="px-5 py-2 bg-green-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm hover:bg-green-700 transition-all"
-                        >
-                          Pelunasan
-                        </button>
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() =>
+                              setInstallmentPopover({
+                                saleId: s.id,
+                                customerName: s.customerName,
+                                remaining: s.total - (s.amountPaid || 0),
+                              })
+                            }
+                            className="px-4 py-2 bg-amber-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm hover:bg-amber-600 transition-all"
+                          >
+                            Cicilan
+                          </button>
+                          <button
+                            onClick={() =>
+                              setConfirmModal({
+                                show: true,
+                                saleId: s.id,
+                                customerName: s.customerName,
+                              })
+                            }
+                            className="px-4 py-2 bg-green-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-sm hover:bg-green-700 transition-all"
+                          >
+                            Pelunasan
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -332,7 +492,7 @@ const ReportsView: React.FC<ReportsProps> = ({
       <div className="bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-hidden flex flex-col">
         <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/30">
           <h2 className="font-black text-slate-900 uppercase tracking-tighter text-lg">
-            Semua Log Penjualan
+            Semua Log Penjualan & Cicilan
           </h2>
         </div>
         <div className="overflow-x-auto custom-scrollbar">
@@ -342,49 +502,71 @@ const ReportsView: React.FC<ReportsProps> = ({
                 <th className="px-10 py-6">ID Nota</th>
                 <th className="px-10 py-6">Waktu</th>
                 <th className="px-10 py-6">Client Identity</th>
-                <th className="px-10 py-6 text-right">Total Jual</th>
+                <th className="px-10 py-6 text-right">Jumlah</th>
                 {canViewSensitive && (
                   <th className="px-10 py-6 text-right text-indigo-400">Net Profit</th>
                 )}
-                <th className="px-10 py-6 text-center">Bayar</th>
+                <th className="px-10 py-6 text-center">Tipe / Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-sm font-medium">
-              {sales.map((s) => {
-                const sProfit = s.total - (s.items.reduce((sum, i) => sum + i.cogs, 0) + s.tax);
+              {logEntries.map((entry, idx) => {
+                const isInstallment = entry.type === "installment";
                 return (
-                  <tr key={s.id} className="hover:bg-slate-50 transition-colors">
+                  <tr key={`${entry.saleId}-${idx}`} className={`hover:bg-slate-50 transition-colors ${isInstallment ? "bg-amber-50/30" : ""}`}>
                     <td className="px-10 py-6 font-mono text-slate-500 text-xs font-bold">
-                      {s.id}
+                      {entry.saleId}
                     </td>
-                    <td className="px-10 py-6 text-slate-600">{formatDate(s.timestamp)}</td>
+                    <td className="px-10 py-6 text-slate-600">{formatDate(entry.timestamp)}</td>
                     <td className="px-10 py-6 font-black text-slate-900 uppercase tracking-tighter">
-                      {s.customerName}
+                      {entry.customerName}
                     </td>
-                    <td className="px-10 py-6 text-right font-black text-slate-900 tabular-nums">
-                      {formatIDR(s.total)}
+                    <td className={`px-10 py-6 text-right font-black tabular-nums ${isInstallment ? "text-amber-600" : "text-slate-900"}`}>
+                      {isInstallment ? "+" : ""}{formatIDR(entry.amount)}
                     </td>
                     {canViewSensitive && (
                       <td className="px-10 py-6 text-right font-black text-green-600 tabular-nums">
-                        {formatIDR(sProfit)}
+                        {isInstallment ? "-" : formatIDR(entry.sale!.total - (entry.sale!.items.reduce((sum, i) => sum + i.cogs, 0) + entry.sale!.tax))}
                       </td>
                     )}
                     <td className="px-10 py-6 text-center">
-                      <span
-                        className={`px-3 py-1 rounded-xl text-[9px] font-black uppercase border shadow-sm ${
-                          s.paymentMethod === "Utang"
-                            ? s.isPaid
-                              ? "bg-green-100 text-green-700 border-green-100"
-                              : "bg-orange-50 text-orange-700 border-orange-100"
-                            : "bg-indigo-50 text-indigo-700 border-indigo-100"
-                        }`}
-                      >
-                        {s.paymentMethod === "Utang"
-                          ? s.isPaid
-                            ? "Lunas"
-                            : "Utang"
-                          : s.paymentMethod}
-                      </span>
+                      {isInstallment ? (
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="px-3 py-1 rounded-xl text-[9px] font-black uppercase border shadow-sm bg-amber-100 text-amber-700 border-amber-100">
+                            Cicilan {entry.installmentIndex}x
+                          </span>
+                          <span className="text-[9px] text-slate-400 font-bold">
+                            Terbayar: {formatIDR(entry.sale!.amountPaid || 0)} / {formatIDR(entry.sale!.total)}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-1">
+                          <span
+                            className={`px-3 py-1 rounded-xl text-[9px] font-black uppercase border shadow-sm ${
+                              entry.paymentMethod === "Utang"
+                                ? entry.isPaid
+                                  ? "bg-green-100 text-green-700 border-green-100"
+                                  : (entry.sale!.amountPaid || 0) > 0
+                                    ? "bg-amber-100 text-amber-700 border-amber-100"
+                                    : "bg-orange-50 text-orange-700 border-orange-100"
+                                : "bg-indigo-50 text-indigo-700 border-indigo-100"
+                            }`}
+                          >
+                            {entry.paymentMethod === "Utang"
+                              ? entry.isPaid
+                                ? "Lunas"
+                                : (entry.sale!.amountPaid || 0) > 0
+                                  ? `Cicilan (${entry.sale!.installments?.length || 0}x)`
+                                  : "Utang"
+                              : entry.paymentMethod}
+                          </span>
+                          {entry.paymentMethod === "Utang" && !entry.isPaid && (entry.sale!.amountPaid || 0) > 0 && (
+                            <span className="text-[9px] text-slate-400 font-bold">
+                              {formatIDR(entry.sale!.amountPaid || 0)} / {formatIDR(entry.sale!.total)}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );

@@ -23,6 +23,12 @@ export default function apiServerPlugin() {
           );
           await pg.unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS notes text`);
           await pg.unsafe(
+            `ALTER TABLE sales ADD COLUMN IF NOT EXISTS amount_paid numeric(15,2) DEFAULT 0`,
+          );
+          await pg.unsafe(
+            `ALTER TABLE sales ADD COLUMN IF NOT EXISTS installments text DEFAULT '[]'`,
+          );
+          await pg.unsafe(
             `ALTER TABLE warranty_claims ADD COLUMN IF NOT EXISTS created_at timestamp with time zone DEFAULT now()`,
           );
           await pg.unsafe(
@@ -539,6 +545,25 @@ export default function apiServerPlugin() {
               try {
                 const { staffName } = JSON.parse(body);
                 const result = await markSaleAsPaidHandler(saleId, staffName);
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify(result));
+              } catch (error) {
+                res.statusCode = 500;
+                res.end(JSON.stringify({ error: String(error) }));
+              }
+            });
+            return;
+          }
+
+          if (path.startsWith("sales/") && path.endsWith("/installment") && req.method === "PUT") {
+            const saleId = path.replace("sales/", "").replace("/installment", "");
+            const { recordInstallmentHandler } = await import("./customers.js");
+            let body = "";
+            req.on("data", (chunk) => (body += chunk));
+            req.on("end", async () => {
+              try {
+                const { amount, staffName } = JSON.parse(body);
+                const result = await recordInstallmentHandler(saleId, amount, staffName);
                 res.setHeader("Content-Type", "application/json");
                 res.end(JSON.stringify(result));
               } catch (error) {

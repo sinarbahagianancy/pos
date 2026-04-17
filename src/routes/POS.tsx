@@ -45,6 +45,7 @@ const POSView: React.FC<POSProps> = ({
   const [isRegistered, setIsRegistered] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("Cash");
   const [dueDate, setDueDate] = useState("");
+  const [utangAmountPaid, setUtangAmountPaid] = useState(0);
   const [ppnEnabled, setPpnEnabled] = useState(true);
   const [transactionNotes, setTransactionNotes] = useState("");
   const [showInvoice, setShowInvoice] = useState(false);
@@ -59,6 +60,8 @@ const POSView: React.FC<POSProps> = ({
   const [processResult, setProcessResult] = useState<{ success: boolean; message: string } | null>(
     null,
   );
+  const [editingPriceIdx, setEditingPriceIdx] = useState<number | null>(null);
+  const [editingPriceValue, setEditingPriceValue] = useState<string>("");
 
   // Close customer suggestions when clicking outside
   useEffect(() => {
@@ -265,6 +268,10 @@ const POSView: React.FC<POSProps> = ({
     setCart(cart.filter((_, i) => i !== index));
   };
 
+  const updateCartPrice = (index: number, newPrice: number) => {
+    setCart(cart.map((item, i) => (i === index ? { ...item, price: newPrice } : item)));
+  };
+
   const subtotal = cart.reduce((acc, item) => acc + item.price, 0);
   const tax = ppnEnabled ? subtotal * taxRate : 0;
   const total = subtotal + tax;
@@ -338,6 +345,7 @@ const POSView: React.FC<POSProps> = ({
       staffName,
       notes: transactionNotes,
       dueDate: paymentMethod === "Utang" && dueDate ? dueDate : undefined,
+      amountPaid: paymentMethod === "Utang" ? utangAmountPaid : total,
       timestamp: new Date().toISOString(),
     };
     onCompleteSale(sale);
@@ -349,6 +357,7 @@ const POSView: React.FC<POSProps> = ({
     setSelectedCustomer(null);
     setIsRegistered(false);
     setTransactionNotes("");
+    setUtangAmountPaid(0);
   };
 
   // Customer search logic
@@ -629,9 +638,51 @@ const POSView: React.FC<POSProps> = ({
                     </div>
                   </div>
                   <div className="flex items-center space-x-6">
-                    <p className="font-black text-slate-900 text-sm tracking-tighter">
-                      {formatIDR(item.price)}
-                    </p>
+                    {editingPriceIdx === idx ? (
+                      <div className="flex items-center space-x-1">
+                        <span className="text-xs text-slate-400 font-bold">Rp</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          autoFocus
+                          value={editingPriceValue}
+                          onChange={(e) => {
+                            const raw = e.target.value.replace(/[^0-9]/g, "");
+                            setEditingPriceValue(raw);
+                          }}
+                          onBlur={() => {
+                            const parsed = parseInt(editingPriceValue, 10);
+                            if (!isNaN(parsed) && parsed > 0) {
+                              updateCartPrice(idx, parsed);
+                            }
+                            setEditingPriceIdx(null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              const parsed = parseInt(editingPriceValue, 10);
+                              if (!isNaN(parsed) && parsed > 0) {
+                                updateCartPrice(idx, parsed);
+                              }
+                              setEditingPriceIdx(null);
+                            } else if (e.key === "Escape") {
+                              setEditingPriceIdx(null);
+                            }
+                          }}
+                          className="w-28 px-2 py-1 text-sm font-black text-slate-900 border border-indigo-300 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 outline-none tabular-nums"
+                        />
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setEditingPriceIdx(idx);
+                          setEditingPriceValue(String(item.price));
+                        }}
+                        className="font-black text-slate-900 text-sm tracking-tighter hover:text-indigo-600 transition-colors cursor-pointer tabular-nums"
+                        title="Klik untuk ubah harga"
+                      >
+                        {formatIDR(item.price)}
+                      </button>
+                    )}
                     <button
                       onClick={() => removeFromCart(idx)}
                       className="text-slate-300 hover:text-red-500 transition-all active:scale-90 p-2"
@@ -802,6 +853,30 @@ const POSView: React.FC<POSProps> = ({
             </div>
           )}
 
+          {paymentMethod === "Utang" && (
+            <div className="space-y-3">
+              <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                Jumlah Dibayar Sekarang
+              </label>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={utangAmountPaid > 0 ? utangAmountPaid : ""}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/[^0-9]/g, "");
+                  setUtangAmountPaid(raw ? parseInt(raw, 10) : 0);
+                }}
+                placeholder={`Total: ${formatIDR(total)}`}
+                className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white text-sm font-bold placeholder-slate-600 focus:outline-none focus:border-indigo-500 tabular-nums"
+              />
+              {utangAmountPaid > 0 && utangAmountPaid < total && (
+                <p className="text-[10px] text-amber-400 font-bold">
+                  Sisa: {formatIDR(total - utangAmountPaid)}
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="space-y-3">
             <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest">
               Transaction Notes
@@ -901,7 +976,7 @@ const POSView: React.FC<POSProps> = ({
               </div>
               <div className="text-left sm:text-right w-full sm:w-auto">
                 <p className="text-[10px] font-black uppercase tracking-widest">
-                  {isQuotation ? "Quotation" : "Faktur Penjualan"}
+                  {isQuotation ? "Quotation" : lastSale.paymentMethod === "Utang" ? "Nota Utang" : "Faktur Penjualan"}
                 </p>
                 <p className="text-lg font-black text-slate-900 mt-1">{lastSale.id}</p>
                 <p className="text-[10px] text-slate-500 font-bold mt-1 uppercase tracking-widest">
@@ -910,6 +985,11 @@ const POSView: React.FC<POSProps> = ({
                 {isQuotation && (
                   <p className="text-xs font-black text-red-600 bg-red-50 px-2 py-1 rounded-lg mt-2 inline-block">
                     BUKAN BUKTI PEMBAYARAN
+                  </p>
+                )}
+                {!isQuotation && lastSale.paymentMethod === "Utang" && (
+                  <p className="text-xs font-black text-orange-600 bg-orange-50 px-2 py-1 rounded-lg mt-2 inline-block">
+                    BELUM LUNAS
                   </p>
                 )}
               </div>
@@ -1017,11 +1097,31 @@ const POSView: React.FC<POSProps> = ({
                   </span>
                 </div>
                 <div className="flex justify-between items-end pt-4 border-t border-slate-200">
-                  <span className="text-sm font-black text-slate-900 uppercase">Grand Total</span>
-                  <span className="text-2xl font-black tabular-nums text-slate-900 leading-none">
+                  <span className="text-sm font-black text-slate-900 uppercase">
+                    {lastSale.paymentMethod === "Utang" ? "Total Tagihan" : "Grand Total"}
+                  </span>
+                  <span className={`text-2xl font-black tabular-nums leading-none ${
+                    lastSale.paymentMethod === "Utang" ? "text-orange-600" : "text-slate-900"
+                  }`}>
                     {formatIDR(lastSale.total)}
                   </span>
                 </div>
+                {lastSale.paymentMethod === "Utang" && (lastSale.amountPaid || 0) > 0 && (
+                  <>
+                    <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      <span>Dibayar Sekarang</span>
+                      <span className="tabular-nums font-bold text-green-600">
+                        {formatIDR(lastSale.amountPaid || 0)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      <span>Sisa Utang</span>
+                      <span className="tabular-nums font-bold text-orange-600">
+                        {formatIDR(lastSale.total - (lastSale.amountPaid || 0))}
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
@@ -1169,10 +1269,11 @@ const POSView: React.FC<POSProps> = ({
       </div>
     </div>
     <div class="invoice-info">
-      <div class="invoice-label">${isQuotation ? "Quotation" : "Faktur Penjualan"}</div>
+      <div class="invoice-label">${isQuotation ? "Quotation" : lastSale.paymentMethod === "Utang" ? "Nota Utang" : "Faktur Penjualan"}</div>
       <div class="invoice-id">${lastSale.id}</div>
       <div class="invoice-date">${formatDate(lastSale.timestamp)}</div>
       ${isQuotation ? '<div style="background: #fef2f2; color: #dc2626; font-weight: 800; font-size: 10px; padding: 4px 8px; border-radius: 4px; margin-top: 8px; display: inline-block;">BUKAN BUKTI PEMBAYARAN</div>' : ""}
+      ${!isQuotation && lastSale.paymentMethod === "Utang" ? '<div style="background: #fff7ed; color: #ea580c; font-weight: 800; font-size: 10px; padding: 4px 8px; border-radius: 4px; margin-top: 8px; display: inline-block;">BELUM LUNAS</div>' : ""}
     </div>
   </div>
   
@@ -1225,9 +1326,19 @@ const POSView: React.FC<POSProps> = ({
         <span class="total-value">${formatIDR(lastSale.tax)}</span>
       </div>
       <div class="grand-total">
-        <span class="grand-total-label">Grand Total</span>
+        <span class="grand-total-label">${lastSale.paymentMethod === "Utang" ? "Total Tagihan" : "Grand Total"}</span>
         <span class="grand-total-value">${formatIDR(lastSale.total)}</span>
       </div>
+      ${lastSale.paymentMethod === "Utang" && (lastSale.amountPaid || 0) > 0 ? `
+      <div class="total-row">
+        <span class="total-label">Dibayar Sekarang</span>
+        <span class="total-value" style="color: #16a34a;">${formatIDR(lastSale.amountPaid || 0)}</span>
+      </div>
+      <div class="total-row">
+        <span class="total-label">Sisa Utang</span>
+        <span class="total-value" style="color: #ea580c;">${formatIDR(lastSale.total - (lastSale.amountPaid || 0))}</span>
+      </div>
+      ` : ""}
     </div>
   </div>
 </body>

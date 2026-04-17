@@ -16,6 +16,7 @@ interface SalesLogsProps {
   perPage?: number;
   onPerPageChange?: (perPage: number) => void;
   onMarkAsPaid?: (saleId: string) => Promise<void>;
+  onRecordInstallment?: (saleId: string, amount: number) => Promise<void>;
 }
 
 const SalesLogsView: React.FC<SalesLogsProps> = ({
@@ -29,12 +30,21 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
   perPage = 20,
   onPerPageChange,
   onMarkAsPaid,
+  onRecordInstallment,
 }) => {
   const [search, setSearch] = useState("");
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [customerMap, setCustomerMap] = useState<Record<string, Customer>>({});
   const [printModalHtml, setPrintModalHtml] = useState("");
   const [isPrinting, setIsPrinting] = useState(false);
+  const [installmentPopover, setInstallmentPopover] = useState<{
+    saleId: string;
+    customerName: string;
+    remaining: number;
+  } | null>(null);
+  const [installmentAmount, setInstallmentAmount] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   useEffect(() => {
     const map: Record<string, Customer> = {};
@@ -44,22 +54,91 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
     setCustomerMap(map);
   }, [customers]);
 
-  const filteredSales = useMemo(() => {
-    if (!search.trim()) return sales;
-    const q = search.toLowerCase();
-    return sales.filter(
-      (s) =>
-        s.id.toLowerCase().includes(q) ||
-        s.customerName.toLowerCase().includes(q) ||
-        s.staffName.toLowerCase().includes(q),
-    );
-  }, [sales, search]);
+  // Flatten sales + installments into log entries
+  const logEntries = useMemo(() => {
+    type LogEntry = {
+      saleId: string;
+      customerName: string;
+      customerId: string;
+      timestamp: string;
+      itemCount: number;
+      total: number;
+      amount: number;
+      type: "sale" | "installment";
+      installmentIndex?: number;
+      paymentMethod: string;
+      isPaid: boolean;
+      staffName: string;
+      sale: Sale;
+    };
+    const entries: LogEntry[] = [];
+    for (const s of sales) {
+      entries.push({
+        saleId: s.id,
+        customerName: s.customerName,
+        customerId: s.customerId,
+        timestamp: s.timestamp,
+        itemCount: s.items.length,
+        total: s.total,
+        amount: s.total,
+        type: "sale",
+        paymentMethod: s.paymentMethod,
+        isPaid: s.isPaid ?? false,
+        staffName: s.staffName,
+        sale: s,
+      });
+      if (s.paymentMethod === "Utang" && s.installments && s.installments.length > 0) {
+        s.installments.forEach((inst, i) => {
+          entries.push({
+            saleId: s.id,
+            customerName: s.customerName,
+            customerId: s.customerId,
+            timestamp: inst.timestamp,
+            itemCount: s.items.length,
+            total: s.total,
+            amount: inst.amount,
+            type: "installment",
+            installmentIndex: i + 1,
+            paymentMethod: "Utang",
+            isPaid: s.isPaid ?? false,
+            staffName: s.staffName,
+            sale: s,
+          });
+        });
+      }
+    }
+    entries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return entries;
+  }, [sales]);
 
-  const sortedSales = useMemo(() => {
-    return [...filteredSales].sort(
-      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+  const filteredEntries = useMemo(() => {
+    if (!search.trim()) return logEntries;
+    const q = search.toLowerCase();
+    return logEntries.filter(
+      (e) =>
+        e.saleId.toLowerCase().includes(q) ||
+        e.customerName.toLowerCase().includes(q) ||
+        e.staffName.toLowerCase().includes(q),
     );
-  }, [filteredSales]);
+  }, [logEntries, search]);
+
+  const handleRecordInstallment = async () => {
+    if (!installmentPopover || !onRecordInstallment) return;
+    const amount = parseInt(installmentAmount, 10);
+    if (isNaN(amount) || amount <= 0) return;
+    setLoading(true);
+    try {
+      await onRecordInstallment(installmentPopover.saleId, amount);
+      setToast({ message: `Cicilan ${formatIDR(amount)} berhasil dicatat!`, type: "success" });
+      setInstallmentPopover(null);
+      setInstallmentAmount("");
+    } catch (error) {
+      setToast({ message: "Gagal mencatat cicilan", type: "error" });
+    } finally {
+      setLoading(false);
+      setTimeout(() => setToast(null), 3000);
+    }
+  };
 
   const handlePrint = async (sale: Sale) => {
     const customer = customerMap[sale.customerId];
@@ -117,6 +196,16 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
         </div>
       </div>
 
+      {toast && (
+        <div
+          className={`fixed top-4 right-4 z-50 px-6 py-3 rounded-xl shadow-lg ${
+            toast.type === "success" ? "bg-green-600" : "bg-red-600"
+          } text-white font-bold text-sm`}
+        >
+          {toast.message}
+        </div>
+      )}
+
       <div className="bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-6 border-b border-slate-100">
           <div className="relative max-w-md">
@@ -151,87 +240,123 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
                 <th className="px-6 py-5">Tanggal</th>
                 <th className="px-6 py-5">Customer</th>
                 <th className="px-6 py-5 text-right">Items</th>
-                <th className="px-6 py-5 text-right">Total</th>
-                <th className="px-6 py-5">Payment</th>
+                <th className="px-6 py-5 text-right">Jumlah</th>
+                <th className="px-6 py-5">Tipe / Status</th>
                 <th className="px-6 py-5">Staff</th>
                 <th className="px-6 py-5 text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-sm font-medium">
-              {sortedSales.map((sale) => (
-                <tr key={sale.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-6 py-4">
-                    <span className="font-mono font-black text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg text-xs">
-                      {sale.id}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex flex-col">
-                      <span className="font-bold text-slate-900">{formatDate(sale.timestamp)}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex flex-col">
-                      <span className="font-bold text-slate-900 uppercase">
-                        {sale.customerName}
+              {filteredEntries.map((entry, idx) => {
+                const isInstallment = entry.type === "installment";
+                return (
+                  <tr key={`${entry.saleId}-${idx}`} className={`hover:bg-slate-50 transition-colors ${isInstallment ? "bg-amber-50/30" : ""}`}>
+                    <td className="px-6 py-4">
+                      <span className={`font-mono font-black px-3 py-1.5 rounded-lg text-xs ${isInstallment ? "text-amber-600 bg-amber-50" : "text-indigo-600 bg-indigo-50"}`}>
+                        {entry.saleId}
                       </span>
-                      {customerMap[sale.customerId]?.phone && (
-                        <span className="text-xs text-slate-400">
-                          {customerMap[sale.customerId]?.phone}
-                        </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="font-bold text-slate-900">{formatDate(entry.timestamp)}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-col">
+                        <span className="font-bold text-slate-900 uppercase">{entry.customerName}</span>
+                        {customerMap[entry.customerId]?.phone && (
+                          <span className="text-xs text-slate-400">{customerMap[entry.customerId]?.phone}</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <span className="font-bold text-slate-900">{entry.itemCount} item(s)</span>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <span className={`font-black tracking-tight ${isInstallment ? "text-amber-600" : "text-green-600"}`}>
+                        {isInstallment ? "+" : ""}{formatIDR(entry.amount)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      {isInstallment ? (
+                        <div className="flex flex-col gap-1">
+                          <span className="px-3 py-1.5 rounded-full text-xs font-bold uppercase bg-amber-100 text-amber-700 inline-block w-fit">
+                            Cicilan {entry.installmentIndex}x
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-bold">
+                            Terbayar: {formatIDR(entry.sale.amountPaid || 0)} / {formatIDR(entry.total)}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-1">
+                          <span
+                            className={`px-3 py-1.5 rounded-full text-xs font-bold uppercase inline-block w-fit ${
+                              entry.paymentMethod === "Cash"
+                                ? "bg-green-100 text-green-700"
+                                : entry.paymentMethod === "Debit"
+                                  ? "bg-blue-100 text-blue-700"
+                                  : entry.paymentMethod === "QRIS"
+                                    ? "bg-purple-100 text-purple-700"
+                                    : entry.isPaid
+                                      ? "bg-green-100 text-green-700"
+                                      : (entry.sale.amountPaid || 0) > 0
+                                        ? "bg-amber-100 text-amber-700"
+                                        : "bg-orange-100 text-orange-700"
+                            }`}
+                          >
+                            {entry.paymentMethod === "Utang"
+                              ? entry.isPaid
+                                ? "Lunas"
+                                : (entry.sale.amountPaid || 0) > 0
+                                  ? `Cicilan (${entry.sale.installments?.length || 0}x)`
+                                  : "Utang"
+                              : entry.paymentMethod}
+                          </span>
+                          {entry.paymentMethod === "Utang" && !entry.isPaid && (
+                            <span className="text-[10px] text-slate-400 font-bold">
+                              {formatIDR(entry.sale.amountPaid || 0)} / {formatIDR(entry.total)}
+                            </span>
+                          )}
+                        </div>
                       )}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <span className="font-bold text-slate-900">{sale.items.length} item(s)</span>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <span className="font-black text-green-600 tracking-tight">
-                      {formatIDR(sale.total)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span
-                      className={`px-3 py-1.5 rounded-full text-xs font-bold uppercase ${
-                        sale.paymentMethod === "Cash"
-                          ? "bg-green-100 text-green-700"
-                          : sale.paymentMethod === "Debit"
-                            ? "bg-blue-100 text-blue-700"
-                            : sale.paymentMethod === "QRIS"
-                              ? "bg-purple-100 text-purple-700"
-                              : "bg-amber-100 text-amber-700"
-                      }`}
-                    >
-                      {sale.paymentMethod}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="text-slate-600">{sale.staffName}</span>
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <button
-                      onClick={() => handlePrint(sale)}
-                      className="text-indigo-600 hover:bg-indigo-50 p-2 rounded-lg text-xs font-bold transition-all"
-                      title="Print Invoice"
-                    >
-                      <svg
-                        className="w-5 h-5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                          d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"
-                        />
-                      </svg>
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {sortedSales.length === 0 && (
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-slate-600">{entry.staffName}</span>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        {entry.paymentMethod === "Utang" && !entry.isPaid && !isInstallment && (
+                          <button
+                            onClick={() =>
+                              setInstallmentPopover({
+                                saleId: entry.saleId,
+                                customerName: entry.customerName,
+                                remaining: entry.total - (entry.sale.amountPaid || 0),
+                              })
+                            }
+                            className="text-amber-600 hover:bg-amber-50 p-2 rounded-lg text-xs font-bold transition-all"
+                            title="Catat Cicilan"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          </button>
+                        )}
+                        {!isInstallment && (
+                          <button
+                            onClick={() => handlePrint(entry.sale)}
+                            className="text-indigo-600 hover:bg-indigo-50 p-2 rounded-lg text-xs font-bold transition-all"
+                            title="Print Invoice"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5 2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {filteredEntries.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-6 py-12 text-center text-slate-400">
                     {search ? "Tidak ada hasil pencarian" : "Belum ada transaksi"}
@@ -321,6 +446,67 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
                 ></path>
               </svg>
               <span className="font-bold text-slate-700">Generating PDF...</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {installmentPopover && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-3xl p-8 max-w-md w-full mx-4 shadow-2xl">
+            <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight mb-2">
+              Catat Cicilan
+            </h3>
+            <p className="text-sm text-slate-500 mb-6">
+              Nota <span className="font-black text-amber-600">{installmentPopover.saleId}</span> dari{" "}
+              <span className="font-black">{installmentPopover.customerName}</span>
+            </p>
+            <div className="space-y-2 mb-6">
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                Jumlah Cicilan
+              </label>
+              <input
+                type="text"
+                inputMode="numeric"
+                autoFocus
+                value={installmentAmount}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/[^0-9]/g, "");
+                  setInstallmentAmount(raw);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleRecordInstallment();
+                }}
+                placeholder={`Sisa: ${formatIDR(installmentPopover.remaining)}`}
+                className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 text-lg font-bold placeholder-slate-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 tabular-nums"
+              />
+              {installmentAmount && (
+                <p className="text-[10px] text-slate-400 font-bold">
+                  Sisa setelah cicilan:{" "}
+                  <span className="text-amber-600">
+                    {formatIDR(installmentPopover.remaining - parseInt(installmentAmount, 10))}
+                  </span>
+                </p>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setInstallmentPopover(null);
+                  setInstallmentAmount("");
+                }}
+                className="flex-1 py-3 px-4 bg-slate-100 text-slate-600 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-slate-200 transition-all"
+                disabled={loading}
+              >
+                Batal
+              </button>
+              <button
+                onClick={handleRecordInstallment}
+                className="flex-1 py-3 px-4 bg-amber-500 text-white rounded-xl font-black text-sm uppercase tracking-widest hover:bg-amber-600 transition-all disabled:opacity-50"
+                disabled={loading || !installmentAmount}
+              >
+                {loading ? "Memproses..." : "Simpan Cicilan"}
+              </button>
             </div>
           </div>
         </div>

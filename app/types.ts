@@ -93,6 +93,8 @@ export interface Sale {
   dueDate?: string;
   isPaid?: boolean;
   paidAt?: string;
+  amountPaid?: number;
+  installments?: { amount: number; timestamp: string }[];
   timestamp: string;
 }
 

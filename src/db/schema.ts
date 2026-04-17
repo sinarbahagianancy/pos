@@ -140,6 +140,11 @@ export const sales = pgTable("sales", {
   paymentMethod: paymentMethodEnum("payment_method").notNull(),
   staffName: text("staff_name").notNull(),
   notes: text("notes"),
+  dueDate: timestamp("due_date", { withTimezone: true }),
+  isPaid: boolean("is_paid").notNull().default(false),
+  paidAt: timestamp("paid_at", { withTimezone: true }),
+  amountPaid: numeric("amount_paid", { precision: 15, scale: 2 }).default("0"),
+  installments: text("installments").default("[]"),
   timestamp: timestamp("timestamp", { withTimezone: true }).defaultNow(),
 });
 
