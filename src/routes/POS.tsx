@@ -49,10 +49,8 @@ const POSView: React.FC<POSProps> = ({
   const [utangAmountPaid, setUtangAmountPaid] = useState(0);
   const [ppnEnabled, setPpnEnabled] = useState(true);
   const [transactionNotes, setTransactionNotes] = useState("");
-  const [showInvoice, setShowInvoice] = useState(false);
   const [lastSale, setLastSale] = useState<Sale | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
-  const [printModalHtml, setPrintModalHtml] = useState("");
   const [printPdfUrl, setPrintPdfUrl] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [isQuotation, setIsQuotation] = useState(false);
@@ -277,7 +275,51 @@ const POSView: React.FC<POSProps> = ({
   const tax = ppnEnabled ? subtotal * taxRate : 0;
   const total = subtotal + tax;
 
-  const handleShowQuotation = () => {
+  const generateInvoicePdf = async (sale: Sale, quotation: boolean) => {
+    setIsPrinting(true);
+    try {
+      const saleCustomer =
+        customers.find((c) => c.id === sale.customerId) || customers[0];
+      const pdfBlob = await pdf(
+        <InvoiceDocument
+          data={{
+            storeName: storeConfig.storeName,
+            address: storeConfig.address,
+            invoiceNumber: sale.id,
+            date: formatDate(sale.timestamp),
+            customerName: sale.customerName,
+            customerPhone: saleCustomer?.phone,
+            customerAddress: saleCustomer?.address,
+            customerNpwp: saleCustomer?.npwp,
+            items: sale.items.map((item) => ({
+              model: item.model,
+              sn: quotation ? "" : item.sn,
+              price: item.price,
+              warrantyExpiry: item.warrantyExpiry,
+            })),
+            subtotal: sale.subtotal,
+            tax: sale.tax,
+            taxRate: taxRate * 100,
+            taxEnabled: sale.taxEnabled,
+            total: sale.total,
+            staffName: sale.staffName,
+            paymentMethod: quotation
+              ? "Menunggu Pembayaran"
+              : sale.paymentMethod,
+            isQuotation: quotation,
+          }}
+        />
+      ).toBlob();
+      const url = URL.createObjectURL(pdfBlob);
+      setPrintPdfUrl(url);
+    } catch (error) {
+      console.error("Failed to generate PDF:", error);
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
+  const handleShowQuotation = async () => {
     if (cart.length === 0) return;
 
     const customer = selectedCustomer || {
@@ -290,7 +332,7 @@ const POSView: React.FC<POSProps> = ({
       loyaltyPoints: 0,
     };
 
-    const quotation = {
+    const quotation: Sale = {
       id: `QTN-${Date.now()}`,
       customerId: customer.id,
       customerName: customer.name,
@@ -307,7 +349,7 @@ const POSView: React.FC<POSProps> = ({
 
     setLastSale(quotation);
     setIsQuotation(true);
-    setShowInvoice(true);
+    await generateInvoicePdf(quotation, true);
   };
 
   const handleCheckout = async () => {
@@ -425,41 +467,8 @@ const POSView: React.FC<POSProps> = ({
           {toast.message}
         </div>
       )}
-      <style>
-        {`
-          @media print {
-          @page {
-              size: A5 portrait;
-              margin: 5mm;
-            }
-            body {
-              background: white !important;
-            }
-            .no-print {
-              display: none !important;
-            }
-            #invoice-print-container {
-              display: flex !important;
-              flex-direction: column !important;
-              position: static !important;
-              box-shadow: none !important;
-              border: none !important;
-              padding: 0 !important;
-              width: 100% !important;
-              max-width: none !important;
-              height: auto !important;
-              overflow: visible !important;
-            }
-            .print-grid {
-              display: grid !important;
-              grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-            }
-          }
-        `}
-      </style>
-
       {/* Search & Cart Left Panel */}
-      <div className="col-span-12 lg:col-span-7 xl:col-span-8 flex flex-col space-y-6 no-print">
+      <div className="col-span-12 lg:col-span-7 xl:col-span-8 flex flex-col space-y-6">
         <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm">
           <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">
             Barcode Scan / Serial Tracking
@@ -710,7 +719,7 @@ const POSView: React.FC<POSProps> = ({
       </div>
 
       {/* Checkout Summary Right Panel */}
-      <div className="col-span-12 lg:col-span-5 xl:col-span-4 space-y-6 no-print">
+      <div className="col-span-12 lg:col-span-5 xl:col-span-4 space-y-6">
         <div className="bg-slate-900 p-8 lg:p-10 rounded-[48px] border border-slate-800 shadow-2xl flex flex-col space-y-10 text-white relative overflow-hidden h-full">
           <div className="space-y-4 customer-search-container">
             <div className="flex items-center justify-between">
@@ -907,10 +916,10 @@ const POSView: React.FC<POSProps> = ({
           </div>
 
           <button
-            disabled={cart.length === 0}
+            disabled={cart.length === 0 || isPrinting}
             onClick={handleShowQuotation}
             className={`w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all border mt-4 ${
-              cart.length === 0
+              cart.length === 0 || isPrinting
                 ? "bg-slate-800 text-slate-600 cursor-not-allowed border-slate-700"
                 : "bg-slate-800 text-slate-300 hover:bg-slate-700 border-slate-700"
             }`}
@@ -919,464 +928,23 @@ const POSView: React.FC<POSProps> = ({
           </button>
 
           <button
-            disabled={cart.length === 0}
+            disabled={cart.length === 0 || !selectedCustomer}
             onClick={() => setConfirmCheckout(true)}
             className={`w-full py-6 rounded-3xl font-black text-sm uppercase tracking-widest transition-all shadow-xl active:scale-95 mt-3 ${
-              cart.length === 0
+              cart.length === 0 || !selectedCustomer
                 ? "bg-slate-800 text-slate-600 cursor-not-allowed border border-slate-700"
                 : "bg-white text-slate-900 hover:bg-slate-50 shadow-white/5"
             }`}
           >
             Selesaikan Transaksi
           </button>
+          {!selectedCustomer && cart.length > 0 && (
+            <p className="text-[10px] text-amber-400 font-bold text-center mt-2 uppercase tracking-wider">
+              Pilih customer terlebih dahulu
+            </p>
+          )}
         </div>
       </div>
-
-      {/* A5 Invoice Print Overlay */}
-      {showInvoice && lastSale && (
-        <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md flex items-center justify-center z-[100] p-4 overflow-y-auto no-print">
-          <div
-            id="invoice-print-container"
-            className="bg-white rounded-[32px] lg:rounded-[40px] shadow-2xl max-w-2xl w-full my-auto overflow-hidden border border-slate-100 flex flex-col animate-in zoom-in-95 duration-200"
-          >
-            {/* Logo Sinar & Header */}
-            <div className="p-6 lg:p-8 pb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-100 gap-4">
-              <div className="flex items-center space-x-4">
-                <img
-                  src="/logo.png"
-                  alt="Logo"
-                  className="w-12 h-12 lg:w-14 lg:h-14 rounded-2xl object-contain shadow-lg bg-white"
-                />
-                <div>
-                  <h1 className="text-xl lg:text-2xl font-black text-slate-900 uppercase tracking-tighter leading-none">
-                    {storeConfig.storeName}
-                  </h1>
-                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">
-                    Premium Imaging Solution
-                  </p>
-                  <p className="text-[9px] text-slate-400 mt-0.5">{storeConfig.address}</p>
-                </div>
-              </div>
-              <div className="text-left sm:text-right w-full sm:w-auto">
-                <p className="text-[10px] font-black uppercase tracking-widest">
-                  {isQuotation ? "Quotation" : lastSale.paymentMethod === "Utang" ? "Nota Paylater" : "Faktur Penjualan"}
-                </p>
-                <p className="text-lg font-black text-slate-900 mt-1">{lastSale.id}</p>
-                <p className="text-[10px] text-slate-500 font-bold mt-1 uppercase tracking-widest">
-                  {formatDate(lastSale.timestamp)}
-                </p>
-                {isQuotation && (
-                  <p className="text-xs font-black text-red-600 bg-red-50 px-2 py-1 rounded-lg mt-2 inline-block">
-                    BUKAN BUKTI PEMBAYARAN
-                  </p>
-                )}
-                {!isQuotation && lastSale.paymentMethod === "Utang" && (
-                  <p className="text-xs font-black text-orange-600 bg-orange-50 px-2 py-1 rounded-lg mt-2 inline-block">
-                    BELUM LUNAS
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Fields: Nama, Phone, NPWP, and Alamat */}
-            <div className="px-6 lg:px-8 py-6 bg-slate-50/50 flex flex-col sm:grid sm:grid-cols-2 gap-6 lg:gap-8 border-b border-slate-100 print-grid">
-              {!isQuotation && (
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
-                      Bill To / Penerima
-                    </p>
-                    <p className="text-sm font-black text-slate-900 uppercase tracking-tight">
-                      {lastSale.customerName}
-                    </p>
-                    <p className="text-[11px] text-slate-600 font-medium leading-relaxed mt-1">
-                      {selectedCustomer?.address || "-"}
-                    </p>
-                    <p className="text-[11px] text-slate-500 font-bold mt-2">
-                      Telp: {selectedCustomer?.phone || "-"}
-                    </p>
-                  </div>
-                </div>
-              )}
-              <div
-                className={`text-left sm:text-right space-y-4 ${isQuotation ? "sm:grid-cols-1" : ""}`}
-              >
-                <div>
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
-                    Tax Registration
-                  </p>
-                  {selectedCustomer?.npwp ? (
-                    <p className="text-xs font-mono font-black text-slate-900">
-                      {selectedCustomer.npwp}
-                    </p>
-                  ) : (
-                    <p className="text-xs text-slate-400 italic">No NPWP Provided</p>
-                  )}
-                  <div className="mt-4">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
-                      Payment Method
-                    </p>
-                    {isQuotation ? (
-                      <span className="inline-block px-3 py-1 bg-slate-100 border border-slate-200 rounded-lg text-[10px] font-black uppercase text-slate-500 shadow-sm">
-                        Menunggu Pembayaran
-                      </span>
-                    ) : (
-                      <span className="inline-block px-3 py-1 bg-white border border-slate-200 rounded-lg text-[10px] font-black uppercase text-indigo-600 shadow-sm">
-                        {lastSale.paymentMethod === "Utang" ? "PAYLATER" : lastSale.paymentMethod}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Line Items & Warranties */}
-            <div className="p-6 lg:p-8 py-6 flex-1 min-h-[160px] overflow-x-auto">
-              <table className="w-full text-xs min-w-[300px]">
-                <thead>
-                  <tr className="text-[9px] text-slate-400 uppercase font-black tracking-widest border-b border-slate-200">
-                    <th className="text-left py-3">Description / Serial Number</th>
-                    <th className="text-right py-3">Total</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium text-slate-900">
-                  {lastSale.items.map((item, i) => (
-                    <tr key={i}>
-                      <td className="py-4 pr-4">
-                        <p className="font-black text-sm uppercase tracking-tighter">
-                          {item.model}
-                        </p>
-                        <p className="font-mono text-[10px] text-indigo-500 mt-1 uppercase tracking-tight">
-                          S/N: {item.sn}
-                        </p>
-                      </td>
-                      <td className="py-4 text-right tabular-nums font-black text-sm">
-                        {formatIDR(item.price)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Totals & Footer */}
-            <div className="px-6 lg:px-8 py-8 pt-0 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-10">
-              <div className="flex-1 w-full sm:w-auto">
-                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-4 italic max-w-xs">
-                  Barang yang sudah dibeli tidak dapat ditukar atau dikembalikan.
-                </p>
-              </div>
-              <div className="w-full sm:w-64 space-y-3">
-                <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  <span>Subtotal</span>
-                  <span className="tabular-nums font-bold text-slate-900">
-                    {formatIDR(lastSale.subtotal)}
-                  </span>
-                </div>
-                <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  <span>Tax ({(taxRate * 100).toFixed(0)}% PPN)</span>
-                  <span className="tabular-nums font-bold text-slate-900">
-                    {formatIDR(lastSale.tax)}
-                  </span>
-                </div>
-                <div className="flex justify-between items-end pt-4 border-t border-slate-200">
-                  <span className="text-sm font-black text-slate-900 uppercase">
-                    {lastSale.paymentMethod === "Utang" ? "Total Tagihan" : "Grand Total"}
-                  </span>
-                  <span className={`text-2xl font-black tabular-nums leading-none ${
-                    lastSale.paymentMethod === "Utang" ? "text-orange-600" : "text-slate-900"
-                  }`}>
-                    {formatIDR(lastSale.total)}
-                  </span>
-                </div>
-                {lastSale.paymentMethod === "Utang" && (lastSale.amountPaid || 0) > 0 && (
-                  <>
-                    <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                      <span>Dibayar Sekarang</span>
-                      <span className="tabular-nums font-bold text-green-600">
-                        {formatIDR(lastSale.amountPaid || 0)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                      <span>Sisa Utang</span>
-                      <span className="tabular-nums font-bold text-orange-600">
-                        {formatIDR(lastSale.total - (lastSale.amountPaid || 0))}
-                      </span>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-
-            <div className="p-6 bg-slate-900 flex flex-col sm:flex-row gap-4 no-print shrink-0">
-              <button
-                onClick={() => {
-                  setShowInvoice(false);
-                  setIsQuotation(false);
-                }}
-                className="flex-1 py-4 bg-slate-800 text-slate-300 font-black rounded-3xl text-[10px] uppercase tracking-widest hover:text-white transition-all order-2 sm:order-1"
-              >
-                Close
-              </button>
-              <button
-                onClick={async () => {
-                  if (!lastSale) return;
-                  setIsPrinting(true);
-                  try {
-                    const customer =
-                      customers.find((c) => c.id === lastSale.customerId) || customers[0];
-                    const taxRatePercent = (taxRate * 100).toFixed(0);
-
-                    const itemsHtml = lastSale.items
-                      .map(
-                        (item) => `
-                      <tr>
-                        <td style="padding: 12px 0; border-bottom: 1px solid #f1f5f9;">
-                          <div style="font-weight: 800; font-size: 14px; text-transform: uppercase; letter-spacing: -0.02em;">${item.model}</div>
-                          <div style="font-family: monospace; font-size: 10px; color: #6366f1; margin-top: 4px; text-transform: uppercase;">S/N: ${item.sn}</div>
-                        </td>
-                        <td style="padding: 12px 0; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 800; font-size: 14px;">
-                          ${formatIDR(item.price)}
-                        </td>
-                      </tr>
-                    `,
-                      )
-                      .join("");
-
-                    const htmlContent = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>${isQuotation ? "Quotation" : "Invoice"} - ${lastSale.id}</title>
-  <style>
-    @page { size: A5 portrait; margin: 0; }
-    @media print {
-      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { 
-      width: 148mm;
-      height: 210mm;
-    }
-    body { 
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
-      color: #0f172a; 
-      font-size: 12px;
-      line-height: 1.5;
-      width: 100%;
-      height: 100%;
-      padding: 10mm;
-    }
-    .header { 
-      display: flex; 
-      justify-content: space-between; 
-      align-items: flex-start; 
-      padding-bottom: 16px; 
-      border-bottom: 1px solid #f1f5f9; 
-      margin-bottom: 16px;
-    }
-    .logo-section { display: flex; align-items: center; gap: 12px; }
-    .logo { 
-      width: 48px; height: 48px; 
-      border-radius: 12px; 
-      object-fit: contain;
-    }
-    .store-name { font-size: 20px; font-weight: 900; text-transform: uppercase; letter-spacing: -0.03em; }
-    .store-tagline { font-size: 9px; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
-    .store-address { font-size: 9px; color: #94a3b8; margin-top: 2px; }
-    .invoice-info { text-align: right; }
-    .invoice-label { font-size: 9px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; }
-    .invoice-id { font-size: 16px; font-weight: 900; margin-top: 2px; }
-    .invoice-date { font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
-    
-    .customer-section { 
-      display: grid; 
-      grid-template-columns: 1fr 1fr; 
-      gap: 24px; 
-      padding: 16px; 
-      background: #f8fafc; 
-      border-radius: 12px; 
-      margin-bottom: 16px; 
-    }
-    .section-label { font-size: 8px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
-    .customer-name { font-size: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: -0.02em; }
-    .customer-detail { font-size: 11px; color: #475569; margin-top: 2px; }
-    .customer-npwp { font-family: monospace; font-size: 11px; font-weight: 800; }
-    .no-npwp { font-style: italic; color: #94a3b8; }
-    .payment-badge { 
-      display: inline-block; padding: 4px 10px; 
-      background: white; border: 1px solid #e2e8f0; border-radius: 6px; 
-      font-size: 10px; font-weight: 800; text-transform: uppercase; 
-      color: #4f46e5; 
-    }
-    
-    table { width: 100%; border-collapse: collapse; }
-    th { 
-      font-size: 8px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; 
-      padding: 8px 0; border-bottom: 2px solid #1e293b; text-align: left; 
-    }
-    th:nth-child(2) { text-align: right; }
-    
-    .totals-section { 
-      display: flex; 
-      justify-content: space-between; 
-      align-items: flex-start; 
-      margin-top: 24px; 
-      padding-top: 16px; 
-    }
-    .footer-section { flex: 1; }
-    .disclaimer { font-size: 9px; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 16px; font-style: italic; max-width: 200px; }
-    
-    .totals { width: 160px; }
-    .total-row { display: flex; justify-content: space-between; font-size: 10px; }
-    .total-label { font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
-    .total-value { font-weight: 700; }
-    .grand-total { 
-      display: flex; justify-content: space-between; 
-      padding-top: 12px; margin-top: 8px; 
-      border-top: 2px solid #0f172a; 
-    }
-    .grand-total-label { font-size: 14px; font-weight: 800; text-transform: uppercase; }
-    .grand-total-value { font-size: 24px; font-weight: 900; letter-spacing: -0.03em; }
-  </style>
-</head>
-<body>
-  <div class="header">
-  <div class="logo-section">
-      <img class="logo" src="/logo.png" alt="Logo" />
-      <div>
-        <div class="store-name">${storeConfig.storeName}</div>
-        <div class="store-tagline">Premium Imaging Solution</div>
-        <div class="store-address">${storeConfig.address}</div>
-      </div>
-    </div>
-    <div class="invoice-info">
-      <div class="invoice-label">${isQuotation ? "Quotation" : lastSale.paymentMethod === "Utang" ? "Nota Paylater" : "Faktur Penjualan"}</div>
-      <div class="invoice-id">${lastSale.id}</div>
-      <div class="invoice-date">${formatDate(lastSale.timestamp)}</div>
-      ${isQuotation ? '<div style="background: #fef2f2; color: #dc2626; font-weight: 800; font-size: 10px; padding: 4px 8px; border-radius: 4px; margin-top: 8px; display: inline-block;">BUKAN BUKTI PEMBAYARAN</div>' : ""}
-      ${!isQuotation && lastSale.paymentMethod === "Utang" ? '<div style="background: #fff7ed; color: #ea580c; font-weight: 800; font-size: 10px; padding: 4px 8px; border-radius: 4px; margin-top: 8px; display: inline-block;">BELUM LUNAS</div>' : ""}
-    </div>
-  </div>
-  
-  <div class="customer-section">
-    <div>
-      ${
-        isQuotation
-          ? '<div class="section-label" style="visibility: hidden;">Bill To</div>'
-          : `
-      <div class="section-label">Bill To / Penerima</div>
-      <div class="customer-name">${lastSale.customerName}</div>
-      <div class="customer-detail">${customer?.address || "-"}</div>
-      <div class="customer-detail">Telp: ${customer?.phone || "-"}</div>
-      `
-      }
-    </div>
-    <div style="text-align: right;">
-      <div class="section-label">Tax Registration</div>
-      ${isQuotation ? "" : customer?.npwp ? `<div class="customer-npwp">${customer.npwp}</div>` : '<div class="no-npwp">No NPWP Provided</div>'}
-      <div style="margin-top: 16px;">
-        <div class="section-label">Payment Method</div>
-        <span class="payment-badge" style="${isQuotation ? "background: #f1f5f9; color: #64748b; border-color: #e2e8f0;" : ""}">${isQuotation ? "Menunggu Pembayaran" : lastSale.paymentMethod === "Utang" ? "PAYLATER" : lastSale.paymentMethod}</span>
-      </div>
-    </div>
-  </div>
-  
-  <table>
-    <thead>
-      <tr>
-        <th>Description / Serial Number</th>
-        <th>Total</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${itemsHtml}
-    </tbody>
-  </table>
-  
-  <div class="totals-section">
-    <div class="footer-section">
-      <div class="disclaimer">Barang yang sudah dibeli tidak dapat ditukar atau dikembalikan.</div>
-    </div>
-    <div class="totals">
-      <div class="total-row">
-        <span class="total-label">Subtotal</span>
-        <span class="total-value">${formatIDR(lastSale.subtotal)}</span>
-      </div>
-      <div class="total-row">
-        <span class="total-label">Tax (${taxRatePercent}% PPN)</span>
-        <span class="total-value">${formatIDR(lastSale.tax)}</span>
-      </div>
-      <div class="grand-total">
-        <span class="grand-total-label">${lastSale.paymentMethod === "Utang" ? "Total Tagihan" : "Grand Total"}</span>
-        <span class="grand-total-value">${formatIDR(lastSale.total)}</span>
-      </div>
-      ${lastSale.paymentMethod === "Utang" && (lastSale.amountPaid || 0) > 0 ? `
-      <div class="total-row">
-        <span class="total-label">Dibayar Sekarang</span>
-        <span class="total-value" style="color: #16a34a;">${formatIDR(lastSale.amountPaid || 0)}</span>
-      </div>
-      <div class="total-row">
-        <span class="total-label">Sisa Utang</span>
-        <span class="total-value" style="color: #ea580c;">${formatIDR(lastSale.total - (lastSale.amountPaid || 0))}</span>
-      </div>
-      ` : ""}
-    </div>
-  </div>
-</body>
-</html>`;
-                    setPrintModalHtml(htmlContent);
-                    const saleCustomer =
-                      customers.find((c) => c.id === lastSale.customerId) || customers[0];
-                    const pdfBlob = await pdf(
-                      <InvoiceDocument
-                        data={{
-                          storeName: storeConfig.storeName,
-                          address: storeConfig.address,
-                          invoiceNumber: lastSale.id,
-                          date: formatDate(lastSale.timestamp),
-                          customerName: lastSale.customerName,
-                          customerPhone: saleCustomer?.phone,
-                          customerAddress: saleCustomer?.address,
-                          customerNpwp: saleCustomer?.npwp,
-                          items: lastSale.items.map((item) => ({
-                            model: item.model,
-                            sn: item.sn,
-                            price: item.price,
-                            warrantyExpiry: item.warrantyExpiry,
-                          })),
-                          subtotal: lastSale.subtotal,
-                          tax: lastSale.tax,
-                          taxRate: taxRate * 100,
-                          taxEnabled: lastSale.taxEnabled,
-                          total: lastSale.total,
-                          staffName: lastSale.staffName,
-                          paymentMethod: isQuotation
-                            ? "Menunggu Pembayaran"
-                            : lastSale.paymentMethod,
-                          isQuotation,
-                        }}
-                      />,
-                    ).toBlob();
-                    const pdfUrl = URL.createObjectURL(pdfBlob);
-                    setPrintPdfUrl(pdfUrl);
-                  } catch (error) {
-                    console.error("Failed to generate PDF:", error);
-                    alert("Failed to generate PDF. Please try again.");
-                  } finally {
-                    setIsPrinting(false);
-                  }
-                }}
-                disabled={isPrinting}
-                className="flex-1 py-4 bg-white text-slate-900 font-black rounded-3xl text-[10px] uppercase tracking-widest hover:bg-slate-100 shadow-xl shadow-white/5 transition-all active:scale-95 order-1 sm:order-2 disabled:opacity-50"
-              >
-                {isPrinting ? "Preparing..." : "Print Invoice (A5)"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Confirmation Modal */}
       {confirmCheckout && (
@@ -1501,10 +1069,12 @@ const POSView: React.FC<POSProps> = ({
               </h3>
               <p className="text-slate-600 mb-6">{processResult.message}</p>
               <button
-                onClick={() => {
-                  setProcessResult(null);
-                  if (processResult.success) {
-                    setShowInvoice(true);
+                onClick={async () => {
+                  if (processResult.success && lastSale) {
+                    setProcessResult(null);
+                    await generateInvoicePdf(lastSale, isQuotation);
+                  } else {
+                    setProcessResult(null);
                   }
                 }}
                 className={`w-full py-3 rounded-xl font-black text-sm uppercase tracking-widest ${processResult.success ? "bg-green-600 text-white hover:bg-green-700" : "bg-red-600 text-white hover:bg-red-700"}`}
@@ -1516,30 +1086,40 @@ const POSView: React.FC<POSProps> = ({
         </div>
       )}
 
-      {(printModalHtml || printPdfUrl) && (
+      {printPdfUrl && (
         <PrintModal
-          html={printModalHtml}
           pdfUrl={printPdfUrl}
           onClose={() => {
-            setPrintModalHtml("");
-            if (printPdfUrl) {
-              URL.revokeObjectURL(printPdfUrl);
-              setPrintPdfUrl(null);
-            }
+            URL.revokeObjectURL(printPdfUrl);
+            setPrintPdfUrl(null);
+            setIsQuotation(false);
           }}
         />
+      )}
+
+      {isPrinting && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xl z-[90] flex items-center justify-center">
+          <div className="bg-white rounded-2xl p-6 shadow-xl">
+            <div className="flex items-center gap-3">
+              <svg className="animate-spin h-5 w-5 text-indigo-600" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              <span className="font-bold text-slate-700">Generating PDF...</span>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
 };
 
 interface PrintModalProps {
-  html: string;
-  pdfUrl: string | null;
+  pdfUrl: string;
   onClose: () => void;
 }
 
-const PrintModal: React.FC<PrintModalProps> = ({ html, pdfUrl, onClose }) => {
+const PrintModal: React.FC<PrintModalProps> = ({ pdfUrl, onClose }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const handlePrint = () => {
@@ -1553,62 +1133,41 @@ const PrintModal: React.FC<PrintModalProps> = ({ html, pdfUrl, onClose }) => {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/90 backdrop-blur-xl p-4"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl w-[158mm] max-h-[90vh] overflow-hidden flex flex-col"
+        className="bg-white rounded-[32px] shadow-2xl w-full max-w-4xl h-[90vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="p-4 border-b border-slate-200 flex items-center justify-between shrink-0">
-          <h3 className="font-black text-slate-800 text-sm">Print Invoice</h3>
-          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
-            <svg
-              className="w-5 h-5 text-slate-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+        <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
+          <h3 className="font-black text-slate-900 uppercase tracking-tight">Print Invoice</h3>
+          <div className="flex gap-2">
+            <button
+              onClick={handlePrint}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold uppercase hover:bg-indigo-700"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
+              Print
+            </button>
+            <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </div>
         </div>
-        <div className="flex-1 overflow-auto bg-slate-100 p-4">
-          {pdfUrl ? (
-            <iframe
-              ref={iframeRef}
-              src={pdfUrl}
-              className="mx-auto bg-white shadow-lg"
-              style={{ width: "148mm", height: "210mm" }}
-              title="Invoice PDF"
-            />
-          ) : (
-            <div
-              className="bg-white shadow-lg mx-auto"
-              style={{ width: "148mm", minHeight: "210mm" }}
-              dangerouslySetInnerHTML={{ __html: html }}
-            />
-          )}
-        </div>
-        <div className="p-4 border-t border-slate-200 flex gap-3 shrink-0">
-          <button
-            onClick={onClose}
-            className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handlePrint}
-            className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors"
-            disabled={!pdfUrl}
-          >
-            Print Now
-          </button>
+        <div className="flex-1 overflow-hidden">
+          <iframe
+            ref={iframeRef}
+            src={pdfUrl}
+            className="w-full h-full border-0"
+            title="Invoice PDF"
+          />
         </div>
       </div>
     </div>
