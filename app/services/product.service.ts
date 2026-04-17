@@ -133,11 +133,12 @@ export const adjustStock = async (
   staffName: string = "System",
   supplier?: string,
   dateRestocked?: string,
+  invoiceNumber?: string,
 ): Promise<Product | null> => {
   const response = await fetch(`${API_BASE}/products/adjust-stock`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ productId, newStock, reason, staffName, supplier, dateRestocked }),
+    body: JSON.stringify({ productId, newStock, reason, staffName, supplier, dateRestocked, invoiceNumber }),
   });
   if (!response.ok) {
     if (response.status === 404) return null;
@@ -229,11 +230,12 @@ export const createSerialNumbersBulk = async (
   supplier?: string,
   date?: string,
   reason?: string,
+  invoiceNumber?: string,
 ): Promise<SerialNumber[]> => {
   const response = await fetch(`${API_BASE}/serial-numbers/bulk`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ inputs, supplier, date, reason }),
+    body: JSON.stringify({ inputs, supplier, date, reason, invoiceNumber }),
   });
   if (!response.ok) {
     const error = await response.json();

@@ -48,6 +48,7 @@ export interface Product {
   dateRestocked?: string;
   hidden?: number;
   taxEnabled?: boolean;
+  invoiceNumber?: string;
   createdAt?: string;
 }
 

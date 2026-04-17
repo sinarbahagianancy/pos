@@ -37,6 +37,7 @@ export interface Product {
   dateRestocked?: string;
   hidden?: number;
   taxEnabled?: boolean;
+  invoiceNumber?: string;
 }
 
 export interface CreateProductInput {
@@ -56,6 +57,7 @@ export interface CreateProductInput {
   serialNumbers?: string[];
   quantity?: number;
   taxEnabled?: boolean;
+  invoiceNumber?: string;
 }
 
 export interface UpdateProductInput {
@@ -205,6 +207,7 @@ export function validateCreateProductInput(input: unknown): CreateProductInput {
     serialNumbers: obj.serialNumbers as string[] | undefined,
     quantity: obj.quantity as number | undefined,
     taxEnabled: obj.taxEnabled as boolean | undefined,
+    invoiceNumber: obj.invoiceNumber as string | undefined,
   };
 }
 
@@ -361,6 +364,7 @@ export function parseDbProduct(row: Record<string, unknown>): Product {
     dateRestocked: row.date_restocked as string | undefined,
     hidden: row.hidden as number | undefined,
     taxEnabled,
+    invoiceNumber: row.invoice_number as string | undefined,
   };
 }
 

@@ -19,6 +19,9 @@ export default function apiServerPlugin() {
             `ALTER TABLE products ADD COLUMN IF NOT EXISTS tax_enabled boolean DEFAULT true`,
           );
           await pg.unsafe(
+            `ALTER TABLE products ADD COLUMN IF NOT EXISTS invoice_number text`,
+          );
+          await pg.unsafe(
             `ALTER TABLE sales ADD COLUMN IF NOT EXISTS tax_enabled boolean DEFAULT true`,
           );
           await pg.unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS notes text`);
@@ -123,6 +126,9 @@ export default function apiServerPlugin() {
                   data.newStock,
                   data.reason,
                   data.staffName,
+                  data.supplier,
+                  data.dateRestocked,
+                  data.invoiceNumber,
                 );
                 res.setHeader("Content-Type", "application/json");
                 res.end(JSON.stringify(product));
@@ -211,6 +217,7 @@ export default function apiServerPlugin() {
                   data.supplier,
                   data.date,
                   data.reason,
+                  data.invoiceNumber,
                 );
                 res.setHeader("Content-Type", "application/json");
                 res.end(JSON.stringify(sns));

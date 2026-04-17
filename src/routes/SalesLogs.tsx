@@ -4,6 +4,7 @@ import { formatIDR, formatDate } from "../../app/utils/formatters";
 import { pdf } from "@react-pdf/renderer";
 import { InvoiceDocument } from "../../app/components/InvoicePDF";
 import Pagination from "../../app/components/Pagination";
+import { RupiahInput } from "../../app/components/RupiahInput";
 
 interface SalesLogsProps {
   sales: Sale[];
@@ -465,20 +466,15 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
               <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
                 Jumlah Cicilan
               </label>
-              <input
-                type="text"
-                inputMode="numeric"
+              <RupiahInput
+                className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 text-lg font-bold placeholder-slate-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 tabular-nums"
+                value={parseInt(installmentAmount, 10) || 0}
+                onChange={(val) => setInstallmentAmount(String(val))}
                 autoFocus
-                value={installmentAmount}
-                onChange={(e) => {
-                  const raw = e.target.value.replace(/[^0-9]/g, "");
-                  setInstallmentAmount(raw);
-                }}
+                placeholder={`Sisa: ${formatIDR(installmentPopover.remaining)}`}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleRecordInstallment();
                 }}
-                placeholder={`Sisa: ${formatIDR(installmentPopover.remaining)}`}
-                className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 text-lg font-bold placeholder-slate-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 tabular-nums"
               />
               {installmentAmount && (
                 <p className="text-[10px] text-slate-400 font-bold">

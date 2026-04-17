@@ -406,9 +406,10 @@ const InventoryComponent = () => {
     reason: string,
     supplier?: string,
     dateRestocked?: string,
+    invoiceNumber?: string,
   ) => {
     try {
-      await dbAdjustStock(productId, newStock, reason, staffName, supplier, dateRestocked);
+      await dbAdjustStock(productId, newStock, reason, staffName, supplier, dateRestocked, invoiceNumber);
       queryClient.invalidateQueries({ queryKey: ["products"] });
     } catch (error) {
       console.error("Failed to adjust stock:", error);

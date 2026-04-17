@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from "react";
 import { SortingState } from "@tanstack/react-table";
 import { Product, SerialNumber, AuditLog, Supplier } from "../../app/types";
 import { formatIDR } from "../../app/utils/formatters";
+import { RupiahInput } from "../../app/components/RupiahInput";
 
 // Reusable searchable combobox for supplier selection
 interface SearchableSelectProps {
@@ -112,6 +113,7 @@ interface InventoryProps {
     reason: string,
     supplier?: string,
     dateRestocked?: string,
+    invoiceNumber?: string,
   ) => void;
   onAddProduct: (product: Product, serials: string[]) => void;
   onEditProduct?: (id: string, data: Partial<Product>) => Promise<void>;
@@ -176,6 +178,7 @@ const InventoryView: React.FC<InventoryProps> = ({
   const [simpleAdjustReason, setSimpleAdjustReason] = useState("");
   const [simpleAdjustSupplier, setSimpleAdjustSupplier] = useState("");
   const [simpleAdjustDate, setSimpleAdjustDate] = useState(new Date().toISOString().split("T")[0]);
+  const [simpleAdjustInvoiceNumber, setSimpleAdjustInvoiceNumber] = useState("");
 
   // SN-based stock operations
   const [addingSNProduct, setAddingSNProduct] = useState<Product | null>(null);
@@ -184,6 +187,7 @@ const InventoryView: React.FC<InventoryProps> = ({
   const [snOperationReason, setSNOperationReason] = useState("");
   const [snOperationSupplier, setSNOperationSupplier] = useState("");
   const [snOperationDate, setSNOperationDate] = useState(new Date().toISOString().split("T")[0]);
+  const [snOperationInvoiceNumber, setSNOperationInvoiceNumber] = useState("");
   const [isProcessingSN, setIsProcessingSN] = useState(false);
   const [selectedSNs, setSelectedSNs] = useState<string[]>([]);
 
@@ -204,6 +208,7 @@ const InventoryView: React.FC<InventoryProps> = ({
   const [newProductQuantity, setNewProductQuantity] = useState(1);
   const [newProductSupplier, setNewProductSupplier] = useState("");
   const [newProductDate, setNewProductDate] = useState(new Date().toISOString().split("T")[0]);
+  const [newProductInvoiceNumber, setNewProductInvoiceNumber] = useState("");
 
   const filteredProducts = products.filter(
     (p) =>
@@ -267,12 +272,14 @@ const InventoryView: React.FC<InventoryProps> = ({
         simpleAdjustReason,
         simpleAdjustSupplier || undefined,
         simpleAdjustDate || undefined,
+        simpleAdjustInvoiceNumber || undefined,
       );
     }
 
     setSimpleAdjustProduct(null);
     setSimpleAdjustAmount(0);
     setSimpleAdjustReason("");
+    setSimpleAdjustInvoiceNumber("");
   };
 
   const handleAddSN = async (e: React.FormEvent) => {
@@ -297,6 +304,7 @@ const InventoryView: React.FC<InventoryProps> = ({
         snOperationSupplier,
         snOperationDate,
         snOperationReason,
+        snOperationInvoiceNumber || undefined,
       );
 
       alert(`${snList.length} nomor seri berhasil ditambahkan ke ${addingSNProduct.model}.`);
@@ -310,6 +318,7 @@ const InventoryView: React.FC<InventoryProps> = ({
       setNewSNInput("");
       setSNOperationReason("");
       setSNOperationSupplier("");
+      setSNOperationInvoiceNumber("");
     } catch (error) {
       console.error("Failed to add serial numbers:", error);
       alert("Gagal menambahkan nomor seri.");
@@ -424,6 +433,7 @@ const InventoryView: React.FC<InventoryProps> = ({
       hasSerialNumber: newProductHasSN,
       supplier: newProductSupplier,
       dateRestocked: new Date(newProductDate).toISOString(),
+      invoiceNumber: newProductInvoiceNumber || undefined,
     };
 
     // Include serialNumbers in the product for API
@@ -450,6 +460,7 @@ const InventoryView: React.FC<InventoryProps> = ({
     setNewProductQuantity(1);
     setNewProductSupplier("");
     setNewProductDate(new Date().toISOString().split("T")[0]);
+    setNewProductInvoiceNumber("");
   };
 
   return (
@@ -646,6 +657,11 @@ const InventoryView: React.FC<InventoryProps> = ({
                         <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1">
                           {p.category} • {p.condition} • {p.warrantyMonths / 12} Thn Garansi
                         </span>
+                        {p.invoiceNumber && (
+                          <span className="text-[9px] text-indigo-500 font-bold uppercase tracking-widest mt-0.5">
+                            Inv: {p.invoiceNumber}
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td className="px-8 py-6 text-center">
@@ -1026,6 +1042,18 @@ const InventoryView: React.FC<InventoryProps> = ({
               </div>
               <div className="space-y-4">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  No. Invoice
+                </label>
+                <input
+                  type="text"
+                  value={snOperationInvoiceNumber}
+                  onChange={(e) => setSNOperationInvoiceNumber(e.target.value)}
+                  placeholder="e.g., INV/2026/001"
+                  className="w-full px-6 py-4 rounded-2xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold focus:ring-4 focus:ring-green-500/10 outline-none"
+                />
+              </div>
+              <div className="space-y-4">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
                   Tanggal
                 </label>
                 <input
@@ -1315,24 +1343,20 @@ const InventoryView: React.FC<InventoryProps> = ({
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
                   Harga Jual (Retail)
                 </label>
-                <input
-                  type="number"
+                <RupiahInput
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold outline-none"
-                  value={newP.price}
-                  onChange={(e) => setNewP({ ...newP, price: Number(e.target.value) })}
-                  required
+                  value={newP.price || 0}
+                  onChange={(val) => setNewP({ ...newP, price: val })}
                 />
               </div>
               <div className="space-y-4">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
                   Harga Modal (HPP)
                 </label>
-                <input
-                  type="number"
+                <RupiahInput
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold outline-none"
-                  value={newP.cogs}
-                  onChange={(e) => setNewP({ ...newP, cogs: Number(e.target.value) })}
-                  required
+                  value={newP.cogs || 0}
+                  onChange={(val) => setNewP({ ...newP, cogs: val })}
                 />
               </div>
 
@@ -1396,6 +1420,18 @@ const InventoryView: React.FC<InventoryProps> = ({
                   value={newProductSupplier}
                   onChange={setNewProductSupplier}
                   required
+                />
+              </div>
+              <div className="space-y-4">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  No. Invoice
+                </label>
+                <input
+                  type="text"
+                  value={newProductInvoiceNumber}
+                  onChange={(e) => setNewProductInvoiceNumber(e.target.value)}
+                  placeholder="e.g., INV/2026/001"
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold outline-none"
                 />
               </div>
               <div className="space-y-4">
@@ -1608,24 +1644,20 @@ const InventoryView: React.FC<InventoryProps> = ({
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
                   Harga Jual (Retail)
                 </label>
-                <input
-                  type="number"
+                <RupiahInput
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold outline-none"
                   value={editForm.price || 0}
-                  onChange={(e) => setEditForm({ ...editForm, price: Number(e.target.value) })}
-                  required
+                  onChange={(val) => setEditForm({ ...editForm, price: val })}
                 />
               </div>
               <div className="space-y-4">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
                   Harga Modal (HPP)
                 </label>
-                <input
-                  type="number"
+                <RupiahInput
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold outline-none"
                   value={editForm.cogs || 0}
-                  onChange={(e) => setEditForm({ ...editForm, cogs: Number(e.target.value) })}
-                  required
+                  onChange={(val) => setEditForm({ ...editForm, cogs: val })}
                 />
               </div>
               <div className="md:col-span-2 flex gap-4 pt-4">
@@ -1803,6 +1835,7 @@ const InventoryView: React.FC<InventoryProps> = ({
                   setSimpleAdjustReason("");
                   setSimpleAdjustSupplier("");
                   setSimpleAdjustDate(new Date().toISOString().split("T")[0]);
+                  setSimpleAdjustInvoiceNumber("");
                 }}
                 className="text-slate-300 hover:text-slate-900 transition-colors"
               >
@@ -1885,6 +1918,18 @@ const InventoryView: React.FC<InventoryProps> = ({
               </div>
               <div className="space-y-4">
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  No. Invoice
+                </label>
+                <input
+                  type="text"
+                  value={simpleAdjustInvoiceNumber}
+                  onChange={(e) => setSimpleAdjustInvoiceNumber(e.target.value)}
+                  placeholder="e.g., INV/2026/001"
+                  className="w-full px-6 py-4 rounded-2xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold focus:ring-4 focus:ring-indigo-500/10 outline-none"
+                />
+              </div>
+              <div className="space-y-4">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
                   Tanggal
                 </label>
                 <input
@@ -1903,6 +1948,7 @@ const InventoryView: React.FC<InventoryProps> = ({
                     setSimpleAdjustReason("");
                     setSimpleAdjustSupplier("");
                     setSimpleAdjustDate(new Date().toISOString().split("T")[0]);
+                    setSimpleAdjustInvoiceNumber("");
                   }}
                   className="flex-1 py-4 lg:py-5 bg-white border border-slate-200 text-slate-700 font-black rounded-3xl text-[10px] uppercase tracking-widest"
                 >

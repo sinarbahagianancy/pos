@@ -59,7 +59,7 @@ export const getAllProducts = async (
       p.id, p.brand, p.model, p.category, p.mount, p.condition,
       p.price, p.cogs, p.warranty_months, p.warranty_type, p.stock,
       p.has_serial_number, p.supplier, p.date_restocked, p.hidden, p.deleted,
-      p.tax_enabled, p.created_at,
+      p.tax_enabled, p.invoice_number, p.created_at,
       (SELECT COUNT(*) FROM serial_numbers sn WHERE sn.product_id = p.id) as sn_count
     FROM products p
     WHERE p.deleted = false
@@ -108,6 +108,7 @@ export const createProduct = async (input: unknown) => {
       supplier: validated.supplier || null,
       dateRestocked: validated.dateRestocked ? new Date(validated.dateRestocked) : new Date(),
       taxEnabled: validated.taxEnabled === true,
+      invoiceNumber: validated.invoiceNumber || null,
     })
     .returning();
 
@@ -251,6 +252,7 @@ export const adjustStock = async (
   staffName: string = "System",
   supplier?: string,
   dateRestocked?: string,
+  invoiceNumber?: string,
 ) => {
   validateStockAdjustmentInput({ productId, newStock, reason });
 
@@ -263,13 +265,16 @@ export const adjustStock = async (
   const diff = newStock - Number(product.stock);
   const actionType = diff > 0 ? "Stock Addition" : "Manual Correction";
 
-  // Update fields - only update supplier and dateRestocked when adding stock (positive diff)
+  // Update fields - only update supplier, dateRestocked, invoiceNumber when adding stock (positive diff)
   const updateData: any = { stock: newStock, updatedAt: new Date() };
   if (diff > 0 && supplier) {
     updateData.supplier = supplier;
   }
   if (diff > 0 && dateRestocked) {
     updateData.dateRestocked = new Date(dateRestocked);
+  }
+  if (diff > 0 && invoiceNumber) {
+    updateData.invoiceNumber = invoiceNumber;
   }
 
   const [result] = await db
@@ -286,6 +291,9 @@ export const adjustStock = async (
     }
     if (dateRestocked) {
       auditDetails += `. Date: ${dateRestocked}`;
+    }
+    if (invoiceNumber) {
+      auditDetails += `. Invoice: ${invoiceNumber}`;
     }
   }
 
@@ -369,6 +377,7 @@ export const createSerialNumbersBulk = async (
   supplier?: string,
   date?: string,
   reason?: string,
+  invoiceNumber?: string,
 ) => {
   const validated = inputs.map(validateCreateSerialNumberInput);
 
@@ -380,23 +389,34 @@ export const createSerialNumbersBulk = async (
 
   const result = await db.insert(serialNumbers).values(values).returning();
 
-  // Create audit log with supplier, date, and reason info
+  // Update product's invoiceNumber, supplier, dateRestocked when adding SNs (restocking)
   if (validated.length > 0 && validated[0].productId) {
+    const productId = validated[0].productId;
+    const updateData: Record<string, unknown> = { updatedAt: new Date() };
+    if (supplier) updateData.supplier = supplier;
+    if (date) updateData.dateRestocked = new Date(date);
+    if (invoiceNumber) updateData.invoiceNumber = invoiceNumber;
+
+    if (Object.keys(updateData).length > 0) {
+      await db.update(products).set(updateData).where(eq(products.id, productId));
+    }
+
     const [product] = await db
       .select()
       .from(products)
-      .where(eq(products.id, validated[0].productId));
+      .where(eq(products.id, productId));
     const snList = validated.map((v) => v.sn).join(", ");
     const supplierInfo = supplier || "Unknown";
     const dateInfo = date || new Date().toISOString().split("T")[0];
     const reasonInfo = reason || "Not specified";
+    const invoiceInfo = invoiceNumber || "-";
 
     await db.insert(auditLogs).values({
       id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       staffName: "System",
       action: "Stock Addition",
-      details: `Added ${validated.length} serial number(s) to ${product?.brand || ""} ${product?.model || ""} from supplier ${supplierInfo} on ${dateInfo}, reason: ${reasonInfo}. SN: ${snList}`,
-      relatedId: validated[0].productId,
+      details: `Added ${validated.length} serial number(s) to ${product?.brand || ""} ${product?.model || ""} from supplier ${supplierInfo} on ${dateInfo}, invoice: ${invoiceInfo}, reason: ${reasonInfo}. SN: ${snList}`,
+      relatedId: productId,
     });
   }
 

@@ -92,6 +92,7 @@ export const products = pgTable("products", {
   hidden: integer("hidden").notNull().default(0),
   taxEnabled: boolean("tax_enabled").notNull().default(true),
   deleted: boolean("deleted").notNull().default(false),
+  invoiceNumber: text("invoice_number"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });

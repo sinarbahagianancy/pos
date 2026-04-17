@@ -11,6 +11,7 @@ import {
 import { formatIDR, calculateWarrantyExpiry, formatDate } from "../../app/utils/formatters";
 import { pdf } from "@react-pdf/renderer";
 import { InvoiceDocument } from "../../app/components/InvoicePDF";
+import { RupiahInput } from "../../app/components/RupiahInput";
 
 interface POSProps {
   products: Product[];
@@ -640,23 +641,11 @@ const POSView: React.FC<POSProps> = ({
                   <div className="flex items-center space-x-6">
                     {editingPriceIdx === idx ? (
                       <div className="flex items-center space-x-1">
-                        <span className="text-xs text-slate-400 font-bold">Rp</span>
-                        <input
-                          type="text"
-                          inputMode="numeric"
+                        <RupiahInput
+                          className="w-28 px-2 py-1 text-sm font-black text-slate-900 border border-indigo-300 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 outline-none tabular-nums"
+                          value={parseInt(editingPriceValue, 10) || 0}
+                          onChange={(val) => setEditingPriceValue(String(val))}
                           autoFocus
-                          value={editingPriceValue}
-                          onChange={(e) => {
-                            const raw = e.target.value.replace(/[^0-9]/g, "");
-                            setEditingPriceValue(raw);
-                          }}
-                          onBlur={() => {
-                            const parsed = parseInt(editingPriceValue, 10);
-                            if (!isNaN(parsed) && parsed > 0) {
-                              updateCartPrice(idx, parsed);
-                            }
-                            setEditingPriceIdx(null);
-                          }}
                           onKeyDown={(e) => {
                             if (e.key === "Enter") {
                               const parsed = parseInt(editingPriceValue, 10);
@@ -668,7 +657,6 @@ const POSView: React.FC<POSProps> = ({
                               setEditingPriceIdx(null);
                             }
                           }}
-                          className="w-28 px-2 py-1 text-sm font-black text-slate-900 border border-indigo-300 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 outline-none tabular-nums"
                         />
                       </div>
                     ) : (
@@ -833,7 +821,7 @@ const POSView: React.FC<POSProps> = ({
                       : "bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700"
                   }`}
                 >
-                  {method === "Utang" ? "Utang" : method}
+                  {method === "Utang" ? "Paylater" : method}
                 </button>
               ))}
             </div>
@@ -858,16 +846,11 @@ const POSView: React.FC<POSProps> = ({
               <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest">
                 Jumlah Dibayar Sekarang
               </label>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={utangAmountPaid > 0 ? utangAmountPaid : ""}
-                onChange={(e) => {
-                  const raw = e.target.value.replace(/[^0-9]/g, "");
-                  setUtangAmountPaid(raw ? parseInt(raw, 10) : 0);
-                }}
-                placeholder={`Total: ${formatIDR(total)}`}
+              <RupiahInput
                 className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white text-sm font-bold placeholder-slate-600 focus:outline-none focus:border-indigo-500 tabular-nums"
+                value={utangAmountPaid}
+                onChange={(val) => setUtangAmountPaid(val)}
+                placeholder={`Total: ${formatIDR(total)}`}
               />
               {utangAmountPaid > 0 && utangAmountPaid < total && (
                 <p className="text-[10px] text-amber-400 font-bold">
@@ -976,7 +959,7 @@ const POSView: React.FC<POSProps> = ({
               </div>
               <div className="text-left sm:text-right w-full sm:w-auto">
                 <p className="text-[10px] font-black uppercase tracking-widest">
-                  {isQuotation ? "Quotation" : lastSale.paymentMethod === "Utang" ? "Nota Utang" : "Faktur Penjualan"}
+                  {isQuotation ? "Quotation" : lastSale.paymentMethod === "Utang" ? "Nota Paylater" : "Faktur Penjualan"}
                 </p>
                 <p className="text-lg font-black text-slate-900 mt-1">{lastSale.id}</p>
                 <p className="text-[10px] text-slate-500 font-bold mt-1 uppercase tracking-widest">
@@ -1039,7 +1022,7 @@ const POSView: React.FC<POSProps> = ({
                       </span>
                     ) : (
                       <span className="inline-block px-3 py-1 bg-white border border-slate-200 rounded-lg text-[10px] font-black uppercase text-indigo-600 shadow-sm">
-                        {lastSale.paymentMethod === "Utang" ? "UTANG" : lastSale.paymentMethod}
+                        {lastSale.paymentMethod === "Utang" ? "PAYLATER" : lastSale.paymentMethod}
                       </span>
                     )}
                   </div>
@@ -1269,7 +1252,7 @@ const POSView: React.FC<POSProps> = ({
       </div>
     </div>
     <div class="invoice-info">
-      <div class="invoice-label">${isQuotation ? "Quotation" : lastSale.paymentMethod === "Utang" ? "Nota Utang" : "Faktur Penjualan"}</div>
+      <div class="invoice-label">${isQuotation ? "Quotation" : lastSale.paymentMethod === "Utang" ? "Nota Paylater" : "Faktur Penjualan"}</div>
       <div class="invoice-id">${lastSale.id}</div>
       <div class="invoice-date">${formatDate(lastSale.timestamp)}</div>
       ${isQuotation ? '<div style="background: #fef2f2; color: #dc2626; font-weight: 800; font-size: 10px; padding: 4px 8px; border-radius: 4px; margin-top: 8px; display: inline-block;">BUKAN BUKTI PEMBAYARAN</div>' : ""}
@@ -1295,7 +1278,7 @@ const POSView: React.FC<POSProps> = ({
       ${isQuotation ? "" : customer?.npwp ? `<div class="customer-npwp">${customer.npwp}</div>` : '<div class="no-npwp">No NPWP Provided</div>'}
       <div style="margin-top: 16px;">
         <div class="section-label">Payment Method</div>
-        <span class="payment-badge" style="${isQuotation ? "background: #f1f5f9; color: #64748b; border-color: #e2e8f0;" : ""}">${isQuotation ? "Menunggu Pembayaran" : lastSale.paymentMethod === "Utang" ? "UTANG" : lastSale.paymentMethod}</span>
+        <span class="payment-badge" style="${isQuotation ? "background: #f1f5f9; color: #64748b; border-color: #e2e8f0;" : ""}">${isQuotation ? "Menunggu Pembayaran" : lastSale.paymentMethod === "Utang" ? "PAYLATER" : lastSale.paymentMethod}</span>
       </div>
     </div>
   </div>
@@ -1412,7 +1395,7 @@ const POSView: React.FC<POSProps> = ({
               <div className="flex justify-between">
                 <span className="text-slate-500">Metode Pembayaran</span>
                 <span className="font-black">
-                  {paymentMethod === "Utang" ? "Utang" : paymentMethod}
+                  {paymentMethod === "Utang" ? "Paylater" : paymentMethod}
                 </span>
               </div>
               {paymentMethod === "Utang" && dueDate && (
