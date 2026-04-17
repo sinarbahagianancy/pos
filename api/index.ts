@@ -207,6 +207,8 @@ interface SaleItem {
   warrantyExpiry: string;
 }
 
+const fmtIDR = (n: number | string) => `Rp ${new Intl.NumberFormat("id-ID").format(Number(n))}`;
+
 const parseDbProduct = (row: Record<string, unknown>): Product => {
   return {
     id: row.id as string,
@@ -775,8 +777,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Create audit log
       const details =
         hasSerialNumber && validated.serialNumbers
-          ? `Created product ${validated.brand} ${validated.model} with ${validated.serialNumbers.length} serial numbers from supplier ${validated.supplier}`
-          : `Created product ${validated.brand} ${validated.model} with ${validated.quantity || 0} units from supplier ${validated.supplier}`;
+          ? `Created product ${validated.brand} ${validated.model} with ${validated.serialNumbers.length} serial numbers, price: ${fmtIDR(validated.price)}, cogs: ${fmtIDR(validated.cogs)}, from supplier ${validated.supplier}`
+          : `Created product ${validated.brand} ${validated.model} with ${validated.quantity || 0} units, price: ${fmtIDR(validated.price)}, cogs: ${fmtIDR(validated.cogs)}, from supplier ${validated.supplier}`;
 
       await client.unsafe(
         "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
@@ -835,14 +837,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const newPrice = validated.price.toString();
         if (newPrice !== oldProduct.price) {
           updateData.price = newPrice;
-          changes.push(`price: ${oldProduct.price} -> ${newPrice}`);
+          changes.push(`price: ${fmtIDR(oldProduct.price)} -> ${fmtIDR(newPrice)}`);
         }
       }
       if (validated.cogs !== undefined) {
         const newCogs = validated.cogs.toString();
         if (newCogs !== oldProduct.cogs) {
           updateData.cogs = newCogs;
-          changes.push(`cogs: ${oldProduct.cogs} -> ${newCogs}`);
+          changes.push(`cogs: ${fmtIDR(oldProduct.cogs)} -> ${fmtIDR(newCogs)}`);
         }
       }
       if (
@@ -913,7 +915,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const [result] = await db.update("products", updateData, { column: "id", value: productId });
 
       // Build audit log details with supplier and date info
-      let auditDetails = `Manual adjust ${product.brand} ${product.model}: ${product.stock} -> ${newStock}. Reason: ${reason}`;
+      let auditDetails = `Manual adjust ${product.brand} ${product.model}: ${product.stock} -> ${newStock}. Price: ${fmtIDR(product.price)}, COGS: ${fmtIDR(product.cogs)}. Reason: ${reason}`;
       if (diff > 0) {
         if (supplier) {
           auditDetails += `. Supplier: ${supplier}`;
@@ -1437,27 +1439,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const updates: string[] = [];
       const values: unknown[] = [];
+      const changeDescriptions: string[] = [];
       let paramIndex = 1;
 
       if (name !== undefined && name !== oldCustomer.name) {
         updates.push(`name = $${paramIndex++}`);
         values.push(name);
+        changeDescriptions.push(`name: ${oldCustomer.name} -> ${name}`);
       }
       if (phone !== undefined && phone !== oldCustomer.phone) {
         updates.push(`phone = $${paramIndex++}`);
         values.push(phone);
+        changeDescriptions.push(`phone: ${oldCustomer.phone || "-"} -> ${phone || "-"}`);
       }
       if (email !== undefined && email !== oldCustomer.email) {
         updates.push(`email = $${paramIndex++}`);
         values.push(email);
+        changeDescriptions.push(`email: ${oldCustomer.email || "-"} -> ${email || "-"}`);
       }
       if (address !== undefined && address !== oldCustomer.address) {
         updates.push(`address = $${paramIndex++}`);
         values.push(address);
+        changeDescriptions.push(`address: ${oldCustomer.address || "-"} -> ${address || "-"}`);
       }
       if (npwp !== undefined && npwp !== oldCustomer.npwp) {
         updates.push(`npwp = $${paramIndex++}`);
         values.push(npwp);
+        changeDescriptions.push(`npwp: ${oldCustomer.npwp || "-"} -> ${npwp || "-"}`);
       }
       if (
         loyaltyPoints !== undefined &&
@@ -1465,6 +1473,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ) {
         updates.push(`loyalty_points = $${paramIndex++}`);
         values.push(loyaltyPoints);
+        changeDescriptions.push(`loyaltyPoints: ${oldCustomer.loyalty_points || 0} -> ${loyaltyPoints}`);
       }
 
       if (updates.length === 0) {
@@ -1484,14 +1493,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // Audit log for customer update
-      const changes = updates.filter((u) => !u.includes("updated_at")).join(", ");
       await client.unsafe(
         "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
         [
           `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
           staffName,
           "General",
-          `Updated customer: ${changes}`,
+          `Updated customer: ${changeDescriptions.join(", ")}`,
           customerId,
         ],
       );
@@ -1673,7 +1681,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
             staffName,
             "Sale Created",
-            `Sale ${id} - ${items.length} item(s), Total: ${total}, Customer: ${customerName}`,
+            `Sale ${id} - ${items.length} item(s), Total: Rp ${new Intl.NumberFormat("id-ID").format(total)}, Customer: ${customerName}`,
             id,
           ],
         );
@@ -1801,7 +1809,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
             staffName,
             "General",
-            `Installment of ${amount} recorded for sale ${saleId}. Total paid: ${newTotalPaid}/${saleTotal}${isNowPaid ? " (FULLY PAID)" : ""}`,
+            `Installment of Rp ${new Intl.NumberFormat("id-ID").format(amount)} recorded for sale ${saleId}. Total paid: Rp ${new Intl.NumberFormat("id-ID").format(newTotalPaid)}/Rp ${new Intl.NumberFormat("id-ID").format(saleTotal)}${isNowPaid ? " (FULLY PAID)" : ""}`,
             saleId,
           ],
         );

@@ -125,27 +125,33 @@ export const updateCustomerHandler = async (
 
   const updates: string[] = [];
   const values: (string | number | null)[] = [];
+  const changeDescriptions: string[] = [];
   let paramIndex = 1;
 
   if (data.name !== undefined && data.name !== oldCustomer.name) {
     updates.push(`name = $${paramIndex++}`);
     values.push(data.name);
+    changeDescriptions.push(`name: ${oldCustomer.name} -> ${data.name}`);
   }
   if (data.phone !== undefined && data.phone !== oldCustomer.phone) {
     updates.push(`phone = $${paramIndex++}`);
     values.push(data.phone);
+    changeDescriptions.push(`phone: ${oldCustomer.phone || "-"} -> ${data.phone || "-"}`);
   }
   if (data.email !== undefined && data.email !== oldCustomer.email) {
     updates.push(`email = $${paramIndex++}`);
     values.push(data.email);
+    changeDescriptions.push(`email: ${oldCustomer.email || "-"} -> ${data.email || "-"}`);
   }
   if (data.address !== undefined && data.address !== oldCustomer.address) {
     updates.push(`address = $${paramIndex++}`);
     values.push(data.address);
+    changeDescriptions.push(`address: ${oldCustomer.address || "-"} -> ${data.address || "-"}`);
   }
   if (data.npwp !== undefined && data.npwp !== oldCustomer.npwp) {
     updates.push(`npwp = $${paramIndex++}`);
     values.push(data.npwp);
+    changeDescriptions.push(`npwp: ${oldCustomer.npwp || "-"} -> ${data.npwp || "-"}`);
   }
   if (
     data.loyaltyPoints !== undefined &&
@@ -153,6 +159,7 @@ export const updateCustomerHandler = async (
   ) {
     updates.push(`loyalty_points = $${paramIndex++}`);
     values.push(data.loyaltyPoints);
+    changeDescriptions.push(`loyaltyPoints: ${oldCustomer.loyalty_points || 0} -> ${data.loyaltyPoints}`);
   }
 
   if (updates.length === 0) {
@@ -179,7 +186,7 @@ export const updateCustomerHandler = async (
       `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       staffName,
       "General",
-      `Updated customer: ${updates.filter((u) => !u.includes("updated_at")).join(", ")}`,
+      `Updated customer: ${changeDescriptions.join(", ")}`,
       id,
     ],
   );
@@ -363,7 +370,7 @@ export const createSaleHandler = async (data: {
         `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
         data.staffName,
         "Sale Created",
-        `Sale ${data.id} - ${data.items.length} item(s), Total: ${data.total}, Customer: ${data.customerName}`,
+        `Sale ${data.id} - ${data.items.length} item(s), Total: Rp ${new Intl.NumberFormat("id-ID").format(data.total)}, Customer: ${data.customerName}`,
         data.id,
       ],
     );
@@ -585,7 +592,7 @@ export const recordInstallmentHandler = async (saleId: string, amount: number, s
       `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
       staffName,
       "General",
-      `Installment of ${amount} recorded for sale ${saleId}. Total paid: ${newTotalPaid}/${saleTotal}${isNowPaid ? " (FULLY PAID)" : ""}`,
+      `Installment of Rp ${new Intl.NumberFormat("id-ID").format(amount)} recorded for sale ${saleId}. Total paid: Rp ${new Intl.NumberFormat("id-ID").format(newTotalPaid)}/Rp ${new Intl.NumberFormat("id-ID").format(saleTotal)}${isNowPaid ? " (FULLY PAID)" : ""}`,
       saleId,
     ],
   );

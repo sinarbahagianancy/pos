@@ -11,6 +11,8 @@ import {
   Product,
 } from "../../app/schemas/product.schema";
 
+const fmtIDR = (n: number | string) => `Rp ${new Intl.NumberFormat("id-ID").format(Number(n))}`;
+
 // Ensure has_serial_number column exists and fix all products based on actual serial numbers
 try {
   await client.unsafe(
@@ -138,7 +140,7 @@ export const createProduct = async (input: unknown) => {
       id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       staffName,
       action: "Stock Addition",
-      details: `Created product ${validated.brand} ${validated.model} with ${validated.serialNumbers.length} serial numbers from supplier ${validated.supplier}`,
+      details: `Created product ${validated.brand} ${validated.model} with ${validated.serialNumbers.length} serial numbers, price: ${fmtIDR(validated.price)}, cogs: ${fmtIDR(validated.cogs)}, from supplier ${validated.supplier}`,
       relatedId: newProduct.id,
     });
   } else if (!hasSerialNumber && validated.quantity && validated.quantity > 0) {
@@ -146,7 +148,7 @@ export const createProduct = async (input: unknown) => {
       id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       staffName,
       action: "Stock Addition",
-      details: `Created product ${validated.brand} ${validated.model} with ${validated.quantity} units from supplier ${validated.supplier}`,
+      details: `Created product ${validated.brand} ${validated.model} with ${validated.quantity} units, price: ${fmtIDR(validated.price)}, cogs: ${fmtIDR(validated.cogs)}, from supplier ${validated.supplier}`,
       relatedId: newProduct.id,
     });
   }
@@ -198,14 +200,14 @@ export const updateProduct = async (id: string, input: unknown, staffName: strin
     const newPrice = validated.price.toString();
     if (newPrice !== oldProduct.price) {
       updateData.price = newPrice;
-      changes.push(`price: ${oldProduct.price} -> ${newPrice}`);
+      changes.push(`price: ${fmtIDR(oldProduct.price)} -> ${fmtIDR(newPrice)}`);
     }
   }
   if (validated.cogs !== undefined) {
     const newCogs = validated.cogs.toString();
     if (newCogs !== oldProduct.cogs) {
       updateData.cogs = newCogs;
-      changes.push(`cogs: ${oldProduct.cogs} -> ${newCogs}`);
+      changes.push(`cogs: ${fmtIDR(oldProduct.cogs)} -> ${fmtIDR(newCogs)}`);
     }
   }
   if (
@@ -284,7 +286,7 @@ export const adjustStock = async (
     .returning();
 
   // Build audit log details with supplier and date info
-  let auditDetails = `Manual adjust ${product.brand} ${product.model}: ${product.stock} -> ${newStock}. Reason: ${reason}`;
+  let auditDetails = `Manual adjust ${product.brand} ${product.model}: ${product.stock} -> ${newStock}. Price: ${fmtIDR(product.price)}, COGS: ${fmtIDR(product.cogs)}. Reason: ${reason}`;
   if (diff > 0) {
     if (supplier) {
       auditDetails += `. Supplier: ${supplier}`;
