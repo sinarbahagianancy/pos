@@ -69,9 +69,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
         required={required && !value}
       />
       {/* Dropdown arrow */}
-      <div
-        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-      >
+      <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" />
         </svg>
@@ -92,7 +90,9 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
               </button>
             ))
           ) : (
-            <div className="px-4 py-3 text-sm text-slate-400 italic">Tidak ada supplier ditemukan</div>
+            <div className="px-4 py-3 text-sm text-slate-400 italic">
+              Tidak ada supplier ditemukan
+            </div>
           )}
         </div>
       )}
@@ -706,6 +706,9 @@ const InventoryView: React.FC<InventoryProps> = ({
                               year: "numeric",
                             })
                           : ""}
+                      </span>
+                      <span className="text-xs font-medium text-slate-400">
+                        {p.invoiceNumber || ""}
                       </span>
                     </td>
                     <td className="px-8 py-6 text-center">
