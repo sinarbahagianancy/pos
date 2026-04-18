@@ -41,6 +41,9 @@ export default function apiServerPlugin() {
             `ALTER TABLE sales ADD COLUMN IF NOT EXISTS is_paid boolean DEFAULT false`,
           );
           await pg.unsafe(
+            `ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS brand text`,
+          );
+          await pg.unsafe(
             `ALTER TABLE sales ADD COLUMN IF NOT EXISTS paid_at timestamp with time zone`,
           );
           await pg.unsafe(`ALTER TYPE payment_method ADD VALUE IF NOT EXISTS 'Utang'`);

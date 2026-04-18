@@ -169,6 +169,7 @@ const POSView: React.FC<POSProps> = ({
       ...cart,
       {
         productId: product.id,
+        brand: product.brand,
         model: product.model,
         sn: snToUse,
         price: product.price,
@@ -187,6 +188,7 @@ const POSView: React.FC<POSProps> = ({
       ...cart,
       {
         productId: product.id,
+        brand: product.brand,
         model: product.model,
         sn: sn.sn,
         price: product.price,
@@ -292,6 +294,7 @@ const POSView: React.FC<POSProps> = ({
             customerAddress: saleCustomer?.address,
             customerNpwp: saleCustomer?.npwp,
             items: sale.items.map((item) => ({
+              merk: item.brand,
               model: item.model,
               sn: quotation ? "" : item.sn,
               price: item.price,
@@ -306,6 +309,7 @@ const POSView: React.FC<POSProps> = ({
             paymentMethod: quotation
               ? "Menunggu Pembayaran"
               : sale.paymentMethod,
+            notes: sale.notes,
             isQuotation: quotation,
           }}
         />

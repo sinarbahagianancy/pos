@@ -247,6 +247,7 @@ const styles = StyleSheet.create({
 });
 
 interface InvoiceItem {
+  merk?: string;
   model: string;
   sn: string;
   price: number;
@@ -270,6 +271,7 @@ interface InvoiceData {
   total: number;
   staffName: string;
   paymentMethod: string;
+  notes?: string;
   isQuotation?: boolean;
 }
 
@@ -357,7 +359,8 @@ export const InvoiceDocument: React.FC<{ data: InvoiceData }> = ({ data }) => {
             <View key={index} style={styles.tableRow}>
               <View style={styles.col1}>
                 <Text style={styles.itemModel}>
-                  {item.merk ?? ""} {item.model}
+                  {item.merk ? `${item.merk}` : ""}
+                  {item.model}
                 </Text>
                 {!isQuotation && item.sn && <Text style={styles.itemSn}>S/N: {item.sn}</Text>}
               </View>
@@ -381,6 +384,19 @@ export const InvoiceDocument: React.FC<{ data: InvoiceData }> = ({ data }) => {
             <Text style={styles.disclaimer}>
               Barang yang sudah dibeli tidak dapat ditukar atau dikembalikan.
             </Text>
+            {data.notes && (
+              <Text
+                style={{
+                  fontSize: 7,
+                  color: "#475569",
+                  fontWeight: 700,
+                  marginTop: 6,
+                  fontStyle: "italic",
+                }}
+              >
+                Catatan: {data.notes}
+              </Text>
+            )}
           </View>
           <View style={styles.totals}>
             <View style={styles.totalRow}>

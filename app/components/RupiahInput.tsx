@@ -23,7 +23,7 @@ export const RupiahInput: React.FC<RupiahInputProps> = ({
     <CurrencyInput
       className={className}
       placeholder={placeholder}
-      defaultValue={value || undefined}
+      value={value !== undefined && value !== null ? String(value) : undefined}
       onValueChange={(val) => {
         onChange(val ? parseInt(val, 10) : 0);
       }}

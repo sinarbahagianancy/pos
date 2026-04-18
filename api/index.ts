@@ -100,6 +100,7 @@ const saleItemsTable = {
     id: { name: "id" },
     saleId: { name: "sale_id" },
     productId: { name: "product_id" },
+    brand: { name: "brand" },
     model: { name: "model" },
     sn: { name: "sn" },
     price: { name: "price" },
@@ -202,6 +203,7 @@ interface SaleItem {
   id: string;
   saleId: string;
   productId: string;
+  brand?: string;
   model: string;
   sn: string;
   price: number;
@@ -297,6 +299,7 @@ const parseDbSaleItem = (row: Record<string, unknown>): SaleItem => ({
   id: row.id as string,
   saleId: row.sale_id as string,
   productId: row.product_id as string,
+  brand: row.brand as string | undefined,
   model: row.model as string,
   sn: row.sn as string,
   price: typeof row.price === "string" ? parseFloat(row.price) : (row.price as number),
@@ -384,6 +387,7 @@ const initializeDatabase = async () => {
       .catch(() => {});
     await client.unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS notes text`).catch(() => {});
     await client.unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS invoice_number text`).catch(() => {});
+    await client.unsafe(`ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS brand text`).catch(() => {});
 
     // Add new columns to sales if not exists
     await client
@@ -965,7 +969,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Check if there are In Stock serial numbers
       const sns = await client.unsafe(
-        "SELECT id FROM serial_numbers WHERE product_id = $1 AND status = $2",
+        "SELECT sn FROM serial_numbers WHERE product_id = $1 AND status = $2",
         [productId, "In Stock"],
       );
       if (sns.length > 0) {
@@ -1699,10 +1703,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Insert sale items, update serial numbers, deduct stock
         for (const item of items) {
           await client.unsafe(
-            "INSERT INTO sale_items (sale_id, product_id, model, sn, price, cogs, warranty_expiry) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+            "INSERT INTO sale_items (sale_id, product_id, brand, model, sn, price, cogs, warranty_expiry) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
             [
               id,
               item.productId,
+              item.brand || null,
               item.model,
               item.sn,
               String(item.price),

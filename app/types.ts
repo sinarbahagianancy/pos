@@ -72,6 +72,7 @@ export interface Customer {
 
 export interface SaleItem {
   productId: string;
+  brand?: string;
   model: string;
   sn: string;
   price: number;

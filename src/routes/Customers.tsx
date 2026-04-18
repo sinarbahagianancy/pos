@@ -1,6 +1,19 @@
-import React, { useState } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import { Customer, Sale } from "../../app/types";
 import { formatIDR, formatDate } from "../../app/utils/formatters";
+
+// Fuzzy match: checks if all characters in query appear in order in text (case-insensitive)
+const fuzzyMatch = (text: string, query: string): boolean => {
+  const t = text.toLowerCase();
+  const q = query.toLowerCase();
+  let ti = 0;
+  for (let qi = 0; qi < q.length; qi++) {
+    const found = t.indexOf(q[qi], ti);
+    if (found === -1) return false;
+    ti = found + 1;
+  }
+  return true;
+};
 
 interface CustomersProps {
   customers: Customer[];
@@ -10,12 +23,6 @@ interface CustomersProps {
   onAddCustomer?: (customer: Customer) => Promise<void>;
   onUpdateCustomer?: (id: string, data: Partial<Customer>) => Promise<void>;
   onDeleteCustomer?: (id: string) => Promise<void>;
-  currentPage?: number;
-  totalPages?: number;
-  totalItems?: number;
-  onPageChange?: (page: number) => void;
-  perPage?: number;
-  onPerPageChange?: (perPage: number) => void;
 }
 
 const CustomersView: React.FC<CustomersProps> = ({
@@ -26,12 +33,6 @@ const CustomersView: React.FC<CustomersProps> = ({
   onAddCustomer,
   onUpdateCustomer,
   onDeleteCustomer,
-  currentPage = 1,
-  totalPages = 1,
-  totalItems = 0,
-  onPageChange,
-  perPage = 10,
-  onPerPageChange,
 }) => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -54,6 +55,8 @@ const CustomersView: React.FC<CustomersProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [perPage, setPerPage] = useState(10);
 
   const getTier = (points: number) => {
     if (points > 5000)
@@ -63,20 +66,34 @@ const CustomersView: React.FC<CustomersProps> = ({
     return { label: "Standard Member", color: "bg-slate-100 text-slate-600 shadow-slate-50" };
   };
 
-  const filteredCustomers = customers.filter((c) => {
-    const query = searchQuery.toLowerCase();
-    return (
-      c.name.toLowerCase().includes(query) ||
-      c.phone?.toLowerCase().includes(query) ||
-      c.email?.toLowerCase().includes(query) ||
-      c.address?.toLowerCase().includes(query) ||
-      c.npwp?.toLowerCase().includes(query)
+  // Fuzzy search across all customer fields
+  const filteredCustomers = useMemo(() => {
+    if (!searchQuery.trim()) return customers;
+    const q = searchQuery.trim();
+    return customers.filter((c) =>
+      fuzzyMatch(c.name, q) ||
+      fuzzyMatch(c.phone || "", q) ||
+      fuzzyMatch(c.email || "", q) ||
+      fuzzyMatch(c.address || "", q) ||
+      fuzzyMatch(c.npwp || "", q),
     );
-  });
+  }, [customers, searchQuery]);
 
-  React.useEffect(() => {
-    onPageChange?.(1);
-  }, [searchQuery]);
+  // Client-side pagination derived from filtered results
+  const totalItems = filteredCustomers.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / perPage));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+
+  const paginatedCustomers = useMemo(() => {
+    const start = (safeCurrentPage - 1) * perPage;
+    return filteredCustomers.slice(start, start + perPage);
+  }, [filteredCustomers, safeCurrentPage, perPage]);
+
+  // Reset to page 1 when search query changes
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchQuery(value);
+    setCurrentPage(1);
+  }, []);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -191,7 +208,7 @@ const CustomersView: React.FC<CustomersProps> = ({
               type="text"
               placeholder="Cari nama, no. telp, alamat, npwp..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => handleSearchChange(e.target.value)}
               className="pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent w-full sm:w-64"
             />
           </div>
@@ -216,7 +233,7 @@ const CustomersView: React.FC<CustomersProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredCustomers.length === 0 ? (
+              {paginatedCustomers.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="px-6 py-12 text-center">
                     <div className="text-slate-400 font-medium">
@@ -225,7 +242,7 @@ const CustomersView: React.FC<CustomersProps> = ({
                   </td>
                 </tr>
               ) : (
-                filteredCustomers.map((c) => {
+                paginatedCustomers.map((c) => {
                   const customerSales = sales.filter((s) => s.customerId === c.id);
                   const totalSpent = customerSales.reduce((acc, s) => acc + s.total, 0);
                   const tier = getTier(c.loyaltyPoints);
@@ -333,8 +350,8 @@ const CustomersView: React.FC<CustomersProps> = ({
               <select
                 value={perPage}
                 onChange={(e) => {
-                  onPerPageChange?.(Number(e.target.value));
-                  onPageChange?.(1);
+                  setPerPage(Number(e.target.value));
+                  setCurrentPage(1);
                 }}
                 className="px-3 py-2 rounded-xl text-sm font-bold border border-slate-200 bg-white text-slate-700 focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none"
               >
@@ -345,14 +362,14 @@ const CustomersView: React.FC<CustomersProps> = ({
               </select>
               <span className="text-sm text-slate-500">
                 dari <span className="font-medium">{totalItems}</span> pelanggan | Halaman{" "}
-                <span className="font-medium">{currentPage}</span> dari{" "}
+                <span className="font-medium">{safeCurrentPage}</span> dari{" "}
                 <span className="font-medium">{totalPages}</span>
               </span>
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => onPageChange?.(currentPage - 1)}
-                disabled={currentPage <= 1}
+                onClick={() => setCurrentPage(safeCurrentPage - 1)}
+                disabled={safeCurrentPage <= 1}
                 className="p-2 rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -368,26 +385,26 @@ const CustomersView: React.FC<CustomersProps> = ({
                 let pageNum: number;
                 if (totalPages <= 5) {
                   pageNum = i + 1;
-                } else if (currentPage <= 3) {
+                } else if (safeCurrentPage <= 3) {
                   pageNum = i + 1;
-                } else if (currentPage >= totalPages - 2) {
+                } else if (safeCurrentPage >= totalPages - 2) {
                   pageNum = totalPages - 4 + i;
                 } else {
-                  pageNum = currentPage - 2 + i;
+                  pageNum = safeCurrentPage - 2 + i;
                 }
                 return (
                   <button
                     key={pageNum}
-                    onClick={() => onPageChange?.(pageNum)}
-                    className={`w-10 h-10 rounded-xl font-bold text-sm transition-colors ${currentPage === pageNum ? "bg-indigo-600 text-white" : "text-slate-600 hover:bg-slate-100"}`}
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`w-10 h-10 rounded-xl font-bold text-sm transition-colors ${safeCurrentPage === pageNum ? "bg-indigo-600 text-white" : "text-slate-600 hover:bg-slate-100"}`}
                   >
                     {pageNum}
                   </button>
                 );
               })}
               <button
-                onClick={() => onPageChange?.(currentPage + 1)}
-                disabled={currentPage >= totalPages}
+                onClick={() => setCurrentPage(safeCurrentPage + 1)}
+                disabled={safeCurrentPage >= totalPages}
                 className="p-2 rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

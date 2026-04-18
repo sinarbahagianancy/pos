@@ -153,6 +153,7 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
       customerAddress: customer?.address,
       customerNpwp: customer?.npwp,
       items: sale.items.map((item) => ({
+        merk: item.brand,
         model: item.model,
         sn: item.sn,
         price: item.price,
@@ -164,6 +165,7 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
       total: sale.total,
       staffName: sale.staffName,
       paymentMethod: sale.paymentMethod,
+      notes: sale.notes,
     };
 
     try {

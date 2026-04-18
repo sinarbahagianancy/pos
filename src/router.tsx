@@ -578,15 +578,14 @@ const SuppliersComponent = () => {
 // Customers
 const CustomersComponent = () => {
   const queryClient = useQueryClient();
-  const [customerPage, setCustomerPage] = useState(1);
-  const [customersPerPage, setCustomersPerPage] = useState(20);
 
   const user = getCurrentUser();
   const staffName = user?.name || "System";
 
+  // Fetch all customers for client-side search & pagination
   const { data: customersData, isLoading: customersLoading } = useQuery({
-    queryKey: ["customers", customerPage, customersPerPage],
-    queryFn: () => getAllCustomers({ page: customerPage, limit: customersPerPage }),
+    queryKey: ["customers"],
+    queryFn: () => getAllCustomers({ page: 1, limit: 5000 }),
   });
 
   const { data: salesData } = useQuery({
@@ -595,8 +594,6 @@ const CustomersComponent = () => {
   });
 
   const customers = customersData?.customers || [];
-  const totalCustomers = customersData?.total || 0;
-  const totalCustomerPages = customersData?.totalPages || 0;
   const sales = salesData?.sales || [];
   const loading = customersLoading;
 
@@ -665,12 +662,6 @@ const CustomersComponent = () => {
       onAddCustomer={handleAddCustomer}
       onUpdateCustomer={handleUpdateCustomer}
       onDeleteCustomer={handleDeleteCustomer}
-      currentPage={customerPage}
-      totalPages={totalCustomerPages}
-      totalItems={totalCustomers}
-      onPageChange={setCustomerPage}
-      perPage={customersPerPage}
-      onPerPageChange={setCustomersPerPage}
     />
   );
 };

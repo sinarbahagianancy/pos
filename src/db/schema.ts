@@ -159,6 +159,7 @@ export const saleItems = pgTable("sale_items", {
   productId: text("product_id")
     .notNull()
     .references(() => products.id, { onDelete: "restrict" }),
+  brand: text("brand"),
   model: text("model").notNull(),
   sn: text("sn").notNull(),
   price: numeric("price", { precision: 15, scale: 2 }).notNull(),

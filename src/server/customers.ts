@@ -246,6 +246,7 @@ export const getAllSalesHandler = async (
       ]);
       const items = itemsResult.map((item: Record<string, unknown>) => ({
         productId: item.product_id as string,
+        brand: item.brand as string | undefined,
         model: item.model as string,
         sn: item.sn as string,
         price: typeof item.price === "string" ? parseFloat(item.price) : (item.price as number),
@@ -283,6 +284,7 @@ export const createSaleHandler = async (data: {
   customerName: string;
   items: {
     productId: string;
+    brand?: string;
     model: string;
     sn: string;
     price: number;
@@ -326,11 +328,18 @@ export const createSaleHandler = async (data: {
     );
 
     for (const item of data.items) {
+      // Look up product brand if not provided
+      let brand = item.brand;
+      if (!brand) {
+        const [product] = await client.unsafe("SELECT brand FROM products WHERE id = $1", [item.productId]);
+        brand = product?.brand as string | undefined;
+      }
       await client.unsafe(
-        "INSERT INTO sale_items (sale_id, product_id, model, sn, price, cogs, warranty_expiry) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        "INSERT INTO sale_items (sale_id, product_id, brand, model, sn, price, cogs, warranty_expiry) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
         [
           data.id,
           item.productId,
+          brand || null,
           item.model,
           item.sn,
           String(item.price),
@@ -395,6 +404,7 @@ export const getAllSaleItemsHandler = async () => {
     id: row.id as string,
     saleId: row.sale_id as string,
     productId: row.product_id as string,
+    brand: row.brand as string | undefined,
     model: row.model as string,
     sn: row.sn as string,
     price: typeof row.price === "string" ? parseFloat(row.price) : (row.price as number),
@@ -409,6 +419,7 @@ export const getSaleItemsBySaleIdHandler = async (saleId: string) => {
     id: row.id as string,
     saleId: row.sale_id as string,
     productId: row.product_id as string,
+    brand: row.brand as string | undefined,
     model: row.model as string,
     sn: row.sn as string,
     price: typeof row.price === "string" ? parseFloat(row.price) : (row.price as number),
