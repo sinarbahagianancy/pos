@@ -24,6 +24,7 @@ const productsTable = {
     stock: { name: "stock" },
     createdAt: { name: "created_at" },
     updatedAt: { name: "updated_at" },
+    invoiceNumber: { name: "invoice_number" },
   },
 };
 
@@ -135,6 +136,7 @@ interface Product {
   dateRestocked?: string;
   hidden?: number;
   taxEnabled?: boolean;
+  invoiceNumber?: string;
 }
 
 interface SerialNumber {
@@ -230,6 +232,7 @@ const parseDbProduct = (row: Record<string, unknown>): Product => {
     dateRestocked: row.date_restocked as string | undefined,
     hidden: row.hidden as number | undefined,
     taxEnabled: row.tax_enabled as boolean,
+    invoiceNumber: row.invoice_number as string | undefined,
   };
 };
 
@@ -380,6 +383,7 @@ const initializeDatabase = async () => {
       .unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS tax_enabled boolean DEFAULT true`)
       .catch(() => {});
     await client.unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS notes text`).catch(() => {});
+    await client.unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS invoice_number text`).catch(() => {});
 
     // Add new columns to sales if not exists
     await client
@@ -496,6 +500,7 @@ interface CreateProductInput {
   serialNumbers?: string[];
   quantity?: number;
   taxEnabled?: boolean;
+  invoiceNumber?: string;
 }
 
 interface UpdateProductInput {
@@ -575,6 +580,7 @@ const validateCreateProductInput = (input: unknown): CreateProductInput => {
     serialNumbers: obj.serialNumbers as string[] | undefined,
     quantity: obj.quantity as number | undefined,
     taxEnabled: obj.taxEnabled as boolean | undefined,
+    invoiceNumber: obj.invoiceNumber as string | undefined,
   };
 };
 
@@ -765,6 +771,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           supplier: validated.supplier,
           date_restocked: validated.dateRestocked ? new Date(validated.dateRestocked) : new Date(),
           tax_enabled: validated.taxEnabled ?? true,
+          invoice_number: validated.invoiceNumber || null,
         },
       ]);
 
@@ -901,7 +908,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       validateStockAdjustmentInput(input);
 
-      const { productId, newStock, reason, staffName = "System", supplier, dateRestocked } = input;
+      const { productId, newStock, reason, staffName = "System", supplier, dateRestocked, invoiceNumber } = input;
 
       const [product] = await db.select("products", ["*"], { column: "id", value: productId });
       if (!product) {
@@ -911,13 +918,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const diff = newStock - Number(product.stock);
       const actionType = diff > 0 ? "Stock Addition" : "Manual Correction";
 
-      // Update fields - only update supplier and dateRestocked when adding stock (positive diff)
+      // Update fields - only update supplier, dateRestocked, invoiceNumber when adding stock (positive diff)
       const updateData: any = { stock: newStock };
       if (diff > 0 && supplier) {
         updateData.supplier = supplier;
       }
       if (diff > 0 && dateRestocked) {
         updateData.date_restocked = new Date(dateRestocked);
+      }
+      if (diff > 0 && invoiceNumber) {
+        updateData.invoice_number = invoiceNumber;
       }
 
       const [result] = await db.update("products", updateData, { column: "id", value: productId });
@@ -930,6 +940,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         if (dateRestocked) {
           auditDetails += `. Date: ${dateRestocked}`;
+        }
+        if (invoiceNumber) {
+          auditDetails += `. Invoice: ${invoiceNumber}`;
         }
       }
 
@@ -1043,7 +1056,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // POST /api/serial-numbers/bulk
     if (method === "POST" && url === "/api/serial-numbers/bulk") {
       const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
-      const { inputs, supplier, date, reason } = body;
+      const { inputs, supplier, date, reason, invoiceNumber } = body;
       const validated = inputs.map((v: CreateSerialNumberInput) =>
         validateCreateSerialNumberInput(v),
       );
@@ -1056,6 +1069,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const result = await db.insert("serial_numbers", values);
 
+      // Update product's invoiceNumber, supplier, dateRestocked when adding SNs (restocking)
+      if (validated.length > 0 && validated[0].productId) {
+        const productUpdateData: Record<string, unknown> = {};
+        if (supplier) productUpdateData.supplier = supplier;
+        if (date) productUpdateData.date_restocked = new Date(date);
+        if (invoiceNumber) productUpdateData.invoice_number = invoiceNumber;
+
+        if (Object.keys(productUpdateData).length > 0) {
+          await db.update("products", productUpdateData, { column: "id", value: validated[0].productId });
+        }
+      }
+
       // Create audit log with supplier, date, and reason info
       if (validated.length > 0 && validated[0].productId) {
         const [product] = await client.unsafe("SELECT brand, model FROM products WHERE id = $1", [
@@ -1065,6 +1090,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const supplierInfo = supplier || "Unknown";
         const dateInfo = date || new Date().toISOString().split("T")[0];
         const reasonInfo = reason || "Not specified";
+        const invoiceInfo = invoiceNumber || "-";
 
         await client.unsafe(
           `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) 
@@ -1073,7 +1099,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
             "System",
             "Stock Addition",
-            `Added ${validated.length} serial number(s) to ${product?.brand || ""} ${product?.model || ""} from supplier ${supplierInfo} on ${dateInfo}, reason: ${reasonInfo}. SN: ${snList}`,
+            `Added ${validated.length} serial number(s) to ${product?.brand || ""} ${product?.model || ""} from supplier ${supplierInfo} on ${dateInfo}, invoice: ${invoiceInfo}, reason: ${reasonInfo}. SN: ${snList}`,
             validated[0].productId,
           ],
         );

@@ -348,16 +348,18 @@ export const InvoiceDocument: React.FC<{ data: InvoiceData }> = ({ data }) => {
         {/* Table */}
         <View style={styles.table}>
           <View style={styles.tableHeader}>
-            <Text style={[styles.tableHeaderText, styles.col1]}>{isQuotation ? "Description" : "Description / Serial Number"}</Text>
+            <Text style={[styles.tableHeaderText, styles.col1]}>
+              {isQuotation ? "Description" : "Description / Serial Number"}
+            </Text>
             <Text style={[styles.tableHeaderText, styles.col3]}>Total</Text>
           </View>
           {data.items.map((item, index) => (
             <View key={index} style={styles.tableRow}>
               <View style={styles.col1}>
-                <Text style={styles.itemModel}>{item.model}</Text>
-                {!isQuotation && item.sn && (
-                  <Text style={styles.itemSn}>S/N: {item.sn}</Text>
-                )}
+                <Text style={styles.itemModel}>
+                  {item.merk ?? ""} {item.model}
+                </Text>
+                {!isQuotation && item.sn && <Text style={styles.itemSn}>S/N: {item.sn}</Text>}
               </View>
               <View style={styles.col3}>
                 <Text
