@@ -996,7 +996,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
 
-      await db.delete("products", { column: "id", value: productId });
+      // Soft delete - mark as deleted (same as dev server)
+      await client.unsafe("UPDATE products SET deleted = true, updated_at = NOW() WHERE id = $1", [productId]);
       return res.status(204).send(null);
     }
 
