@@ -707,6 +707,7 @@ const InventoryView: React.FC<InventoryProps> = ({
                             })
                           : ""}
                       </span>
+                      {/* HOTFIX */}
                       <span className="text-xs font-medium text-slate-400">
                         {p.invoiceNumber || ""}
                       </span>
