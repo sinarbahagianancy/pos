@@ -138,7 +138,7 @@ interface Product {
   dateRestocked?: string;
   hidden?: number;
   taxEnabled?: boolean;
-  invoiceNumbers?: string[];
+  restockHistory?: { sn: string[]; inv: string; timestamp: string }[];
 }
 
 interface SerialNumber {
@@ -212,19 +212,33 @@ interface SaleItem {
   warrantyExpiry: string;
 }
 
-/** Parse the invoice_number column from DB: supports both JSON array and legacy plain string */
-const parseApiInvoiceNumbers = (value: unknown): string[] => {
+/** Parse the restock_history / invoice_number column from DB.
+ *  Supports: new format [{sn,inv,timestamp}], legacy string array, legacy plain string
+ */
+const parseApiRestockHistory = (value: unknown): { sn: string[]; inv: string; timestamp: string }[] => {
   if (!value) return [];
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (!trimmed) return [];
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (Array.isArray(parsed)) return parsed.filter((v: unknown) => typeof v === "string" && v.length > 0);
-    } catch {
-      // Legacy plain string — wrap in array
-      return [trimmed];
+  if (typeof value !== "string") return [];
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (Array.isArray(parsed)) {
+      if (parsed.length > 0 && typeof parsed[0] === "object" && parsed[0] !== null && "inv" in parsed[0]) {
+        return parsed.filter(
+          (e: unknown) => typeof e === "object" && e !== null && "inv" in (e as Record<string, unknown>)
+        ).map((e: Record<string, unknown>) => ({
+          sn: Array.isArray(e.sn) ? e.sn.filter((s: unknown) => typeof s === "string") : [],
+          inv: typeof e.inv === "string" ? e.inv : "",
+          timestamp: typeof e.timestamp === "string" ? e.timestamp : new Date().toISOString(),
+        }));
+      }
+      // Legacy: array of plain strings
+      return parsed
+        .filter((v: unknown) => typeof v === "string" && v.length > 0)
+        .map((v: string) => ({ sn: [] as string[], inv: v, timestamp: new Date().toISOString() }));
     }
+  } catch {
+    return [{ sn: [] as string[], inv: trimmed, timestamp: new Date().toISOString() }];
   }
   return [];
 };
@@ -252,7 +266,7 @@ const parseDbProduct = (row: Record<string, unknown>): Product => {
     dateRestocked: row.date_restocked as string | undefined,
     hidden: row.hidden as number | undefined,
     taxEnabled: row.tax_enabled as boolean,
-    invoiceNumbers: parseApiInvoiceNumbers(row.invoice_number),
+    restockHistory: parseApiRestockHistory(row.invoice_number),
   };
 };
 
@@ -446,7 +460,8 @@ const initializeDatabase = async () => {
       .unsafe(`UPDATE products SET warranty_type = 'Toko' WHERE warranty_type = 'Store Warranty'`)
       .catch((e) => { console.error('Failed to migrate Store Warranty → Toko:', e); });
 
-    // Migrate invoice_number from plain string to JSON array
+    // Migrate invoice_number to new structured format [{sn:[], inv:"...", timestamp:"..."}]
+    // Step 1: Wrap legacy plain strings into JSON array
     await client
       .unsafe(`
         UPDATE products
@@ -456,6 +471,19 @@ const initializeDatabase = async () => {
           AND invoice_number NOT LIKE '[%'
       `)
       .catch((e) => { console.error('Failed to migrate invoice_number to array:', e); });
+    // Step 2: Convert array-of-strings format to array-of-objects format
+    await client
+      .unsafe(`
+        UPDATE products
+        SET invoice_number = (
+          SELECT json_agg(json_build_object('sn', '[]'::json, 'inv', elem, 'timestamp', NOW()::text))::text
+          FROM json_array_elements_text(invoice_number::json) elem
+        )
+        WHERE invoice_number IS NOT NULL
+          AND invoice_number LIKE '[%'
+          AND invoice_number NOT LIKE '%"inv"%'
+      `)
+      .catch((e) => { console.error('Failed to migrate invoice_number to structured format:', e); });
 
     // Add Login and Logout to audit_action enum
     await client
@@ -819,7 +847,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           supplier: validated.supplier,
           date_restocked: validated.dateRestocked ? new Date(validated.dateRestocked) : new Date(),
           tax_enabled: validated.taxEnabled ?? true,
-          invoice_number: validated.invoiceNumber ? JSON.stringify([validated.invoiceNumber]) : null,
+          invoice_number: validated.invoiceNumber
+            ? JSON.stringify([{ sn: validated.serialNumbers || [], inv: validated.invoiceNumber, timestamp: new Date().toISOString() }])
+            : null,
         },
       ]);
 
@@ -975,11 +1005,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         updateData.date_restocked = new Date(dateRestocked);
       }
       if (diff > 0 && invoiceNumber) {
-        // Append invoice number to existing JSON array
-        const existing = parseApiInvoiceNumbers(product.invoice_number);
-        if (!existing.includes(invoiceNumber)) {
-          existing.push(invoiceNumber);
-        }
+        // Append new restock entry to existing history
+        const existing = parseApiRestockHistory(product.invoice_number);
+        existing.push({ sn: [], inv: invoiceNumber, timestamp: new Date().toISOString() });
         updateData.invoice_number = JSON.stringify(existing);
       }
 
@@ -1144,12 +1172,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (supplier) { setClauses.push(`supplier = $${paramIdx++}`); params.push(supplier); }
         if (date) { setClauses.push(`date_restocked = $${paramIdx++}`); params.push(new Date(date)); }
         if (invoiceNumber) {
-          // Append invoice number to existing JSON array
+          // Append new restock entry to existing history
           const [existingProduct] = await client.unsafe("SELECT invoice_number FROM products WHERE id = $1", [productId]);
-          const existing = parseApiInvoiceNumbers(existingProduct?.invoice_number);
-          if (!existing.includes(invoiceNumber)) {
-            existing.push(invoiceNumber);
-          }
+          const existing = parseApiRestockHistory(existingProduct?.invoice_number);
+          existing.push({ sn: sns, inv: invoiceNumber, timestamp: new Date().toISOString() });
           setClauses.push(`invoice_number = $${paramIdx++}`);
           params.push(JSON.stringify(existing));
         }
@@ -1208,9 +1234,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // Sync product stock when SN status changes
+      const wasInStock = existingSN?.status === "In Stock";
+      const nowInStock = status === "In Stock";
       if (existingSN && existingSN.status !== status) {
-        const wasInStock = existingSN.status === "In Stock";
-        const nowInStock = status === "In Stock";
 
         if (wasInStock && !nowInStock) {
           // SN left inventory — decrement stock

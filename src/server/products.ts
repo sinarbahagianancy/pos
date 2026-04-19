@@ -8,7 +8,7 @@ import {
   validateCreateSerialNumberInput,
   parseDbProduct,
   parseDbSerialNumber,
-  parseInvoiceNumbers,
+  parseRestockHistory,
   Product,
 } from "../../app/schemas/product.schema";
 
@@ -40,8 +40,8 @@ try {
   // Migrate existing 'Store Warranty' data to 'Toko'
   await client.unsafe(`UPDATE products SET warranty_type = 'Toko' WHERE warranty_type = 'Store Warranty'`).catch((e) => { console.error('Failed to migrate Store Warranty → Toko:', e); });
 
-  // Migrate invoice_number from plain string to JSON array
-  // Only migrate rows that are non-null, non-empty, and don't already start with '['
+  // Migrate invoice_number to new structured format [{sn:[], inv:"...", timestamp:"..."}]
+  // Step 1: Wrap legacy plain strings into JSON array
   await client.unsafe(`
     UPDATE products
     SET invoice_number = json_build_array(invoice_number)::text
@@ -49,6 +49,18 @@ try {
       AND invoice_number != ''
       AND invoice_number NOT LIKE '[%'
   `).catch((e) => { console.error('Failed to migrate invoice_number to array:', e); });
+  // Step 2: Convert array-of-strings format to array-of-objects format
+  // Old: ["INV/001", "INV/002"] → New: [{"sn":[],"inv":"INV/001","timestamp":"..."}, {"sn":[],"inv":"INV/002","timestamp":"..."}]
+  await client.unsafe(`
+    UPDATE products
+    SET invoice_number = (
+      SELECT json_agg(json_build_object('sn', '[]'::json, 'inv', elem, 'timestamp', NOW()::text))::text
+      FROM json_array_elements_text(invoice_number::json) elem
+    )
+    WHERE invoice_number IS NOT NULL
+      AND invoice_number LIKE '[%'
+      AND invoice_number NOT LIKE '%"inv"%'
+  `).catch((e) => { console.error('Failed to migrate invoice_number to structured format:', e); });
 } catch (e) {
   console.log("Migration check (may be ok):", e);
 }
@@ -131,7 +143,9 @@ export const createProduct = async (input: unknown) => {
       supplier: validated.supplier || null,
       dateRestocked: validated.dateRestocked ? new Date(validated.dateRestocked) : new Date(),
       taxEnabled: validated.taxEnabled === true,
-      invoiceNumber: validated.invoiceNumber ? JSON.stringify([validated.invoiceNumber]) : null,
+      invoiceNumber: validated.invoiceNumber
+        ? JSON.stringify([{ sn: validated.serialNumbers || [], inv: validated.invoiceNumber, timestamp: new Date().toISOString() }])
+        : null,
     })
     .returning();
 
@@ -297,11 +311,9 @@ export const adjustStock = async (
     updateData.dateRestocked = new Date(dateRestocked);
   }
   if (diff > 0 && invoiceNumber) {
-    // Append invoice number to existing array (safe parse handles both JSON arrays and legacy plain strings)
-    const existing = parseInvoiceNumbers(product.invoiceNumber);
-    if (!existing.includes(invoiceNumber)) {
-      existing.push(invoiceNumber);
-    }
+    // Append new restock entry to existing history
+    const existing = parseRestockHistory(product.invoiceNumber);
+    existing.push({ sn: [], inv: invoiceNumber, timestamp: new Date().toISOString() });
     updateData.invoiceNumber = JSON.stringify(existing);
   }
 
@@ -441,11 +453,9 @@ export const createSerialNumbersBulk = async (
     if (supplier) { setClauses.push(`supplier = $${paramIdx++}`); params.push(supplier); }
     if (date) { setClauses.push(`date_restocked = $${paramIdx++}`); params.push(new Date(date)); }
     if (invoiceNumber) {
-      // Append invoice number to existing JSON array
-      const existing = parseInvoiceNumbers(existingProduct?.invoiceNumber);
-      if (!existing.includes(invoiceNumber)) {
-        existing.push(invoiceNumber);
-      }
+      // Append new restock entry to existing history
+      const existing = parseRestockHistory(existingProduct?.invoiceNumber);
+      existing.push({ sn: sns, inv: invoiceNumber, timestamp: new Date().toISOString() });
       setClauses.push(`invoice_number = $${paramIdx++}`);
       params.push(JSON.stringify(existing));
     }
@@ -493,9 +503,9 @@ export const updateSerialNumberStatus = async (
     .returning();
 
   // Sync product stock when SN status changes
+  const wasInStock = existingSN?.status === "In Stock";
+  const nowInStock = status === "In Stock";
   if (existingSN && existingSN.status !== status) {
-    const wasInStock = existingSN.status === "In Stock";
-    const nowInStock = status === "In Stock";
 
     if (wasInStock && !nowInStock) {
       // SN left inventory — decrement stock

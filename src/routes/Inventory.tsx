@@ -216,6 +216,9 @@ const InventoryView: React.FC<InventoryProps> = ({
   const [newProductDate, setNewProductDate] = useState(new Date().toISOString().split("T")[0]);
   const [newProductInvoiceNumber, setNewProductInvoiceNumber] = useState("");
 
+  // Restock history modal
+  const [historyProduct, setHistoryProduct] = useState<Product | null>(null);
+
   const filteredProducts = products.filter(
     (p) =>
       p.model.toLowerCase().includes(filter.toLowerCase()) ||
@@ -732,9 +735,9 @@ const InventoryView: React.FC<InventoryProps> = ({
                         <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1">
                           {p.category} • {p.condition} • {p.warrantyMonths / 12} Thn Garansi
                         </span>
-                        {p.invoiceNumbers && p.invoiceNumbers.length > 0 && (
+                        {p.restockHistory && p.restockHistory.length > 0 && (
                           <span className="text-[9px] text-indigo-500 font-bold uppercase tracking-widest mt-0.5">
-                            Inv: {p.invoiceNumbers.join(", ")}
+                            Inv: {p.restockHistory.map(e => e.inv).filter(Boolean).join(", ")}
                           </span>
                         )}
                       </div>
@@ -782,10 +785,13 @@ const InventoryView: React.FC<InventoryProps> = ({
                             })
                           : ""}
                       </span>
-                      {p.invoiceNumbers && p.invoiceNumbers.length > 0 && (
-                        <span className="text-[10px] font-medium text-slate-400">
-                          {p.invoiceNumbers.join(", ")}
-                        </span>
+                      {p.restockHistory && p.restockHistory.length > 0 && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setHistoryProduct(p); }}
+                          className="text-[10px] font-medium text-indigo-500 hover:text-indigo-700 transition-colors cursor-pointer"
+                        >
+                          📋 {p.restockHistory.length} riwayat restok
+                        </button>
                       )}
                     </td>
                     <td className="px-8 py-6 text-center">
@@ -2375,6 +2381,120 @@ const InventoryView: React.FC<InventoryProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Restock History Modal */}
+      {historyProduct && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-xl flex items-center justify-center z-[100] p-4">
+          <div className="bg-white rounded-[32px] lg:rounded-[40px] shadow-2xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200">
+            <div className="p-6 lg:p-8 border-b border-slate-100 bg-indigo-50/50 flex items-center justify-between shrink-0">
+              <div>
+                <h2 className="text-xl font-black text-indigo-800 uppercase tracking-tighter">
+                  Riwayat Restok
+                </h2>
+                <p className="text-[10px] text-indigo-600 font-bold uppercase mt-2">
+                  {historyProduct.brand} {historyProduct.model}
+                </p>
+                <p className="text-[10px] text-indigo-500 font-medium mt-1">
+                  Stok saat ini: {getProductStock(historyProduct)} unit • {historyProduct.restockHistory?.length || 0} riwayat restok
+                </p>
+              </div>
+              <button
+                onClick={() => setHistoryProduct(null)}
+                className="text-slate-300 hover:text-slate-900 transition-colors"
+              >
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 lg:p-8 custom-scrollbar">
+              {(!historyProduct.restockHistory || historyProduct.restockHistory.length === 0) ? (
+                <div className="text-center py-12">
+                  <svg className="w-12 h-12 text-slate-200 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Belum ada riwayat restok</p>
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-2xl border border-slate-200">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="bg-slate-900 text-slate-400 uppercase text-[9px] font-black tracking-widest">
+                        <th className="px-4 py-3 text-center">#</th>
+                        <th className="px-4 py-3">No. Invoice</th>
+                        <th className="px-4 py-3">Serial Numbers</th>
+                        <th className="px-4 py-3 text-right">Jumlah</th>
+                        <th className="px-4 py-3">Tanggal</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {[...historyProduct.restockHistory].reverse().map((entry, idx) => {
+                        const totalEntries = historyProduct.restockHistory!.length;
+                        const entryDate = entry.timestamp
+                          ? new Date(entry.timestamp).toLocaleDateString("id-ID", {
+                              day: "2-digit",
+                              month: "short",
+                              year: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })
+                          : "-";
+                        return (
+                          <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-4 py-3 text-center">
+                              <span className="text-[10px] font-black text-slate-400">{totalEntries - idx}</span>
+                            </td>
+                            <td className="px-4 py-3">
+                              {entry.inv ? (
+                                <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 text-xs font-black tracking-tight">
+                                  {entry.inv}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-slate-400 italic">-</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              {entry.sn && entry.sn.length > 0 ? (
+                                <div className="flex flex-wrap gap-1 max-w-[240px]">
+                                  {entry.sn.map((s, snIdx) => (
+                                    <span
+                                      key={snIdx}
+                                      className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-mono font-bold"
+                                    >
+                                      {s}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-xs text-slate-400 italic">Non-SN</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <span className="text-sm font-black text-slate-900">
+                                {entry.sn && entry.sn.length > 0 ? entry.sn.length : "+"}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="text-[11px] font-bold text-slate-600">{entryDate}</span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+            <div className="p-6 lg:p-8 border-t border-slate-100 bg-slate-50/50 shrink-0">
+              <button
+                onClick={() => setHistoryProduct(null)}
+                className="w-full py-4 bg-white border border-slate-200 text-slate-700 font-black rounded-3xl text-[10px] uppercase tracking-widest hover:bg-slate-50 transition-colors"
+              >
+                Tutup
+              </button>
+            </div>
           </div>
         </div>
       )}

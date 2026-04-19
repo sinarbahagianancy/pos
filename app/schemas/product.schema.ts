@@ -39,7 +39,7 @@ export interface Product {
   dateRestocked?: string;
   hidden?: number;
   taxEnabled?: boolean;
-  invoiceNumbers?: string[];
+  restockHistory?: { sn: string[]; inv: string; timestamp: string }[];
 }
 
 export interface CreateProductInput {
@@ -335,23 +335,43 @@ export function validateCreateSerialNumberInput(input: unknown): CreateSerialNum
   };
 }
 
-/** Parse the invoice_number column from DB: supports both JSON array and legacy plain string */
-export function parseInvoiceNumbers(value: unknown): string[] {
+/** Parse the restock_history / invoice_number column from DB.
+ *  Supports:
+ *  - New format: JSON array of {sn:string[], inv:string, timestamp:string}
+ *  - Legacy JSON array of strings: [{"sn":[],"inv":"INV/001","timestamp":"2024-01-01"}] (auto-migrated)
+ *  - Legacy plain string: "INV/001" (wrapped into a single entry)
+ */
+export function parseRestockHistory(value: unknown): { sn: string[]; inv: string; timestamp: string }[] {
   if (!value) return [];
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (!trimmed) return [];
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (Array.isArray(parsed)) return parsed.filter((v: unknown) => typeof v === "string" && v.length > 0);
-    } catch {
-      // Legacy plain string — wrap in array
-      return [trimmed];
+  if (typeof value !== "string") return [];
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (Array.isArray(parsed)) {
+      // Check if it's the new format (array of objects with sn/inv/timestamp)
+      if (parsed.length > 0 && typeof parsed[0] === "object" && parsed[0] !== null && "inv" in parsed[0]) {
+        return parsed.filter(
+          (e: unknown) =>
+            typeof e === "object" && e !== null && "inv" in (e as Record<string, unknown>)
+        ).map((e: Record<string, unknown>) => ({
+          sn: Array.isArray(e.sn) ? e.sn.filter((s: unknown) => typeof s === "string") : [],
+          inv: typeof e.inv === "string" ? e.inv : "",
+          timestamp: typeof e.timestamp === "string" ? e.timestamp : new Date().toISOString(),
+        }));
+      }
+      // Legacy format: array of plain strings — wrap each into an entry
+      return parsed
+        .filter((v: unknown) => typeof v === "string" && v.length > 0)
+        .map((v: string) => ({ sn: [] as string[], inv: v, timestamp: new Date().toISOString() }));
     }
+  } catch {
+    // Legacy plain string — wrap into single entry
+    return [{ sn: [], inv: trimmed, timestamp: new Date().toISOString() }];
   }
-  // Fallback for unexpected types
   return [];
 }
+
 
 export function parseDbProduct(row: Record<string, unknown>): Product {
   const hasSN = row.has_serial_number;
@@ -384,7 +404,7 @@ export function parseDbProduct(row: Record<string, unknown>): Product {
     dateRestocked: row.date_restocked as string | undefined,
     hidden: row.hidden as number | undefined,
     taxEnabled,
-    invoiceNumbers: parseInvoiceNumbers(row.invoice_number),
+    restockHistory: parseRestockHistory(row.invoice_number),
   };
 }
 

@@ -49,8 +49,14 @@ export interface Product {
   dateRestocked?: string;
   hidden?: number;
   taxEnabled?: boolean;
-  invoiceNumbers?: string[];
+  restockHistory?: RestockEntry[];
   createdAt?: string;
+}
+
+export interface RestockEntry {
+  sn: string[];
+  inv: string;
+  timestamp: string;
 }
 
 export interface SerialNumber {
