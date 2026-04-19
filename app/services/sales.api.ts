@@ -24,8 +24,9 @@ export const getAllSales = async (params: SalesParams = {}): Promise<PaginatedSa
 
   const response = await fetch(`${API_BASE}/sales?${queryString}`);
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to fetch sales");
+    let message = "Failed to fetch sales";
+    try { const e = await response.json(); message = e.error || message; } catch {}
+    throw new Error(message);
   }
   return response.json();
 };
@@ -33,8 +34,9 @@ export const getAllSales = async (params: SalesParams = {}): Promise<PaginatedSa
 export const getSalesByCustomer = async (customerId: string): Promise<Sale[]> => {
   const response = await fetch(`${API_BASE}/sales/customer/${customerId}`);
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to fetch customer sales");
+    let message = "Failed to fetch customer sales";
+    try { const e = await response.json(); message = e.error || message; } catch {}
+    throw new Error(message);
   }
   return response.json();
 };
@@ -61,8 +63,9 @@ export const createSale = async (input: {
     body: JSON.stringify(input),
   });
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to create sale");
+    let message = "Failed to create sale";
+    try { const e = await response.json(); message = e.error || message; } catch {}
+    throw new Error(message);
   }
   return response.json();
 };
@@ -70,8 +73,9 @@ export const createSale = async (input: {
 export const getAllSaleItems = async (): Promise<SaleItem[]> => {
   const response = await fetch(`${API_BASE}/sale-items`);
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to fetch sale items");
+    let message = "Failed to fetch sale items";
+    try { const e = await response.json(); message = e.error || message; } catch {}
+    throw new Error(message);
   }
   return response.json();
 };
@@ -83,8 +87,9 @@ export const markSaleAsPaid = async (saleId: string, staffName: string): Promise
     body: JSON.stringify({ staffName }),
   });
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to mark sale as paid");
+    let message = "Failed to mark sale as paid";
+    try { const e = await response.json(); message = e.error || message; } catch {}
+    throw new Error(message);
   }
   return response.json();
 };
@@ -100,8 +105,9 @@ export const recordInstallment = async (
     body: JSON.stringify({ amount, staffName }),
   });
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to record installment");
+    let message = "Failed to record installment";
+    try { const e = await response.json(); message = e.error || message; } catch {}
+    throw new Error(message);
   }
   return response.json();
 };

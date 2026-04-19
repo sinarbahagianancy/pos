@@ -254,7 +254,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   grandTotalValue: {
-    fontSize: 18,
+    fontSize: 12,
     fontWeight: 900,
     letterSpacing: -0.5,
     textAlign: "right",

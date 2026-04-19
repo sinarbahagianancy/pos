@@ -1061,6 +1061,7 @@ const SettingsComponent = () => {
 
 // POS
 const POSComponent = () => {
+  const queryClient = useQueryClient();
   const [products, setProducts] = useState<Product[]>([]);
   const [sns, setSns] = useState<SerialNumber[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -1112,14 +1113,27 @@ const POSComponent = () => {
         amountPaid: sale.amountPaid,
       });
 
-      // Update local serial numbers status
+      // Update local serial numbers status (immediate UI feedback)
       const soldSNs = sale.items.map((item) => item.sn);
       setSns((prev) =>
         prev.map((sn) => (soldSNs.includes(sn.sn) ? { ...sn, status: "Sold" as const } : sn)),
       );
 
-      // Use React Query cache invalidation instead of manual refetch
+      // Update local products stock (immediate UI feedback — no page refresh needed)
+      const soldProductIds = new Set(sale.items.map((item) => item.productId));
+      setProducts((prev) =>
+        prev.map((p) => {
+          if (!soldProductIds.has(p.id)) return p;
+          // Count how many of this product were sold in this transaction
+          const qtySold = sale.items.filter((item) => item.productId === p.id).length;
+          return { ...p, stock: Math.max(p.stock - qtySold, 0) };
+        }),
+      );
+
+      // Invalidate React Query caches so other pages (Sales Logs, Inventory, Dashboard) refresh
+      queryClient.invalidateQueries({ queryKey: ["sales"] });
       queryClient.invalidateQueries({ queryKey: ["products"] });
+      queryClient.invalidateQueries({ queryKey: ["serialNumbers"] });
     } catch (error) {
       console.error("Failed to complete sale:", error);
       throw error;

@@ -39,8 +39,9 @@ export const login = async (name: string, password: string): Promise<LoginRespon
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Login failed");
+    let message = "Login failed";
+    try { const e = await response.json(); message = e.error || message; } catch {}
+    throw new Error(message);
   }
 
   const data = await response.json();
@@ -77,8 +78,9 @@ export const getCurrentUser = (): LoginResponse | null => {
 export const getStaff = async (): Promise<StaffMember[]> => {
   const response = await fetch(`${API_BASE}/staff`);
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to fetch staff");
+    let message = "Failed to fetch staff";
+    try { const e = await response.json(); message = e.error || message; } catch {}
+    throw new Error(message);
   }
   return response.json();
 };
@@ -95,8 +97,9 @@ export const addStaff = async (
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to add staff");
+    let message = "Failed to add staff";
+    try { const e = await response.json(); message = e.error || message; } catch {}
+    throw new Error(message);
   }
   return response.json();
 };
@@ -107,8 +110,9 @@ export const deleteStaff = async (id: string): Promise<void> => {
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to delete staff");
+    let message = "Failed to delete staff";
+    try { const e = await response.json(); message = e.error || message; } catch {}
+    throw new Error(message);
   }
 };
 
@@ -123,8 +127,9 @@ export const updateStaff = async (
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to update staff");
+    let message = "Failed to update staff";
+    try { const e = await response.json(); message = e.error || message; } catch {}
+    throw new Error(message);
   }
   return response.json();
 };
@@ -132,8 +137,9 @@ export const updateStaff = async (
 export const getStoreConfig = async (): Promise<StoreConfig> => {
   const response = await fetch(`${API_BASE}/store-config`);
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to fetch store config");
+    let message = "Failed to fetch store config";
+    try { const e = await response.json(); message = e.error || message; } catch {}
+    throw new Error(message);
   }
   return response.json();
 };
@@ -146,8 +152,9 @@ export const updateStoreConfig = async (config: Partial<StoreConfig>): Promise<S
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to update store config");
+    let message = "Failed to update store config";
+    try { const e = await response.json(); message = e.error || message; } catch {}
+    throw new Error(message);
   }
   return response.json();
 };

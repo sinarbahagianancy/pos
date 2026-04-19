@@ -17,7 +17,7 @@ interface POSProps {
   products: Product[];
   sns: SerialNumber[];
   customers: Customer[];
-  onCompleteSale: (sale: Sale) => void;
+  onCompleteSale: (sale: Sale) => Promise<void>;
   onCreateCustomer?: (name: string, phone?: string, address?: string) => Promise<Customer>;
   staffName: string;
   isAdmin: boolean;
@@ -408,7 +408,7 @@ const POSView: React.FC<POSProps> = ({
       amountPaid: paymentMethod === "Utang" ? utangAmountPaid : total,
       timestamp: new Date().toISOString(),
     };
-    onCompleteSale(sale);
+    await onCompleteSale(sale);
     setLastSale(sale);
     setIsQuotation(false);
     setCart([]);

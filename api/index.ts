@@ -5,7 +5,12 @@ import { eq } from "drizzle-orm";
 
 const connectionString = process.env.DATABASE_URL || "";
 
-const client = postgres(connectionString, { prepare: false });
+const client = postgres(connectionString, {
+  prepare: false,
+  max: 1,           // Serverless: limit pool to 1 connection per function instance
+  idle_timeout: 5,  // Release idle connections quickly
+  connect_timeout: 10,
+});
 
 // Inline schema definitions for API route
 const productsTable = {
@@ -1808,7 +1813,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         : "[]";
 
       // Use a transaction to ensure atomicity of the entire sale creation
-      const tx = await client.begin();
+      let tx;
+      try {
+        tx = await client.begin();
+      } catch {
+        return Response.json({ error: "Failed to start database transaction" }, { status: 500 });
+      }
       try {
         // --- Pre-flight checks: validate stock & SN status before any writes ---
 

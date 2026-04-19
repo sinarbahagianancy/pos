@@ -29,8 +29,9 @@ export interface WarrantyClaimsParams {
 export const getAllSaleItems = async (): Promise<SaleItem[]> => {
   const response = await fetch(`${API_BASE}/sale-items`);
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to fetch sale items");
+    let message = "Failed to fetch sale items";
+    try { const e = await response.json(); message = e.error || message; } catch {}
+    throw new Error(message);
   }
   return response.json();
 };
@@ -38,8 +39,9 @@ export const getAllSaleItems = async (): Promise<SaleItem[]> => {
 export const getSaleItemsBySaleId = async (saleId: string): Promise<SaleItem[]> => {
   const response = await fetch(`${API_BASE}/sale-items/${saleId}`);
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to fetch sale items");
+    let message = "Failed to fetch sale items";
+    try { const e = await response.json(); message = e.error || message; } catch {}
+    throw new Error(message);
   }
   return response.json();
 };
@@ -55,8 +57,9 @@ export const getAllWarrantyClaims = async (
 
   const response = await fetch(`${API_BASE}/warranty-claims?${queryString}`);
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to fetch warranty claims");
+    let message = "Failed to fetch warranty claims";
+    try { const e = await response.json(); message = e.error || message; } catch {}
+    throw new Error(message);
   }
   return response.json();
 };
@@ -74,8 +77,9 @@ export const createWarrantyClaim = async (input: {
     body: JSON.stringify(input),
   });
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to create warranty claim");
+    let message = "Failed to create warranty claim";
+    try { const e = await response.json(); message = e.error || message; } catch {}
+    throw new Error(message);
   }
   return response.json();
 };
@@ -87,8 +91,9 @@ export const updateWarrantyClaim = async (id: string, status: string): Promise<W
     body: JSON.stringify({ status }),
   });
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to update warranty claim");
+    let message = "Failed to update warranty claim";
+    try { const e = await response.json(); message = e.error || message; } catch {}
+    throw new Error(message);
   }
   return response.json();
 };

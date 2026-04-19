@@ -26,8 +26,9 @@ export const getAllSuppliers = async (
 
   const response = await fetch(`${API_BASE}/suppliers?${queryString}`);
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to fetch suppliers");
+    let message = "Failed to fetch suppliers";
+    try { const e = await response.json(); message = e.error || message; } catch {}
+    throw new Error(message);
   }
   return response.json();
 };
@@ -43,8 +44,9 @@ export const createSupplier = async (input: {
     body: JSON.stringify(input),
   });
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to create supplier");
+    let message = "Failed to create supplier";
+    try { const e = await response.json(); message = e.error || message; } catch {}
+    throw new Error(message);
   }
   return response.json();
 };
@@ -63,8 +65,9 @@ export const updateSupplier = async (
     body: JSON.stringify(input),
   });
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to update supplier");
+    let message = "Failed to update supplier";
+    try { const e = await response.json(); message = e.error || message; } catch {}
+    throw new Error(message);
   }
   return response.json();
 };
@@ -74,7 +77,8 @@ export const deleteSupplier = async (id: string): Promise<void> => {
     method: "DELETE",
   });
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to delete supplier");
+    let message = "Failed to delete supplier";
+    try { const e = await response.json(); message = e.error || message; } catch {}
+    throw new Error(message);
   }
 };
