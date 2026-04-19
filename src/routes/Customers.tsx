@@ -54,6 +54,11 @@ const CustomersView: React.FC<CustomersProps> = ({
   });
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
+  const [confirmAdd, setConfirmAdd] = useState(false);
+  const [duplicateWarnings, setDuplicateWarnings] = useState<string[]>([]);
+  const [confirmEdit, setConfirmEdit] = useState(false);
+  const [editDuplicateWarnings, setEditDuplicateWarnings] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
@@ -95,8 +100,37 @@ const CustomersView: React.FC<CustomersProps> = ({
     setCurrentPage(1);
   }, []);
 
-  const handleAdd = async (e: React.FormEvent) => {
+  // Step 1: Validate and show confirmation modal
+  const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Duplicate detection
+    const warnings: string[] = [];
+    const nameLower = newCustomer.name.trim().toLowerCase();
+    const phoneTrim = newCustomer.phone.trim();
+
+    const sameName = customers.find(
+      (c) => c.name.trim().toLowerCase() === nameLower,
+    );
+    if (sameName) {
+      warnings.push(`Nama "${sameName.name}" sudah terdaftar di sistem.`);
+    }
+
+    const samePhone = customers.find(
+      (c) => c.phone?.trim() === phoneTrim && phoneTrim !== "",
+    );
+    if (samePhone) {
+      warnings.push(
+        `Nomor telepon "${phoneTrim}" sudah digunakan oleh ${samePhone.name}.`,
+      );
+    }
+
+    setDuplicateWarnings(warnings);
+    setConfirmAdd(true);
+  };
+
+  // Step 2: Actually create the customer after confirmation
+  const handleAddConfirm = async () => {
     const customer: Customer = {
       id: `CUST-${Date.now()}`,
       name: newCustomer.name,
@@ -107,26 +141,26 @@ const CustomersView: React.FC<CustomersProps> = ({
       loyaltyPoints: 0,
     };
 
-    if (onAddCustomer) {
-      try {
+    setIsAdding(true);
+    try {
+      if (onAddCustomer) {
         await onAddCustomer(customer);
-        setCustomers((prev) => [...prev, customer]);
-        notify(`${newCustomer.name} berhasil didaftarkan ke sistem.`, "success");
-        setShowAddModal(false);
-        setNewCustomer({ name: "", phone: "", email: "", address: "", npwp: "" });
-      } catch (error) {
-        notify("Gagal menambahkan pelanggan", "error");
       }
-    } else {
       setCustomers((prev) => [...prev, customer]);
       notify(`${newCustomer.name} berhasil didaftarkan ke sistem.`, "success");
       setShowAddModal(false);
+      setConfirmAdd(false);
       setNewCustomer({ name: "", phone: "", email: "", address: "", npwp: "" });
+    } catch (error) {
+      notify("Gagal menambahkan pelanggan", "error");
+    } finally {
+      setIsAdding(false);
     }
   };
 
   const handleEditClick = (customer: Customer) => {
     setEditingCustomer(customer);
+    setConfirmEdit(false);
     setEditForm({
       name: customer.name,
       phone: customer.phone || "",
@@ -136,8 +170,38 @@ const CustomersView: React.FC<CustomersProps> = ({
     });
   };
 
-  const handleUpdate = async (e: React.FormEvent) => {
+  // Step 1: Validate edit and show confirmation modal
+  const handleEditSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!editingCustomer) return;
+
+    // Duplicate detection (exclude current customer)
+    const warnings: string[] = [];
+    const nameLower = editForm.name.trim().toLowerCase();
+    const phoneTrim = editForm.phone.trim();
+
+    const sameName = customers.find(
+      (c) => c.id !== editingCustomer.id && c.name.trim().toLowerCase() === nameLower,
+    );
+    if (sameName) {
+      warnings.push(`Nama "${sameName.name}" sudah terdaftar di sistem.`);
+    }
+
+    const samePhone = customers.find(
+      (c) => c.id !== editingCustomer.id && c.phone?.trim() === phoneTrim && phoneTrim !== "",
+    );
+    if (samePhone) {
+      warnings.push(
+        `Nomor telepon "${phoneTrim}" sudah digunakan oleh ${samePhone.name}.`,
+      );
+    }
+
+    setEditDuplicateWarnings(warnings);
+    setConfirmEdit(true);
+  };
+
+  // Step 2: Actually update the customer after confirmation
+  const handleEditConfirm = async () => {
     if (!onUpdateCustomer || !editingCustomer) return;
 
     setIsUpdating(true);
@@ -148,6 +212,7 @@ const CustomersView: React.FC<CustomersProps> = ({
       );
       notify("Data pelanggan berhasil diperbarui.", "success");
       setEditingCustomer(null);
+      setConfirmEdit(false);
     } catch (error) {
       notify("Gagal memperbarui pelanggan", "error");
     } finally {
@@ -591,7 +656,8 @@ const CustomersView: React.FC<CustomersProps> = ({
               </h2>
               <button
                 onClick={() => setShowAddModal(false)}
-                className="text-slate-400 hover:text-slate-600"
+                disabled={isAdding}
+                className="text-slate-400 hover:text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
@@ -603,7 +669,7 @@ const CustomersView: React.FC<CustomersProps> = ({
                 </svg>
               </button>
             </div>
-            <form onSubmit={handleAdd} className="p-6 lg:p-8 space-y-5">
+            <form onSubmit={handleAddSubmit} className="p-6 lg:p-8 space-y-5">
               <div className="grid grid-cols-1 gap-4">
                 <div>
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
@@ -660,18 +726,134 @@ const CustomersView: React.FC<CustomersProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="flex-1 py-4 bg-white border border-slate-200 text-slate-700 font-black rounded-2xl text-xs uppercase tracking-widest"
+                  disabled={isAdding}
+                  className="flex-1 py-4 bg-white border border-slate-200 text-slate-700 font-black rounded-2xl text-xs uppercase tracking-widest disabled:opacity-50"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-4 bg-indigo-600 text-white font-black rounded-2xl text-xs uppercase tracking-widest shadow-lg shadow-indigo-100"
+                  disabled={isAdding}
+                  className="flex-1 py-4 bg-indigo-600 text-white font-black rounded-2xl text-xs uppercase tracking-widest shadow-lg shadow-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Simpan Client
+                  {isAdding ? "Menyimpan..." : "Simpan Client"}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Customer Confirmation Modal */}
+      {confirmAdd && showAddModal && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[200] p-4">
+          <div className="bg-white rounded-[32px] shadow-2xl max-w-md w-full overflow-hidden border border-slate-100 animate-in zoom-in duration-200">
+            <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center">
+                  <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-lg font-black text-slate-900 uppercase tracking-tighter">
+                    Konfirmasi Pendaftaran
+                  </h2>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">
+                    Pastikan data sudah benar
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setConfirmAdd(false)}
+                disabled={isAdding}
+                className="text-slate-300 hover:text-slate-600 disabled:cursor-not-allowed"
+              >
+                <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-6 lg:p-8">
+              {/* Customer data summary */}
+              <div className="bg-slate-50 rounded-2xl p-4 mb-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Nama</span>
+                  <span className="text-sm font-black text-slate-900">{newCustomer.name}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Telepon</span>
+                  <span className="text-sm font-bold text-slate-700">{newCustomer.phone || "-"}</span>
+                </div>
+                {newCustomer.npwp && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">NPWP</span>
+                    <span className="text-xs font-mono font-bold text-slate-700">{newCustomer.npwp}</span>
+                  </div>
+                )}
+                {newCustomer.address && (
+                  <div className="flex items-start gap-2">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Alamat</span>
+                    <span className="text-xs font-medium text-slate-600">{newCustomer.address}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Duplicate warnings */}
+              {duplicateWarnings.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4">
+                  <div className="flex items-start space-x-3">
+                    <svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <div>
+                      <p className="text-sm font-black text-amber-800 uppercase tracking-tighter">
+                        Kemungkinan Duplikat!
+                      </p>
+                      <ul className="mt-2 space-y-1">
+                        {duplicateWarnings.map((w, i) => (
+                          <li key={i} className="text-xs text-amber-700 font-medium">
+                            • {w}
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="text-[10px] text-amber-600 font-bold mt-2">
+                        Lanjutkan hanya jika ini pelanggan yang berbeda.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={handleAddConfirm}
+                  disabled={isAdding}
+                  className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl text-xs uppercase tracking-widest shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isAdding ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Menyimpan...
+                    </>
+                  ) : duplicateWarnings.length > 0 ? (
+                    "Ya, Tetap Daftarkan"
+                  ) : (
+                    "Konfirmasi & Daftarkan"
+                  )}
+                </button>
+                <button
+                  onClick={() => setConfirmAdd(false)}
+                  disabled={isAdding}
+                  className="w-full py-4 bg-white border border-slate-200 text-slate-700 font-black rounded-2xl text-xs uppercase tracking-widest disabled:opacity-50"
+                >
+                  Kembali ke Form
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -685,8 +867,9 @@ const CustomersView: React.FC<CustomersProps> = ({
                 Edit Pelanggan
               </h2>
               <button
-                onClick={() => setEditingCustomer(null)}
-                className="text-slate-400 hover:text-slate-600"
+                onClick={() => { setEditingCustomer(null); setConfirmEdit(false); }}
+                disabled={isUpdating}
+                className="text-slate-400 hover:text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
@@ -698,7 +881,7 @@ const CustomersView: React.FC<CustomersProps> = ({
                 </svg>
               </button>
             </div>
-            <form onSubmit={handleUpdate} className="p-6 lg:p-8 space-y-5">
+            <form onSubmit={handleEditSubmit} className="p-6 lg:p-8 space-y-5">
               <div className="grid grid-cols-1 gap-4">
                 <div>
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
@@ -764,20 +947,161 @@ const CustomersView: React.FC<CustomersProps> = ({
               <div className="flex gap-4 pt-4">
                 <button
                   type="button"
-                  onClick={() => setEditingCustomer(null)}
-                  className="flex-1 py-4 bg-white border border-slate-200 text-slate-700 font-black rounded-2xl text-xs uppercase tracking-widest"
+                  onClick={() => { setEditingCustomer(null); setConfirmEdit(false); }}
+                  disabled={isUpdating}
+                  className="flex-1 py-4 bg-white border border-slate-200 text-slate-700 font-black rounded-2xl text-xs uppercase tracking-widest disabled:opacity-50"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
                   disabled={isUpdating}
-                  className="flex-1 py-4 bg-indigo-600 text-white font-black rounded-2xl text-xs uppercase tracking-widest shadow-lg shadow-indigo-100 disabled:opacity-50"
+                  className="flex-1 py-4 bg-indigo-600 text-white font-black rounded-2xl text-xs uppercase tracking-widest shadow-lg shadow-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isUpdating ? "Menyimpan..." : "Simpan Perubahan"}
+                  {isUpdating ? "Menyimpan..." : "Lihat Perubahan"}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Customer Confirmation Modal */}
+      {confirmEdit && editingCustomer && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[200] p-4">
+          <div className="bg-white rounded-[32px] shadow-2xl max-w-md w-full overflow-hidden border border-slate-100 animate-in zoom-in duration-200">
+            <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center">
+                  <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-lg font-black text-slate-900 uppercase tracking-tighter">
+                    Konfirmasi Perubahan
+                  </h2>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">
+                    Pastikan data sudah benar
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setConfirmEdit(false)}
+                disabled={isUpdating}
+                className="text-slate-300 hover:text-slate-600 disabled:cursor-not-allowed"
+              >
+                <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-6 lg:p-8">
+              {/* Changes summary */}
+              <div className="bg-slate-50 rounded-2xl p-4 mb-4 space-y-2">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                  Perubahan data untuk {editingCustomer.name}
+                </p>
+                {editForm.name.trim().toLowerCase() !== editingCustomer.name.trim().toLowerCase() && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Nama</span>
+                    <span className="text-xs text-slate-400 line-through">{editingCustomer.name}</span>
+                    <svg className="w-3 h-3 text-indigo-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+                    <span className="text-sm font-black text-slate-900">{editForm.name}</span>
+                  </div>
+                )}
+                {editForm.phone.trim() !== (editingCustomer.phone || "").trim() && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Telepon</span>
+                    <span className="text-xs text-slate-400 line-through">{editingCustomer.phone || "-"}</span>
+                    <svg className="w-3 h-3 text-indigo-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+                    <span className="text-sm font-bold text-slate-700">{editForm.phone || "-"}</span>
+                  </div>
+                )}
+                {editForm.npwp.trim() !== (editingCustomer.npwp || "").trim() && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">NPWP</span>
+                    <span className="text-xs text-slate-400 line-through">{editingCustomer.npwp || "-"}</span>
+                    <svg className="w-3 h-3 text-indigo-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+                    <span className="text-xs font-mono font-bold text-slate-700">{editForm.npwp || "-"}</span>
+                  </div>
+                )}
+                {editForm.address.trim() !== (editingCustomer.address || "").trim() && (
+                  <div className="flex items-start gap-2">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Alamat</span>
+                    <span className="text-xs text-slate-400 line-through">{editingCustomer.address || "-"}</span>
+                    <svg className="w-3 h-3 text-indigo-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+                    <span className="text-xs font-medium text-slate-600">{editForm.address || "-"}</span>
+                  </div>
+                )}
+                {editForm.name.trim().toLowerCase() === editingCustomer.name.trim().toLowerCase() &&
+                 editForm.phone.trim() === (editingCustomer.phone || "").trim() &&
+                 editForm.npwp.trim() === (editingCustomer.npwp || "").trim() &&
+                 editForm.address.trim() === (editingCustomer.address || "").trim() && (
+                  <p className="text-xs text-slate-400 italic">Tidak ada perubahan data.</p>
+                )}
+              </div>
+
+              {/* Duplicate warnings */}
+              {editDuplicateWarnings.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4">
+                  <div className="flex items-start space-x-3">
+                    <svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <div>
+                      <p className="text-sm font-black text-amber-800 uppercase tracking-tighter">
+                        Kemungkinan Duplikat!
+                      </p>
+                      <ul className="mt-2 space-y-1">
+                        {editDuplicateWarnings.map((w, i) => (
+                          <li key={i} className="text-xs text-amber-700 font-medium">
+                            • {w}
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="text-[10px] text-amber-600 font-bold mt-2">
+                        Lanjutkan hanya jika ini benar-benar perlu diubah.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={handleEditConfirm}
+                  disabled={isUpdating || (
+                    editForm.name.trim().toLowerCase() === editingCustomer.name.trim().toLowerCase() &&
+                    editForm.phone.trim() === (editingCustomer.phone || "").trim() &&
+                    editForm.npwp.trim() === (editingCustomer.npwp || "").trim() &&
+                    editForm.address.trim() === (editingCustomer.address || "").trim()
+                  )}
+                  className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl text-xs uppercase tracking-widest shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isUpdating ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Menyimpan...
+                    </>
+                  ) : editDuplicateWarnings.length > 0 ? (
+                    "Ya, Tetap Simpan Perubahan"
+                  ) : (
+                    "Konfirmasi & Simpan Perubahan"
+                  )}
+                </button>
+                <button
+                  onClick={() => setConfirmEdit(false)}
+                  disabled={isUpdating}
+                  className="w-full py-4 bg-white border border-slate-200 text-slate-700 font-black rounded-2xl text-xs uppercase tracking-widest disabled:opacity-50"
+                >
+                  Kembali ke Form
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -814,7 +1138,8 @@ const CustomersView: React.FC<CustomersProps> = ({
               </div>
               <button
                 onClick={() => setDeletingCustomer(null)}
-                className="text-slate-300 hover:text-slate-600"
+                disabled={isDeleting}
+                className="text-slate-300 hover:text-slate-600 disabled:cursor-not-allowed"
               >
                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path

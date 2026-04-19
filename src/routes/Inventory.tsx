@@ -157,6 +157,12 @@ const InventoryView: React.FC<InventoryProps> = ({
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isAdding, setIsAdding] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [confirmAdd, setConfirmAdd] = useState(false);
+  const [confirmEdit, setConfirmEdit] = useState(false);
+  const [addDuplicateWarnings, setAddDuplicateWarnings] = useState<string[]>([]);
+  const [editDuplicateWarnings, setEditDuplicateWarnings] = useState<string[]>([]);
   const [newStockVal, setNewStockVal] = useState(0);
   const [adjustReason, setAdjustReason] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
@@ -395,6 +401,7 @@ const InventoryView: React.FC<InventoryProps> = ({
     }
   };
 
+  // Step 1: Validate add and show confirmation modal
   const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -418,6 +425,30 @@ const InventoryView: React.FC<InventoryProps> = ({
       return;
     }
 
+    // Duplicate detection
+    const warnings: string[] = [];
+    const brandLower = (newP.brand || "").trim().toLowerCase();
+    const modelLower = (newP.model || "").trim().toLowerCase();
+
+    const sameProduct = products.find(
+      (p) => p.brand.trim().toLowerCase() === brandLower && p.model.trim().toLowerCase() === modelLower,
+    );
+    if (sameProduct) {
+      warnings.push(`Produk "${sameProduct.brand} ${sameProduct.model}" sudah terdaftar di sistem (stok: ${getProductStock(sameProduct)}).`);
+    }
+
+    setAddDuplicateWarnings(warnings);
+    setConfirmAdd(true);
+  };
+
+  // Step 2: Actually create the product after confirmation
+  const handleAddConfirm = async () => {
+    setIsAdding(true);
+    const serialList = newSerials
+      .split("\n")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+
     const p: Product = {
       id: `BRC-${Date.now()}`,
       brand: newP.brand || "N/A",
@@ -434,6 +465,7 @@ const InventoryView: React.FC<InventoryProps> = ({
       supplier: newProductSupplier,
       dateRestocked: new Date(newProductDate).toISOString(),
       invoiceNumber: newProductInvoiceNumber || undefined,
+      taxEnabled: newP.taxEnabled,
     };
 
     // Include serialNumbers in the product for API
@@ -443,24 +475,63 @@ const InventoryView: React.FC<InventoryProps> = ({
       quantity: newProductHasSN ? undefined : newProductQuantity,
     };
 
-    onAddProduct(productWithSerials, newProductHasSN ? serialList : []);
-    setShowAddModal(false);
-    setNewP({
-      brand: "",
-      model: "",
-      category: "Body",
-      condition: "New",
-      price: 0,
-      cogs: 0,
-      warrantyMonths: 12,
-      warrantyType: "Official Sony Indonesia",
-    });
-    setNewSerials("");
-    setNewProductHasSN(false);
-    setNewProductQuantity(1);
-    setNewProductSupplier("");
-    setNewProductDate(new Date().toISOString().split("T")[0]);
-    setNewProductInvoiceNumber("");
+    try {
+      onAddProduct(productWithSerials, newProductHasSN ? serialList : []);
+      setShowAddModal(false);
+      setConfirmAdd(false);
+      setNewP({
+        brand: "",
+        model: "",
+        category: "Body",
+        condition: "New",
+        price: 0,
+        cogs: 0,
+        warrantyMonths: 12,
+        warrantyType: "Official Sony Indonesia",
+        taxEnabled: true,
+      });
+      setNewSerials("");
+      setNewProductHasSN(false);
+      setNewProductQuantity(1);
+      setNewProductSupplier("");
+      setNewProductDate(new Date().toISOString().split("T")[0]);
+      setNewProductInvoiceNumber("");
+    } finally {
+      setIsAdding(false);
+    }
+  };
+
+  // Step 2: Actually update the product after edit confirmation
+  const handleEditConfirm = async () => {
+    if (!onEditProduct || !editingProduct) return;
+    setIsUpdating(true);
+    try {
+      await onEditProduct(editingProduct.id, editForm);
+      setEditingProduct(null);
+      setConfirmEdit(false);
+      setEditError(null);
+    } catch (error: any) {
+      setEditError(error.message || "Gagal mengupdate produk");
+      setConfirmEdit(false); // Close confirmation so error is visible on edit form
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  // Helper: check if edit form has changes
+  const hasEditChanges = (): boolean => {
+    if (!editingProduct) return false;
+    return (
+      (editForm.brand ?? "") !== editingProduct.brand ||
+      (editForm.model ?? "") !== editingProduct.model ||
+      (editForm.category ?? "") !== editingProduct.category ||
+      (editForm.condition ?? "") !== editingProduct.condition ||
+      (editForm.warrantyMonths ?? 0) !== editingProduct.warrantyMonths ||
+      (editForm.warrantyType ?? "") !== editingProduct.warrantyType ||
+      (editForm.taxEnabled ?? true) !== editingProduct.taxEnabled ||
+      (editForm.price ?? 0) !== editingProduct.price ||
+      (editForm.cogs ?? 0) !== editingProduct.cogs
+    );
   };
 
   return (
@@ -475,7 +546,7 @@ const InventoryView: React.FC<InventoryProps> = ({
           </p>
         </div>
         <button
-          onClick={() => setShowAddModal(true)}
+          onClick={() => { setShowAddModal(true); setConfirmAdd(false); }}
           className="bg-indigo-600 text-white px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all w-full sm:w-auto"
         >
           Input Barang Baru
@@ -724,6 +795,7 @@ const InventoryView: React.FC<InventoryProps> = ({
                                 return;
                               }
                               setEditingProduct(p);
+                              setConfirmEdit(false);
                               setEditForm({
                                 brand: p.brand,
                                 model: p.model,
@@ -1237,8 +1309,9 @@ const InventoryView: React.FC<InventoryProps> = ({
                 Penerimaan Barang Baru
               </h2>
               <button
-                onClick={() => setShowAddModal(false)}
-                className="text-slate-400 hover:text-slate-900 transition-colors"
+                onClick={() => { setShowAddModal(false); setConfirmAdd(false); }}
+                disabled={isAdding}
+                className="text-slate-400 hover:text-slate-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
@@ -1253,7 +1326,7 @@ const InventoryView: React.FC<InventoryProps> = ({
             <form
               onSubmit={handleAddSubmit}
               className="flex-1 overflow-y-auto p-6 lg:p-8 custom-scrollbar grid grid-cols-1 md:grid-cols-2 gap-6"
-            >
+           >
               <div className="md:col-span-2">
                 <h3 className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-4">
                   Produk Info
@@ -1324,7 +1397,7 @@ const InventoryView: React.FC<InventoryProps> = ({
                     onChange={(e) => setNewP({ ...newP, warrantyType: e.target.value as any })}
                   >
                     <option value="Distributor">Distributor</option>
-                    <option value="Store Warranty">Toko</option>
+                    <option value="Toko">Toko</option>
                     <option value="No Warranty">No Warranty</option>
                   </select>
                 </div>
@@ -1454,16 +1527,18 @@ const InventoryView: React.FC<InventoryProps> = ({
               <div className="md:col-span-2 flex gap-4 pt-4">
                 <button
                   type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="flex-1 py-5 bg-white border border-slate-200 text-slate-700 font-black rounded-3xl text-[10px] uppercase tracking-widest"
+                  onClick={() => { setShowAddModal(false); setConfirmAdd(false); }}
+                  disabled={isAdding}
+                  className="flex-1 py-5 bg-white border border-slate-200 text-slate-700 font-black rounded-3xl text-[10px] uppercase tracking-widest disabled:opacity-50"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-5 bg-indigo-600 text-white font-black rounded-3xl text-[10px] uppercase tracking-widest shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all"
+                  disabled={isAdding}
+                  className="flex-1 py-5 bg-indigo-600 text-white font-black rounded-3xl text-[10px] uppercase tracking-widest shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Simpan Aset
+                  {isAdding ? "Menyimpan..." : "Lihat Data"}
                 </button>
               </div>
             </form>
@@ -1483,8 +1558,10 @@ const InventoryView: React.FC<InventoryProps> = ({
                 onClick={() => {
                   setEditingProduct(null);
                   setEditError(null);
+                  setConfirmEdit(false);
                 }}
-                className="text-slate-400 hover:text-slate-900 transition-colors"
+                disabled={isUpdating}
+                className="text-slate-400 hover:text-slate-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
@@ -1497,24 +1574,21 @@ const InventoryView: React.FC<InventoryProps> = ({
               </button>
             </div>
             <form
-              onSubmit={async (e) => {
+              onSubmit={(e) => {
                 e.preventDefault();
-                console.log("[DEBUG] Form onSubmit triggered");
-                if (!onEditProduct || !editingProduct) {
-                  console.log("[DEBUG] onEditProduct or editingProduct is missing");
-                  return;
+                if (!editingProduct) return;
+                // Duplicate detection (exclude current product)
+                const warnings: string[] = [];
+                const brandLower = (editForm.brand || "").trim().toLowerCase();
+                const modelLower = (editForm.model || "").trim().toLowerCase();
+                const sameProduct = products.find(
+                  (p) => p.id !== editingProduct.id && p.brand.trim().toLowerCase() === brandLower && p.model.trim().toLowerCase() === modelLower,
+                );
+                if (sameProduct) {
+                  warnings.push(`Produk "${sameProduct.brand} ${sameProduct.model}" sudah terdaftar di sistem (stok: ${getProductStock(sameProduct)}).`);
                 }
-                setEditError(null);
-                console.log("[DEBUG] Edit form submit, editForm:", JSON.stringify(editForm));
-                try {
-                  console.log("[DEBUG] Calling onEditProduct with id:", editingProduct.id);
-                  await onEditProduct(editingProduct.id, editForm);
-                  console.log("[DEBUG] onEditProduct completed successfully");
-                  setEditingProduct(null);
-                } catch (error: any) {
-                  console.log("[DEBUG] onEditProduct error:", error);
-                  setEditError(error.message || "Gagal mengedit produk");
-                }
+                setEditDuplicateWarnings(warnings);
+                setConfirmEdit(true);
               }}
               className="flex-1 overflow-y-auto p-6 lg:p-8 custom-scrollbar grid grid-cols-1 md:grid-cols-2 gap-6"
             >
@@ -1670,19 +1744,348 @@ const InventoryView: React.FC<InventoryProps> = ({
                   onClick={() => {
                     setEditingProduct(null);
                     setEditError(null);
+                    setConfirmEdit(false);
                   }}
-                  className="flex-1 py-5 bg-white border border-slate-200 text-slate-700 font-black rounded-3xl text-[10px] uppercase tracking-widest"
+                  disabled={isUpdating}
+                  className="flex-1 py-5 bg-white border border-slate-200 text-slate-700 font-black rounded-3xl text-[10px] uppercase tracking-widest disabled:opacity-50"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-5 bg-indigo-600 text-white font-black rounded-3xl text-[10px] uppercase tracking-widest shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all"
+                  disabled={isUpdating}
+                  className="flex-1 py-5 bg-indigo-600 text-white font-black rounded-3xl text-[10px] uppercase tracking-widest shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Simpan Perubahan
+                  {isUpdating ? "Menyimpan..." : "Lihat Perubahan"}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Product Confirmation Modal */}
+      {confirmAdd && showAddModal && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[200] p-4">
+          <div className="bg-white rounded-[32px] shadow-2xl max-w-md w-full overflow-hidden border border-slate-100 animate-in zoom-in duration-200">
+            <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center">
+                  <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-lg font-black text-slate-900 uppercase tracking-tighter">
+                    Konfirmasi Penerimaan Barang
+                  </h2>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">
+                    Pastikan data sudah benar
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setConfirmAdd(false)}
+                disabled={isAdding}
+                className="text-slate-300 hover:text-slate-600 disabled:cursor-not-allowed"
+              >
+                <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-6">
+              {addDuplicateWarnings.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4">
+                  <div className="flex items-start space-x-3">
+                    <svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <div>
+                      <p className="text-xs font-black text-amber-800 uppercase tracking-widest mb-1">Kemungkinan Duplikat</p>
+                      {addDuplicateWarnings.map((w, i) => (
+                        <p key={i} className="text-sm text-amber-700 font-medium">{w}</p>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="bg-slate-50 rounded-2xl p-4 mb-4">
+                <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-3">Data Produk</p>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-xs text-slate-500 font-medium">Merk & Model</span>
+                    <span className="text-sm font-black text-slate-900">{newP.brand} {newP.model}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-xs text-slate-500 font-medium">Kategori</span>
+                    <span className="text-sm font-bold text-slate-700">{newP.category}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-xs text-slate-500 font-medium">Kondisi</span>
+                    <span className="text-sm font-bold text-slate-700">{newP.condition === "New" ? "Baru" : "Bekas"}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-xs text-slate-500 font-medium">Garansi</span>
+                    <span className="text-sm font-bold text-slate-700">{newP.warrantyMonths} Bulan ({newP.warrantyType})</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-xs text-slate-500 font-medium">PPN</span>
+                    <span className="text-sm font-bold text-slate-700">{newP.taxEnabled ? "Ya" : "Tidak"}</span>
+                  </div>
+                  <div className="border-t border-slate-200 my-2"></div>
+                  <div className="flex justify-between">
+                    <span className="text-xs text-slate-500 font-medium">Harga Jual</span>
+                    <span className="text-sm font-black text-slate-900">{formatIDR(newP.price || 0)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-xs text-slate-500 font-medium">Harga Modal</span>
+                    <span className="text-sm font-black text-indigo-600">{formatIDR(newP.cogs || 0)}</span>
+                  </div>
+                  <div className="border-t border-slate-200 my-2"></div>
+                  <div className="flex justify-between">
+                    <span className="text-xs text-slate-500 font-medium">Tipe Stok</span>
+                    <span className="text-sm font-bold text-slate-700">{newProductHasSN ? "Serial Number" : "Non-SN"}</span>
+                  </div>
+                  {newProductHasSN ? (
+                    <div className="flex justify-between">
+                      <span className="text-xs text-slate-500 font-medium">Jumlah SN</span>
+                      <span className="text-sm font-black text-slate-900">
+                        {newSerials.split("\n").map(s => s.trim()).filter(s => s.length > 0).length} unit
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex justify-between">
+                      <span className="text-xs text-slate-500 font-medium">Jumlah Stok</span>
+                      <span className="text-sm font-black text-slate-900">{newProductQuantity} unit</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-xs text-slate-500 font-medium">Supplier</span>
+                    <span className="text-sm font-bold text-slate-700">{newProductSupplier}</span>
+                  </div>
+                  {newProductInvoiceNumber && (
+                    <div className="flex justify-between">
+                      <span className="text-xs text-slate-500 font-medium">No. Invoice</span>
+                      <span className="text-sm font-bold text-indigo-600">{newProductInvoiceNumber}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setConfirmAdd(false)}
+                  disabled={isAdding}
+                  className="flex-1 py-4 bg-white border border-slate-200 text-slate-700 font-black rounded-2xl text-xs uppercase tracking-widest disabled:opacity-50"
+                >
+                  Kembali
+                </button>
+                <button
+                  onClick={handleAddConfirm}
+                  disabled={isAdding}
+                  className="flex-1 py-4 bg-indigo-600 text-white font-black rounded-2xl text-xs uppercase tracking-widest shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isAdding ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Menyimpan...
+                    </>
+                  ) : (
+                    "Ya, Simpan Produk"
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Product Confirmation Modal */}
+      {confirmEdit && editingProduct && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[200] p-4">
+          <div className="bg-white rounded-[32px] shadow-2xl max-w-md w-full overflow-hidden border border-slate-100 animate-in zoom-in duration-200 max-h-[90vh] flex flex-col">
+            <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between shrink-0">
+              <div className="flex items-center space-x-4">
+                <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center">
+                  <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-lg font-black text-slate-900 uppercase tracking-tighter">
+                    Konfirmasi Perubahan
+                  </h2>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">
+                    Pastikan perubahan sudah benar
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setConfirmEdit(false)}
+                disabled={isUpdating}
+                className="text-slate-300 hover:text-slate-600 disabled:cursor-not-allowed"
+              >
+                <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto custom-scrollbar">
+              {editDuplicateWarnings.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4">
+                  <div className="flex items-start space-x-3">
+                    <svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <div>
+                      <p className="text-xs font-black text-amber-800 uppercase tracking-widest mb-1">Kemungkinan Duplikat</p>
+                      {editDuplicateWarnings.map((w, i) => (
+                        <p key={i} className="text-sm text-amber-700 font-medium">{w}</p>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {!hasEditChanges() ? (
+                <div className="bg-slate-50 rounded-2xl p-4 mb-4 text-center">
+                  <svg className="w-8 h-8 text-slate-300 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                  </svg>
+                  <p className="text-sm font-bold text-slate-400">Tidak ada perubahan terdeteksi</p>
+                </div>
+              ) : (
+                <div className="bg-slate-50 rounded-2xl p-4 mb-4">
+                  <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-3">Ringkasan Perubahan</p>
+                  <div className="space-y-2">
+                    {(editForm.brand ?? "") !== editingProduct.brand && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-slate-500 font-medium">Merk</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-400 line-through">{editingProduct.brand}</span>
+                          <svg className="w-3 h-3 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7" /></svg>
+                          <span className="text-sm font-black text-slate-900">{editForm.brand}</span>
+                        </div>
+                      </div>
+                    )}
+                    {(editForm.model ?? "") !== editingProduct.model && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-slate-500 font-medium">Model</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-400 line-through">{editingProduct.model}</span>
+                          <svg className="w-3 h-3 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7" /></svg>
+                          <span className="text-sm font-black text-slate-900">{editForm.model}</span>
+                        </div>
+                      </div>
+                    )}
+                    {(editForm.category ?? "") !== editingProduct.category && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-slate-500 font-medium">Kategori</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-400 line-through">{editingProduct.category}</span>
+                          <svg className="w-3 h-3 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7" /></svg>
+                          <span className="text-sm font-black text-slate-900">{editForm.category}</span>
+                        </div>
+                      </div>
+                    )}
+                    {(editForm.condition ?? "") !== editingProduct.condition && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-slate-500 font-medium">Kondisi</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-400 line-through">{editingProduct.condition === "New" ? "Baru" : "Bekas"}</span>
+                          <svg className="w-3 h-3 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7" /></svg>
+                          <span className="text-sm font-black text-slate-900">{editForm.condition === "New" ? "Baru" : "Bekas"}</span>
+                        </div>
+                      </div>
+                    )}
+                    {(editForm.warrantyMonths ?? 0) !== editingProduct.warrantyMonths && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-slate-500 font-medium">Garansi</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-400 line-through">{editingProduct.warrantyMonths} bln</span>
+                          <svg className="w-3 h-3 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7" /></svg>
+                          <span className="text-sm font-black text-slate-900">{editForm.warrantyMonths} bln</span>
+                        </div>
+                      </div>
+                    )}
+                    {(editForm.warrantyType ?? "") !== editingProduct.warrantyType && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-slate-500 font-medium">Tipe Garansi</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-400 line-through">{editingProduct.warrantyType}</span>
+                          <svg className="w-3 h-3 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7" /></svg>
+                          <span className="text-sm font-black text-slate-900">{editForm.warrantyType}</span>
+                        </div>
+                      </div>
+                    )}
+                    {(editForm.taxEnabled ?? true) !== editingProduct.taxEnabled && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-slate-500 font-medium">PPN</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-400 line-through">{editingProduct.taxEnabled ? "Ya" : "Tidak"}</span>
+                          <svg className="w-3 h-3 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7" /></svg>
+                          <span className="text-sm font-black text-slate-900">{editForm.taxEnabled ? "Ya" : "Tidak"}</span>
+                        </div>
+                      </div>
+                    )}
+                    {(editForm.price ?? 0) !== editingProduct.price && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-slate-500 font-medium">Harga Jual</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-400 line-through">{formatIDR(editingProduct.price)}</span>
+                          <svg className="w-3 h-3 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7" /></svg>
+                          <span className="text-sm font-black text-slate-900">{formatIDR(editForm.price ?? 0)}</span>
+                        </div>
+                      </div>
+                    )}
+                    {(editForm.cogs ?? 0) !== editingProduct.cogs && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-slate-500 font-medium">Harga Modal</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-400 line-through">{formatIDR(editingProduct.cogs)}</span>
+                          <svg className="w-3 h-3 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7" /></svg>
+                          <span className="text-sm font-black text-indigo-600">{formatIDR(editForm.cogs ?? 0)}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setConfirmEdit(false)}
+                  disabled={isUpdating}
+                  className="flex-1 py-4 bg-white border border-slate-200 text-slate-700 font-black rounded-2xl text-xs uppercase tracking-widest disabled:opacity-50"
+                >
+                  Kembali
+                </button>
+                <button
+                  onClick={handleEditConfirm}
+                  disabled={isUpdating || !hasEditChanges()}
+                  className="flex-1 py-4 bg-indigo-600 text-white font-black rounded-2xl text-xs uppercase tracking-widest shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isUpdating ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Menyimpan...
+                    </>
+                  ) : (
+                    "Ya, Simpan Perubahan"
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -1722,7 +2125,8 @@ const InventoryView: React.FC<InventoryProps> = ({
                   setDeletingProduct(null);
                   setDeleteError(null);
                 }}
-                className="text-slate-300 hover:text-slate-900 transition-colors"
+                disabled={isDeleting}
+                className="text-slate-300 hover:text-slate-900 disabled:cursor-not-allowed transition-colors"
               >
                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path

@@ -6,7 +6,8 @@ export type WarrantyType =
   | "Official Canon Indonesia"
   | "Official Fujifilm Indonesia"
   | "Distributor"
-  | "Store Warranty";
+  | "Toko"
+  | "No Warranty";
 export type SNStatus = "In Stock" | "Sold" | "Claimed";
 
 const MountTypes: MountType[] = ["E-mount", "RF-mount", "X-mount", "L-mount", "Z-mount", "M-mount"];
@@ -17,7 +18,8 @@ const WarrantyTypes: WarrantyType[] = [
   "Official Canon Indonesia",
   "Official Fujifilm Indonesia",
   "Distributor",
-  "Store Warranty",
+  "Toko",
+  "No Warranty",
 ];
 
 export interface Product {

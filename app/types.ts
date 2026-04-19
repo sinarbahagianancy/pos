@@ -6,7 +6,8 @@ export type WarrantyType =
   | "Official Canon Indonesia"
   | "Official Fujifilm Indonesia"
   | "Distributor"
-  | "Store Warranty";
+  | "Toko"
+  | "No Warranty";
 export type ClaimStatus =
   | "Received"
   | "Sent to HQ"

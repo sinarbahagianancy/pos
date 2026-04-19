@@ -31,6 +31,13 @@ try {
     SET has_serial_number = false 
     WHERE NOT EXISTS (SELECT 1 FROM serial_numbers WHERE serial_numbers.product_id = products.id)
   `);
+
+  // Add Toko and No Warranty to warranty_type enum
+  await client.unsafe(`ALTER TYPE warranty_type ADD VALUE IF NOT EXISTS 'Toko'`).catch(() => {});
+  await client.unsafe(`ALTER TYPE warranty_type ADD VALUE IF NOT EXISTS 'No Warranty'`).catch(() => {});
+
+  // Migrate existing 'Store Warranty' data to 'Toko'
+  await client.unsafe(`UPDATE products SET warranty_type = 'Toko' WHERE warranty_type = 'Store Warranty'`).catch((e) => { console.error('Failed to migrate Store Warranty → Toko:', e); });
 } catch (e) {
   console.log("Migration check (may be ok):", e);
 }

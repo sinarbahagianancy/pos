@@ -116,7 +116,8 @@ type WarrantyType =
   | "Official Canon Indonesia"
   | "Official Fujifilm Indonesia"
   | "Distributor"
-  | "Store Warranty";
+  | "Toko"
+  | "No Warranty";
 type MountType = "E-mount" | "RF-mount" | "X-mount" | "L-mount" | "Z-mount" | "M-mount" | undefined;
 type SNStatus = "In Stock" | "Sold" | "Claimed";
 
@@ -415,6 +416,19 @@ const initializeDatabase = async () => {
       .unsafe(`ALTER TYPE payment_method ADD VALUE IF NOT EXISTS 'Utang'`)
       .catch(() => {});
 
+    // Add Toko and No Warranty to warranty_type enum
+    await client
+      .unsafe(`ALTER TYPE warranty_type ADD VALUE IF NOT EXISTS 'Toko'`)
+      .catch(() => {});
+    await client
+      .unsafe(`ALTER TYPE warranty_type ADD VALUE IF NOT EXISTS 'No Warranty'`)
+      .catch(() => {});
+
+    // Migrate existing 'Store Warranty' data to 'Toko'
+    await client
+      .unsafe(`UPDATE products SET warranty_type = 'Toko' WHERE warranty_type = 'Store Warranty'`)
+      .catch((e) => { console.error('Failed to migrate Store Warranty → Toko:', e); });
+
     // Add Login and Logout to audit_action enum
     await client
       .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Login'`)
@@ -475,7 +489,8 @@ const WarrantyTypes: WarrantyType[] = [
   "Official Canon Indonesia",
   "Official Fujifilm Indonesia",
   "Distributor",
-  "Store Warranty",
+  "Toko",
+  "No Warranty",
 ];
 const MountTypes: MountType[] = ["E-mount", "RF-mount", "X-mount", "L-mount", "Z-mount", "M-mount"];
 

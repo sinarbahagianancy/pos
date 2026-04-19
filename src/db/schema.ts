@@ -27,7 +27,8 @@ export const warrantyTypeEnum = pgEnum("warranty_type", [
   "Official Canon Indonesia",
   "Official Fujifilm Indonesia",
   "Distributor",
-  "Store Warranty",
+  "Toko",
+  "No Warranty",
 ]);
 
 export const claimStatusEnum = pgEnum("claim_status", [
