@@ -63,7 +63,8 @@ export const getAllProducts = async (
   const total = parseInt(countResult[0]?.count || "0", 10);
 
   // Use direct SQL to avoid any Drizzle ORM issues
-  const rawResult = await client.unsafe(`
+  const rawResult = await client.unsafe(
+    `
     SELECT
       p.id, p.brand, p.model, p.category, p.mount, p.condition,
       p.price, p.cogs, p.warranty_months, p.warranty_type, p.stock,
@@ -73,8 +74,10 @@ export const getAllProducts = async (
     FROM products p
     WHERE p.deleted = false
     ORDER BY p.created_at DESC
-    LIMIT ${limit} OFFSET ${offset}
-  `);
+    LIMIT $1 OFFSET $2
+  `,
+    [limit, offset],
+  );
 
   return {
     products: rawResult.map((row: any) => parseDbProduct(row)),
@@ -398,23 +401,39 @@ export const createSerialNumbersBulk = async (
 
   const result = await db.insert(serialNumbers).values(values).returning();
 
-  // Update product's invoiceNumber, supplier, dateRestocked when adding SNs (restocking)
-  if (validated.length > 0 && validated[0].productId) {
-    const productId = validated[0].productId;
-    const updateData: Record<string, unknown> = { updatedAt: new Date() };
-    if (supplier) updateData.supplier = supplier;
-    if (date) updateData.dateRestocked = new Date(date);
-    if (invoiceNumber) updateData.invoiceNumber = invoiceNumber;
-
-    if (Object.keys(updateData).length > 0) {
-      await db.update(products).set(updateData).where(eq(products.id, productId));
+  // Increment stock for each product by the number of new SNs added
+  const productCounts = new Map<string, { count: number; sns: string[] }>();
+  for (const v of validated) {
+    const entry = productCounts.get(v.productId);
+    if (entry) {
+      entry.count++;
+      entry.sns.push(v.sn);
+    } else {
+      productCounts.set(v.productId, { count: 1, sns: [v.sn] });
     }
+  }
+
+  for (const [productId, { count, sns }] of productCounts) {
+    // Increment stock + update metadata in a single query
+    const setClauses = ["stock = stock + $1", "updated_at = NOW()"];
+    const params: (string | number | Date | null)[] = [count];
+    let paramIdx = 2;
+
+    if (supplier) { setClauses.push(`supplier = $${paramIdx++}`); params.push(supplier); }
+    if (date) { setClauses.push(`date_restocked = $${paramIdx++}`); params.push(new Date(date)); }
+    if (invoiceNumber) { setClauses.push(`invoice_number = $${paramIdx++}`); params.push(invoiceNumber); }
+    params.push(productId);
+
+    await client.unsafe(
+      `UPDATE products SET ${setClauses.join(", ")} WHERE id = $${paramIdx}`,
+      params,
+    );
 
     const [product] = await db
       .select()
       .from(products)
       .where(eq(products.id, productId));
-    const snList = validated.map((v) => v.sn).join(", ");
+    const snList = sns.join(", ");
     const supplierInfo = supplier || "Unknown";
     const dateInfo = date || new Date().toISOString().split("T")[0];
     const reasonInfo = reason || "Not specified";
@@ -424,7 +443,7 @@ export const createSerialNumbersBulk = async (
       id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       staffName: "System",
       action: "Stock Addition",
-      details: `Added ${validated.length} serial number(s) to ${product?.brand || ""} ${product?.model || ""} from supplier ${supplierInfo} on ${dateInfo}, invoice: ${invoiceInfo}, reason: ${reasonInfo}. SN: ${snList}`,
+      details: `Added ${count} serial number(s) to ${product?.brand || ""} ${product?.model || ""} from supplier ${supplierInfo} on ${dateInfo}, invoice: ${invoiceInfo}, reason: ${reasonInfo}. SN: ${snList}`,
       relatedId: productId,
     });
   }

@@ -122,6 +122,13 @@ const POSView: React.FC<POSProps> = ({
     );
   }, [sns, cart, visibleProductIds]);
 
+  // Get effective stock for a product: for SN products, count available serial numbers;
+  // for non-SN products, use the product.stock field.
+  const getEffectiveStock = (p: Product) =>
+    p.hasSerialNumber
+      ? availableSNs.filter((sn) => sn.productId === p.id).length
+      : p.stock;
+
   const fuzzyMatch = (text: string, query: string): boolean => {
     const textLower = text.toLowerCase();
     const queryLower = query.toLowerCase();
@@ -235,7 +242,8 @@ const POSView: React.FC<POSProps> = ({
     }
 
     if (matchedProduct) {
-      if (matchedProduct.stock === 0) {
+      const effectiveStock = getEffectiveStock(matchedProduct);
+      if (effectiveStock === 0) {
         setToast({ message: "Stok produk ini habis", type: "error" });
         setSearch("");
         return;
@@ -517,8 +525,10 @@ const POSView: React.FC<POSProps> = ({
                     const availableCount = availableSNs.filter(
                       (sn) => sn.productId === product.id,
                     ).length;
-                    const hasNoSN = product.stock > 0 && availableCount === 0;
-                    const isOutOfStock = product.stock === 0;
+                    // Only show NO SN badge for non-SN products that have stock but no serial numbers
+                    const hasNoSN = !product.hasSerialNumber && product.stock > 0 && availableCount === 0;
+                    const effectiveStock = getEffectiveStock(product);
+                    const isOutOfStock = effectiveStock === 0;
                     return (
                       <button
                         key={product.id}

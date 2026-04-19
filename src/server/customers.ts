@@ -59,10 +59,11 @@ export const getAllCustomersHandler = async (
   const offset = (page - 1) * limit;
 
   const result = await client.unsafe(
-    `SELECT * FROM customers WHERE deleted = false ORDER BY name LIMIT ${limit} OFFSET ${offset}`,
+    "SELECT * FROM customers WHERE deleted = false ORDER BY name LIMIT $1 OFFSET $2",
+    [limit, offset],
   );
   const countResult = await client.unsafe(
-    `SELECT COUNT(*) as count FROM customers WHERE deleted = false`,
+    "SELECT COUNT(*) as count FROM customers WHERE deleted = false",
   );
   const total = Number(countResult[0]?.count) || 0;
 
@@ -234,7 +235,8 @@ export const getAllSalesHandler = async (
   const offset = (page - 1) * limit;
 
   const salesResult = await client.unsafe(
-    `SELECT * FROM sales ORDER BY timestamp DESC LIMIT ${limit} OFFSET ${offset}`,
+    "SELECT * FROM sales ORDER BY timestamp DESC LIMIT $1 OFFSET $2",
+    [limit, offset],
   );
   const countResult = await client.unsafe("SELECT COUNT(*) as count FROM sales");
   const total = Number(countResult[0]?.count) || 0;
@@ -306,8 +308,51 @@ export const createSaleHandler = async (data: {
   const installmentsJson = amountPaid > 0
     ? JSON.stringify([{ amount: amountPaid, timestamp: new Date().toISOString() }])
     : "[]";
+
+  // Use a transaction to ensure atomicity of the entire sale creation
+  const tx = await client.begin();
   try {
-    await client.unsafe(
+    // --- Pre-flight checks: validate stock & SN status before any writes ---
+
+    // Aggregate quantities by product to handle duplicate productIds correctly
+    const productQuantities = new Map<string, number>();
+    for (const item of data.items) {
+      productQuantities.set(
+        item.productId,
+        (productQuantities.get(item.productId) || 0) + 1,
+      );
+    }
+
+    for (const [productId, quantity] of productQuantities) {
+      // Lock and check product stock (FOR UPDATE prevents concurrent races)
+      const [product] = await tx.unsafe(
+        "SELECT stock, model FROM products WHERE id = $1 FOR UPDATE",
+        [productId],
+      );
+      if (!product || Number(product.stock) < quantity) {
+        throw new Error(
+          `Insufficient stock for ${product?.model || productId}: need ${quantity}, have ${product?.stock ?? 0}`,
+        );
+      }
+    }
+
+    // Check each serial number is In Stock
+    for (const item of data.items) {
+      if (!item.sn.startsWith("NOSN-")) {
+        const [snRow] = await tx.unsafe(
+          "SELECT status FROM serial_numbers WHERE sn = $1 FOR UPDATE",
+          [item.sn],
+        );
+        if (!snRow || snRow.status !== "In Stock") {
+          throw new Error(
+            `Serial number ${item.sn} is not available (status: ${snRow?.status || "not found"})`,
+          );
+        }
+      }
+    }
+
+    // --- All checks passed — proceed with writes ---
+    await tx.unsafe(
       "INSERT INTO sales (id, customer_id, customer_name, subtotal, tax, tax_enabled, total, payment_method, staff_name, notes, due_date, is_paid, amount_paid, installments) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
       [
         data.id,
@@ -331,10 +376,10 @@ export const createSaleHandler = async (data: {
       // Look up product brand if not provided
       let brand = item.brand;
       if (!brand) {
-        const [product] = await client.unsafe("SELECT brand FROM products WHERE id = $1", [item.productId]);
+        const [product] = await tx.unsafe("SELECT brand FROM products WHERE id = $1", [item.productId]);
         brand = product?.brand as string | undefined;
       }
-      await client.unsafe(
+      await tx.unsafe(
         "INSERT INTO sale_items (sale_id, product_id, brand, model, sn, price, cogs, warranty_expiry) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
         [
           data.id,
@@ -350,18 +395,18 @@ export const createSaleHandler = async (data: {
 
       // Only update SN status if it's a real serial number (not NOSN-xxx)
       if (!item.sn.startsWith("NOSN-")) {
-        await client.unsafe("UPDATE serial_numbers SET status = $1 WHERE sn = $2", [
+        await tx.unsafe("UPDATE serial_numbers SET status = $1 WHERE sn = $2", [
           "Sold",
           item.sn,
         ]);
       }
 
-      // Always deduct stock
-      await client.unsafe("UPDATE products SET stock = stock - 1 WHERE id = $1", [item.productId]);
+      // Deduct stock — safe because we already verified stock > 0 with FOR UPDATE
+      await tx.unsafe("UPDATE products SET stock = stock - 1 WHERE id = $1", [item.productId]);
 
       // Audit log - differentiate between SN and non-SN items
       const snLabel = item.sn.startsWith("NOSN-") ? "tanpa SN" : `SN: ${item.sn}`;
-      await client.unsafe(
+      await tx.unsafe(
         "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
         [
           `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
@@ -373,7 +418,7 @@ export const createSaleHandler = async (data: {
       );
     }
 
-    await client.unsafe(
+    await tx.unsafe(
       "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
       [
         `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
@@ -384,15 +429,22 @@ export const createSaleHandler = async (data: {
       ],
     );
 
-    const pointsEarned = Math.floor(data.total / 1000);
-    await client.unsafe(
-      "UPDATE customers SET loyalty_points = loyalty_points + $1, updated_at = NOW() WHERE id = $2",
-      [pointsEarned, data.customerId],
-    );
+    // Award loyalty points only for immediate-payment sales (Cash/Debit/QRIS/Transfer).
+    // Utang sales get points when marked as paid (markSaleAsPaid / recordInstallment).
+    if (data.isPaid !== false) {
+      const pointsEarned = Math.floor(data.total / 1000);
+      await tx.unsafe(
+        "UPDATE customers SET loyalty_points = loyalty_points + $1, updated_at = NOW() WHERE id = $2",
+        [pointsEarned, data.customerId],
+      );
+    }
+
+    await tx.commit();
 
     const result = await client.unsafe("SELECT * FROM sales WHERE id = $1", [data.id]);
     return parseDbSale(result[0]);
   } catch (err) {
+    try { await tx.rollback(); } catch { /* rollback may fail if already rolled back */ }
     console.error("Sale creation failed:", err);
     throw err;
   }
@@ -450,7 +502,8 @@ export const getAllWarrantyClaimsHandler = async (
   const offset = (page - 1) * limit;
 
   const result = await client.unsafe(
-    `SELECT * FROM warranty_claims ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`,
+    "SELECT * FROM warranty_claims ORDER BY created_at DESC LIMIT $1 OFFSET $2",
+    [limit, offset],
   );
   const countResult = await client.unsafe("SELECT COUNT(*) as count FROM warranty_claims");
   const total = Number(countResult[0]?.count) || 0;
@@ -511,6 +564,16 @@ export const updateWarrantyClaimHandler = async (id: string, status: string) => 
 };
 
 export const markSaleAsPaidHandler = async (saleId: string, staffName: string) => {
+  // Fetch pre-update state to check if sale was already paid
+  const [preUpdate] = await client.unsafe(
+    "SELECT is_paid, customer_id, total FROM sales WHERE id = $1",
+    [saleId],
+  );
+  if (!preUpdate) {
+    throw new Error("Sale not found");
+  }
+  const wasAlreadyPaid = preUpdate.is_paid === true;
+
   const now = new Date().toISOString();
 
   const result = await client.unsafe(
@@ -524,13 +587,22 @@ export const markSaleAsPaidHandler = async (saleId: string, staffName: string) =
 
   const sale = result[0];
 
-  const pointsEarned = Math.floor(Number(sale.total) / 1000);
-  if (pointsEarned > 0) {
-    await client.unsafe(
-      "UPDATE customers SET loyalty_points = loyalty_points + $1, updated_at = NOW() WHERE id = $2",
-      [pointsEarned, sale.customer_id],
-    );
+  // Award loyalty points only if transitioning from unpaid → paid.
+  // Prevents double-counting: immediate-payment sales already got points at creation.
+  let pointsAwarded = 0;
+  if (!wasAlreadyPaid) {
+    pointsAwarded = Math.floor(Number(sale.total) / 1000);
+    if (pointsAwarded > 0) {
+      await client.unsafe(
+        "UPDATE customers SET loyalty_points = loyalty_points + $1, updated_at = NOW() WHERE id = $2",
+        [pointsAwarded, sale.customer_id],
+      );
+    }
   }
+
+  const pointsLogMsg = wasAlreadyPaid
+    ? "Loyalty points: already awarded at sale creation"
+    : `Loyalty points awarded: ${pointsAwarded}`;
 
   await client.unsafe(
     "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
@@ -538,7 +610,7 @@ export const markSaleAsPaidHandler = async (saleId: string, staffName: string) =
       `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
       staffName,
       "General",
-      `Marked sale ${saleId} as paid. Loyalty points awarded: ${pointsEarned}`,
+      `Marked sale ${saleId} as paid. ${pointsLogMsg}`,
       saleId,
     ],
   );
@@ -596,14 +668,30 @@ export const recordInstallmentHandler = async (saleId: string, amount: number, s
     params,
   );
 
+  // Award loyalty points when installment completes payment (unpaid → paid transition).
+  // Prevents double-counting: points are only awarded once, at the moment the sale becomes fully paid.
+  let pointsAwarded = 0;
+  if (isNowPaid && !sale.is_paid) {
+    pointsAwarded = Math.floor(parseFloat(sale.total) / 1000);
+    if (pointsAwarded > 0) {
+      await client.unsafe(
+        "UPDATE customers SET loyalty_points = loyalty_points + $1, updated_at = NOW() WHERE id = $2",
+        [pointsAwarded, sale.customer_id],
+      );
+    }
+  }
+
   // Audit log
+  const pointsLogSuffix = isNowPaid
+    ? `. Loyalty points awarded: ${pointsAwarded}`
+    : "";
   await client.unsafe(
     "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
     [
       `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
       staffName,
       "General",
-      `Installment of Rp ${new Intl.NumberFormat("id-ID").format(amount)} recorded for sale ${saleId}. Total paid: Rp ${new Intl.NumberFormat("id-ID").format(newTotalPaid)}/Rp ${new Intl.NumberFormat("id-ID").format(saleTotal)}${isNowPaid ? " (FULLY PAID)" : ""}`,
+      `Installment of Rp ${new Intl.NumberFormat("id-ID").format(amount)} recorded for sale ${saleId}. Total paid: Rp ${new Intl.NumberFormat("id-ID").format(newTotalPaid)}/Rp ${new Intl.NumberFormat("id-ID").format(saleTotal)}${isNowPaid ? " (FULLY PAID)" : ""}${pointsLogSuffix}`,
       saleId,
     ],
   );

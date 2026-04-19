@@ -234,8 +234,9 @@ const InventoryView: React.FC<InventoryProps> = ({
     }
     const { id, desc } = sorting[0];
     return [...filteredProducts].sort((a, b) => {
-      let aVal: any = a[id as keyof Product];
-      let bVal: any = b[id as keyof Product];
+      // For stock column, use getProductStock for accurate SN-based counts
+      let aVal: any = id === "stock" ? getProductStock(a) : a[id as keyof Product];
+      let bVal: any = id === "stock" ? getProductStock(b) : b[id as keyof Product];
       if (id === "createdAt") {
         aVal = aVal || "";
         bVal = bVal || "";
@@ -247,7 +248,7 @@ const InventoryView: React.FC<InventoryProps> = ({
       if (aVal > bVal) return desc ? -1 : 1;
       return 0;
     });
-  }, [filteredProducts, sorting]);
+  }, [filteredProducts, sorting, sns]);
 
   const handleAdjustSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -2291,7 +2292,7 @@ const InventoryView: React.FC<InventoryProps> = ({
                 <p className="text-center text-sm font-bold">
                   Stok baru:{" "}
                   <span className="text-indigo-600">
-                    {Math.max(0, simpleAdjustProduct.stock + simpleAdjustAmount)}
+                    {Math.max(0, getProductStock(simpleAdjustProduct) + simpleAdjustAmount)}
                   </span>{" "}
                   unit
                 </p>
