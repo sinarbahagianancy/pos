@@ -39,7 +39,7 @@ export interface Product {
   dateRestocked?: string;
   hidden?: number;
   taxEnabled?: boolean;
-  invoiceNumber?: string;
+  invoiceNumbers?: string[];
 }
 
 export interface CreateProductInput {
@@ -159,7 +159,7 @@ export function validateCreateProductInput(input: unknown): CreateProductInput {
   if (!isConditionType(obj.condition)) {
     throw new Error(`Invalid input: condition must be one of ${ConditionTypes.join(", ")}`);
   }
-  if (typeof obj.price !== "number" || obj.price <= 0) {
+  if (typeof obj.price !== "number" || obj.price < 0) {
     throw new Error("Invalid input: price must be a positive number");
   }
   if (typeof obj.cogs !== "number" || obj.cogs < 0) {
@@ -209,7 +209,7 @@ export function validateCreateProductInput(input: unknown): CreateProductInput {
     serialNumbers: obj.serialNumbers as string[] | undefined,
     quantity: obj.quantity as number | undefined,
     taxEnabled: obj.taxEnabled as boolean | undefined,
-    invoiceNumber: obj.invoiceNumber as string | undefined,
+    invoiceNumber: obj.invoiceNumber as string | undefined, // kept for create-time single input
   };
 }
 
@@ -252,7 +252,7 @@ export function validateUpdateProductInput(input: unknown): UpdateProductInput {
     result.condition = obj.condition as ConditionType;
   }
   if (obj.price !== undefined) {
-    if (typeof obj.price !== "number" || obj.price <= 0) {
+    if (typeof obj.price !== "number" || obj.price < 0) {
       throw new Error("Invalid input: price must be a positive number");
     }
     result.price = obj.price as number;
@@ -335,6 +335,24 @@ export function validateCreateSerialNumberInput(input: unknown): CreateSerialNum
   };
 }
 
+/** Parse the invoice_number column from DB: supports both JSON array and legacy plain string */
+export function parseInvoiceNumbers(value: unknown): string[] {
+  if (!value) return [];
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed.filter((v: unknown) => typeof v === "string" && v.length > 0);
+    } catch {
+      // Legacy plain string — wrap in array
+      return [trimmed];
+    }
+  }
+  // Fallback for unexpected types
+  return [];
+}
+
 export function parseDbProduct(row: Record<string, unknown>): Product {
   const hasSN = row.has_serial_number;
   const taxEnabledValue = (
@@ -366,7 +384,7 @@ export function parseDbProduct(row: Record<string, unknown>): Product {
     dateRestocked: row.date_restocked as string | undefined,
     hidden: row.hidden as number | undefined,
     taxEnabled,
-    invoiceNumber: row.invoice_number as string | undefined,
+    invoiceNumbers: parseInvoiceNumbers(row.invoice_number),
   };
 }
 

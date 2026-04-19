@@ -404,6 +404,7 @@ const POSView: React.FC<POSProps> = ({
       staffName,
       notes: transactionNotes,
       dueDate: paymentMethod === "Utang" && dueDate ? dueDate : undefined,
+      isPaid: paymentMethod !== "Utang" || utangAmountPaid >= total,
       amountPaid: paymentMethod === "Utang" ? utangAmountPaid : total,
       timestamp: new Date().toISOString(),
     };

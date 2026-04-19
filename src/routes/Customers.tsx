@@ -147,6 +147,9 @@ const CustomersView: React.FC<CustomersProps> = ({
         await onAddCustomer(customer);
       }
       setCustomers((prev) => [...prev, customer]);
+      // Navigate to the page where the new customer appears (appended at end = last page)
+      setSearchQuery("");
+      setCurrentPage(Math.ceil((customers.length + 1) / perPage));
       notify(`${newCustomer.name} berhasil didaftarkan ke sistem.`, "success");
       setShowAddModal(false);
       setConfirmAdd(false);

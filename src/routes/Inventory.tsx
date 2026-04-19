@@ -465,7 +465,6 @@ const InventoryView: React.FC<InventoryProps> = ({
       hasSerialNumber: newProductHasSN,
       supplier: newProductSupplier,
       dateRestocked: new Date(newProductDate).toISOString(),
-      invoiceNumber: newProductInvoiceNumber || undefined,
       taxEnabled: newP.taxEnabled,
     };
 
@@ -474,10 +473,14 @@ const InventoryView: React.FC<InventoryProps> = ({
       ...p,
       serialNumbers: newProductHasSN ? serialList : undefined,
       quantity: newProductHasSN ? undefined : newProductQuantity,
+      invoiceNumber: newProductInvoiceNumber || undefined,
     };
 
     try {
       onAddProduct(productWithSerials, newProductHasSN ? serialList : []);
+      // Navigate to page 1 where the new product appears (newest-first sort)
+      setFilter("");
+      onPageChange?.(1);
       setShowAddModal(false);
       setConfirmAdd(false);
       setNewP({
@@ -729,9 +732,9 @@ const InventoryView: React.FC<InventoryProps> = ({
                         <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1">
                           {p.category} • {p.condition} • {p.warrantyMonths / 12} Thn Garansi
                         </span>
-                        {p.invoiceNumber && (
+                        {p.invoiceNumbers && p.invoiceNumbers.length > 0 && (
                           <span className="text-[9px] text-indigo-500 font-bold uppercase tracking-widest mt-0.5">
-                            Inv: {p.invoiceNumber}
+                            Inv: {p.invoiceNumbers.join(", ")}
                           </span>
                         )}
                       </div>
@@ -779,10 +782,11 @@ const InventoryView: React.FC<InventoryProps> = ({
                             })
                           : ""}
                       </span>
-                      {/* HOTFIX */}
-                      <span className="text-xs font-medium text-slate-400">
-                        {p.invoiceNumber || ""}
-                      </span>
+                      {p.invoiceNumbers && p.invoiceNumbers.length > 0 && (
+                        <span className="text-[10px] font-medium text-slate-400">
+                          {p.invoiceNumbers.join(", ")}
+                        </span>
+                      )}
                     </td>
                     <td className="px-8 py-6 text-center">
                       <div className="flex items-center justify-center gap-1">

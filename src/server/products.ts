@@ -8,6 +8,7 @@ import {
   validateCreateSerialNumberInput,
   parseDbProduct,
   parseDbSerialNumber,
+  parseInvoiceNumbers,
   Product,
 } from "../../app/schemas/product.schema";
 
@@ -38,6 +39,16 @@ try {
 
   // Migrate existing 'Store Warranty' data to 'Toko'
   await client.unsafe(`UPDATE products SET warranty_type = 'Toko' WHERE warranty_type = 'Store Warranty'`).catch((e) => { console.error('Failed to migrate Store Warranty → Toko:', e); });
+
+  // Migrate invoice_number from plain string to JSON array
+  // Only migrate rows that are non-null, non-empty, and don't already start with '['
+  await client.unsafe(`
+    UPDATE products
+    SET invoice_number = json_build_array(invoice_number)::text
+    WHERE invoice_number IS NOT NULL
+      AND invoice_number != ''
+      AND invoice_number NOT LIKE '[%'
+  `).catch((e) => { console.error('Failed to migrate invoice_number to array:', e); });
 } catch (e) {
   console.log("Migration check (may be ok):", e);
 }
@@ -120,7 +131,7 @@ export const createProduct = async (input: unknown) => {
       supplier: validated.supplier || null,
       dateRestocked: validated.dateRestocked ? new Date(validated.dateRestocked) : new Date(),
       taxEnabled: validated.taxEnabled === true,
-      invoiceNumber: validated.invoiceNumber || null,
+      invoiceNumber: validated.invoiceNumber ? JSON.stringify([validated.invoiceNumber]) : null,
     })
     .returning();
 
@@ -286,7 +297,12 @@ export const adjustStock = async (
     updateData.dateRestocked = new Date(dateRestocked);
   }
   if (diff > 0 && invoiceNumber) {
-    updateData.invoiceNumber = invoiceNumber;
+    // Append invoice number to existing array (safe parse handles both JSON arrays and legacy plain strings)
+    const existing = parseInvoiceNumbers(product.invoiceNumber);
+    if (!existing.includes(invoiceNumber)) {
+      existing.push(invoiceNumber);
+    }
+    updateData.invoiceNumber = JSON.stringify(existing);
   }
 
   const [result] = await db
@@ -419,9 +435,20 @@ export const createSerialNumbersBulk = async (
     const params: (string | number | Date | null)[] = [count];
     let paramIdx = 2;
 
+    // Fetch existing product to read current invoice_number for appending
+    const [existingProduct] = await db.select().from(products).where(eq(products.id, productId));
+
     if (supplier) { setClauses.push(`supplier = $${paramIdx++}`); params.push(supplier); }
     if (date) { setClauses.push(`date_restocked = $${paramIdx++}`); params.push(new Date(date)); }
-    if (invoiceNumber) { setClauses.push(`invoice_number = $${paramIdx++}`); params.push(invoiceNumber); }
+    if (invoiceNumber) {
+      // Append invoice number to existing JSON array
+      const existing = parseInvoiceNumbers(existingProduct?.invoiceNumber);
+      if (!existing.includes(invoiceNumber)) {
+        existing.push(invoiceNumber);
+      }
+      setClauses.push(`invoice_number = $${paramIdx++}`);
+      params.push(JSON.stringify(existing));
+    }
     params.push(productId);
 
     await client.unsafe(
@@ -465,16 +492,39 @@ export const updateSerialNumberStatus = async (
     .where(eq(serialNumbers.sn, sn))
     .returning();
 
+  // Sync product stock when SN status changes
+  if (existingSN && existingSN.status !== status) {
+    const wasInStock = existingSN.status === "In Stock";
+    const nowInStock = status === "In Stock";
+
+    if (wasInStock && !nowInStock) {
+      // SN left inventory — decrement stock
+      await client.unsafe(
+        "UPDATE products SET stock = GREATEST(stock - 1, 0), updated_at = NOW() WHERE id = $1",
+        [existingSN.productId],
+      );
+    } else if (!wasInStock && nowInStock) {
+      // SN returned to inventory — increment stock
+      await client.unsafe(
+        "UPDATE products SET stock = stock + 1, updated_at = NOW() WHERE id = $1",
+        [existingSN.productId],
+      );
+    }
+  }
+
   // Create audit log for status change
   if (existingSN) {
     const [product] = await db.select().from(products).where(eq(products.id, existingSN.productId));
     const reasonInfo = reason || "Not specified";
+    const stockChangeNote = existingSN.status !== status
+      ? wasInStock ? " (stock decremented)" : nowInStock ? " (stock incremented)" : ""
+      : "";
 
     await db.insert(auditLogs).values({
       id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       staffName: "System",
       action: "Manual Correction",
-      details: `Marked serial number ${sn} as ${status} for ${product?.brand || ""} ${product?.model || ""}, reason: ${reasonInfo}`,
+      details: `Marked serial number ${sn} as ${status} for ${product?.brand || ""} ${product?.model || ""}, reason: ${reasonInfo}${stockChangeNote}`,
       relatedId: existingSN.productId,
     });
   }

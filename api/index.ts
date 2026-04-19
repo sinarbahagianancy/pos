@@ -138,7 +138,7 @@ interface Product {
   dateRestocked?: string;
   hidden?: number;
   taxEnabled?: boolean;
-  invoiceNumber?: string;
+  invoiceNumbers?: string[];
 }
 
 interface SerialNumber {
@@ -212,6 +212,23 @@ interface SaleItem {
   warrantyExpiry: string;
 }
 
+/** Parse the invoice_number column from DB: supports both JSON array and legacy plain string */
+const parseApiInvoiceNumbers = (value: unknown): string[] => {
+  if (!value) return [];
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed.filter((v: unknown) => typeof v === "string" && v.length > 0);
+    } catch {
+      // Legacy plain string — wrap in array
+      return [trimmed];
+    }
+  }
+  return [];
+};
+
 const fmtIDR = (n: number | string) => `Rp ${new Intl.NumberFormat("id-ID").format(Number(n))}`;
 
 const parseDbProduct = (row: Record<string, unknown>): Product => {
@@ -235,7 +252,7 @@ const parseDbProduct = (row: Record<string, unknown>): Product => {
     dateRestocked: row.date_restocked as string | undefined,
     hidden: row.hidden as number | undefined,
     taxEnabled: row.tax_enabled as boolean,
-    invoiceNumber: row.invoice_number as string | undefined,
+    invoiceNumbers: parseApiInvoiceNumbers(row.invoice_number),
   };
 };
 
@@ -429,6 +446,17 @@ const initializeDatabase = async () => {
       .unsafe(`UPDATE products SET warranty_type = 'Toko' WHERE warranty_type = 'Store Warranty'`)
       .catch((e) => { console.error('Failed to migrate Store Warranty → Toko:', e); });
 
+    // Migrate invoice_number from plain string to JSON array
+    await client
+      .unsafe(`
+        UPDATE products
+        SET invoice_number = json_build_array(invoice_number)::text
+        WHERE invoice_number IS NOT NULL
+          AND invoice_number != ''
+          AND invoice_number NOT LIKE '[%'
+      `)
+      .catch((e) => { console.error('Failed to migrate invoice_number to array:', e); });
+
     // Add Login and Logout to audit_action enum
     await client
       .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Login'`)
@@ -556,7 +584,7 @@ const validateCreateProductInput = (input: unknown): CreateProductInput => {
   if (typeof obj.model !== "string" || !obj.model) throw new Error("Invalid model");
   if (!isProductCategory(obj.category)) throw new Error("Invalid category");
   if (!isConditionType(obj.condition)) throw new Error("Invalid condition");
-  if (typeof obj.price !== "number" || obj.price <= 0) throw new Error("Invalid price");
+  if (typeof obj.price !== "number" || obj.price < 0) throw new Error("Invalid price");
   if (typeof obj.cogs !== "number" || obj.cogs < 0) throw new Error("Invalid cogs");
   if (typeof obj.warrantyMonths !== "number" || obj.warrantyMonths < 0)
     throw new Error("Invalid warrantyMonths");
@@ -727,7 +755,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   ) => {
     const offset = (page - 1) * limit;
     const result = await client.unsafe(
-      `SELECT * FROM ${table} WHERE ${whereClause} ORDER BY ${orderBy} LIMIT ${limit} OFFSET ${offset}`,
+      `SELECT * FROM ${table} WHERE ${whereClause} ORDER BY ${orderBy} LIMIT $1 OFFSET $2`,
+      [limit, offset],
     );
     const countResult = await client.unsafe(
       `SELECT COUNT(*) as count FROM ${table} WHERE ${whereClause}`,
@@ -790,7 +819,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           supplier: validated.supplier,
           date_restocked: validated.dateRestocked ? new Date(validated.dateRestocked) : new Date(),
           tax_enabled: validated.taxEnabled ?? true,
-          invoice_number: validated.invoiceNumber || null,
+          invoice_number: validated.invoiceNumber ? JSON.stringify([validated.invoiceNumber]) : null,
         },
       ]);
 
@@ -946,7 +975,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         updateData.date_restocked = new Date(dateRestocked);
       }
       if (diff > 0 && invoiceNumber) {
-        updateData.invoice_number = invoiceNumber;
+        // Append invoice number to existing JSON array
+        const existing = parseApiInvoiceNumbers(product.invoice_number);
+        if (!existing.includes(invoiceNumber)) {
+          existing.push(invoiceNumber);
+        }
+        updateData.invoice_number = JSON.stringify(existing);
       }
 
       const [result] = await db.update("products", updateData, { column: "id", value: productId });
@@ -1089,24 +1123,48 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const result = await db.insert("serial_numbers", values);
 
-      // Update product's invoiceNumber, supplier, dateRestocked when adding SNs (restocking)
-      if (validated.length > 0 && validated[0].productId) {
-        const productUpdateData: Record<string, unknown> = {};
-        if (supplier) productUpdateData.supplier = supplier;
-        if (date) productUpdateData.date_restocked = new Date(date);
-        if (invoiceNumber) productUpdateData.invoice_number = invoiceNumber;
-
-        if (Object.keys(productUpdateData).length > 0) {
-          await db.update("products", productUpdateData, { column: "id", value: validated[0].productId });
+      // Increment stock for each product by the number of new SNs added
+      const productCounts = new Map<string, { count: number; sns: string[] }>();
+      for (const v of validated) {
+        const entry = productCounts.get(v.productId);
+        if (entry) {
+          entry.count++;
+          entry.sns.push(v.sn);
+        } else {
+          productCounts.set(v.productId, { count: 1, sns: [v.sn] });
         }
       }
 
-      // Create audit log with supplier, date, and reason info
-      if (validated.length > 0 && validated[0].productId) {
+      for (const [productId, { count, sns }] of productCounts) {
+        // Increment stock + update metadata in a single query
+        const setClauses = ["stock = stock + $1", "updated_at = NOW()"];
+        const params: (string | number | Date | null)[] = [count];
+        let paramIdx = 2;
+
+        if (supplier) { setClauses.push(`supplier = $${paramIdx++}`); params.push(supplier); }
+        if (date) { setClauses.push(`date_restocked = $${paramIdx++}`); params.push(new Date(date)); }
+        if (invoiceNumber) {
+          // Append invoice number to existing JSON array
+          const [existingProduct] = await client.unsafe("SELECT invoice_number FROM products WHERE id = $1", [productId]);
+          const existing = parseApiInvoiceNumbers(existingProduct?.invoice_number);
+          if (!existing.includes(invoiceNumber)) {
+            existing.push(invoiceNumber);
+          }
+          setClauses.push(`invoice_number = $${paramIdx++}`);
+          params.push(JSON.stringify(existing));
+        }
+        params.push(productId);
+
+        await client.unsafe(
+          `UPDATE products SET ${setClauses.join(", ")} WHERE id = $${paramIdx}`,
+          params,
+        );
+
+        // Create audit log per product
         const [product] = await client.unsafe("SELECT brand, model FROM products WHERE id = $1", [
-          validated[0].productId,
+          productId,
         ]);
-        const snList = validated.map((v: CreateSerialNumberInput) => v.sn).join(", ");
+        const snList = sns.join(", ");
         const supplierInfo = supplier || "Unknown";
         const dateInfo = date || new Date().toISOString().split("T")[0];
         const reasonInfo = reason || "Not specified";
@@ -1119,8 +1177,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
             "System",
             "Stock Addition",
-            `Added ${validated.length} serial number(s) to ${product?.brand || ""} ${product?.model || ""} from supplier ${supplierInfo} on ${dateInfo}, invoice: ${invoiceInfo}, reason: ${reasonInfo}. SN: ${snList}`,
-            validated[0].productId,
+            `Added ${count} serial number(s) to ${product?.brand || ""} ${product?.model || ""} from supplier ${supplierInfo} on ${dateInfo}, invoice: ${invoiceInfo}, reason: ${reasonInfo}. SN: ${snList}`,
+            productId,
           ],
         );
       }
@@ -1134,12 +1192,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const { status, reason } = input;
 
-      console.log("=== DEBUG: Update SN status ===");
-      console.log("SN:", sn, "Status:", status);
-
-      // Get the SN to find product info before updating
+      // Get the SN to find product info and current status before updating
       const [existingSN] = await client.unsafe(
-        "SELECT product_id FROM serial_numbers WHERE sn = $1",
+        "SELECT product_id, status FROM serial_numbers WHERE sn = $1",
         [sn],
       );
 
@@ -1147,10 +1202,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         "UPDATE serial_numbers SET status = $1 WHERE sn = $2 RETURNING *",
         [status, sn],
       );
-      console.log("Update result:", result);
 
       if (!result || result.length === 0) {
         return res.status(404).json({ error: "Serial number not found" });
+      }
+
+      // Sync product stock when SN status changes
+      if (existingSN && existingSN.status !== status) {
+        const wasInStock = existingSN.status === "In Stock";
+        const nowInStock = status === "In Stock";
+
+        if (wasInStock && !nowInStock) {
+          // SN left inventory — decrement stock
+          await client.unsafe(
+            "UPDATE products SET stock = GREATEST(stock - 1, 0), updated_at = NOW() WHERE id = $1",
+            [existingSN.product_id],
+          );
+        } else if (!wasInStock && nowInStock) {
+          // SN returned to inventory — increment stock
+          await client.unsafe(
+            "UPDATE products SET stock = stock + 1, updated_at = NOW() WHERE id = $1",
+            [existingSN.product_id],
+          );
+        }
       }
 
       // Create audit log for status change
@@ -1159,6 +1233,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           existingSN.product_id,
         ]);
         const reasonInfo = reason || "Not specified";
+        const stockChangeNote = existingSN.status !== status
+          ? wasInStock ? " (stock decremented)" : nowInStock ? " (stock incremented)" : ""
+          : "";
 
         await client.unsafe(
           `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) 
@@ -1167,7 +1244,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
             "System",
             "Manual Correction",
-            `Marked serial number ${sn} as ${status} for ${product?.brand || ""} ${product?.model || ""}, reason: ${reasonInfo}`,
+            `Marked serial number ${sn} as ${status} for ${product?.brand || ""} ${product?.model || ""}, reason: ${reasonInfo}${stockChangeNote}`,
             existingSN.product_id,
           ],
         );
@@ -1343,7 +1420,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { page, limit } = getPageLimit(req);
       const offset = (page - 1) * limit;
       const result = await client.unsafe(
-        `SELECT * FROM suppliers WHERE deleted = false ORDER BY name LIMIT ${limit} OFFSET ${offset}`,
+        `SELECT * FROM suppliers WHERE deleted = false ORDER BY name LIMIT $1 OFFSET $2`,
+        [limit, offset],
       );
       const countResult = await client.unsafe(
         "SELECT COUNT(*) as count FROM suppliers WHERE deleted = false",
@@ -1462,7 +1540,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { page, limit } = getPageLimit(req);
       const offset = (page - 1) * limit;
       const result = await client.unsafe(
-        `SELECT * FROM customers WHERE deleted = false ORDER BY name LIMIT ${limit} OFFSET ${offset}`,
+        `SELECT * FROM customers WHERE deleted = false ORDER BY name LIMIT $1 OFFSET $2`,
+        [limit, offset],
       );
       const countResult = await client.unsafe(
         "SELECT COUNT(*) as count FROM customers WHERE deleted = false",
@@ -1634,7 +1713,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { page, limit } = getPageLimit(req);
       const offset = (page - 1) * limit;
       const salesResult = await client.unsafe(
-        `SELECT * FROM sales ORDER BY timestamp DESC LIMIT ${limit} OFFSET ${offset}`,
+        `SELECT * FROM sales ORDER BY timestamp DESC LIMIT $1 OFFSET $2`,
+        [limit, offset],
       );
       const countResult = await client.unsafe("SELECT COUNT(*) as count FROM sales");
       const total = Number(countResult[0]?.count) || 0;
@@ -1682,6 +1762,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         items,
         subtotal,
         tax,
+        taxEnabled,
         total,
         paymentMethod,
         staffName,
@@ -1695,35 +1776,89 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: "Missing required fields" });
       }
 
+      const saleAmountPaid = amountPaid || 0;
+      const installmentsJson = saleAmountPaid > 0
+        ? JSON.stringify([{ amount: saleAmountPaid, timestamp: new Date().toISOString() }])
+        : "[]";
+
+      // Use a transaction to ensure atomicity of the entire sale creation
+      const tx = await client.begin();
       try {
-        // Insert sale
-        await client.unsafe(
-          "INSERT INTO sales (id, customer_id, customer_name, subtotal, tax, total, payment_method, staff_name, notes, due_date, is_paid, amount_paid, installments) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
+        // --- Pre-flight checks: validate stock & SN status before any writes ---
+
+        // Aggregate quantities by product to handle duplicate productIds correctly
+        const productQuantities = new Map<string, number>();
+        for (const item of items) {
+          productQuantities.set(
+            item.productId,
+            (productQuantities.get(item.productId) || 0) + 1,
+          );
+        }
+
+        for (const [productId, quantity] of productQuantities) {
+          // Lock and check product stock (FOR UPDATE prevents concurrent races)
+          const [product] = await tx.unsafe(
+            "SELECT stock, model FROM products WHERE id = $1 FOR UPDATE",
+            [productId],
+          );
+          if (!product || Number(product.stock) < quantity) {
+            await tx.rollback().catch(() => {});
+            return res.status(400).json({
+              error: `Insufficient stock for ${product?.model || productId}: need ${quantity}, have ${product?.stock ?? 0}`,
+            });
+          }
+        }
+
+        // Check each serial number is In Stock
+        for (const item of items) {
+          if (!item.sn.startsWith("NOSN-")) {
+            const [snRow] = await tx.unsafe(
+              "SELECT status FROM serial_numbers WHERE sn = $1 FOR UPDATE",
+              [item.sn],
+            );
+            if (!snRow || snRow.status !== "In Stock") {
+              await tx.rollback().catch(() => {});
+              return res.status(400).json({
+                error: `Serial number ${item.sn} is not available (status: ${snRow?.status || "not found"})`,
+              });
+            }
+          }
+        }
+
+        // --- All checks passed — proceed with writes ---
+        await tx.unsafe(
+          "INSERT INTO sales (id, customer_id, customer_name, subtotal, tax, tax_enabled, total, payment_method, staff_name, notes, due_date, is_paid, amount_paid, installments) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
           [
             id,
             customerId,
             customerName,
             String(subtotal),
             String(tax),
+            taxEnabled ?? true,
             String(total),
             paymentMethod,
             staffName,
             notes || null,
             dueDate || null,
             isPaid ?? false,
-            String(amountPaid || 0),
-            amountPaid > 0 ? JSON.stringify([{ amount: amountPaid, timestamp: new Date().toISOString() }]) : "[]",
+            String(saleAmountPaid),
+            installmentsJson,
           ],
         );
 
-        // Insert sale items, update serial numbers, deduct stock
         for (const item of items) {
-          await client.unsafe(
+          // Look up product brand if not provided
+          let brand = item.brand;
+          if (!brand) {
+            const [product] = await tx.unsafe("SELECT brand FROM products WHERE id = $1", [item.productId]);
+            brand = product?.brand as string | undefined;
+          }
+          await tx.unsafe(
             "INSERT INTO sale_items (sale_id, product_id, brand, model, sn, price, cogs, warranty_expiry) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
             [
               id,
               item.productId,
-              item.brand || null,
+              brand || null,
               item.model,
               item.sn,
               String(item.price),
@@ -1734,20 +1869,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           // Only update SN status if it's a real serial number (not NOSN-xxx)
           if (!item.sn.startsWith("NOSN-")) {
-            await client.unsafe("UPDATE serial_numbers SET status = $1 WHERE sn = $2", [
+            await tx.unsafe("UPDATE serial_numbers SET status = $1 WHERE sn = $2", [
               "Sold",
               item.sn,
             ]);
           }
 
-          // Deduct stock
-          await client.unsafe("UPDATE products SET stock = stock - 1 WHERE id = $1", [
+          // Deduct stock — safe because we already verified stock > 0 with FOR UPDATE
+          await tx.unsafe("UPDATE products SET stock = stock - 1 WHERE id = $1", [
             item.productId,
           ]);
 
           // Audit log - differentiate between SN and non-SN items
           const snLabel = item.sn.startsWith("NOSN-") ? "tanpa SN" : `SN: ${item.sn}`;
-          await client.unsafe(
+          await tx.unsafe(
             "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
             [
               `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
@@ -1760,7 +1895,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
 
         // Audit log for sale
-        await client.unsafe(
+        await tx.unsafe(
           "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
           [
             `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
@@ -1771,17 +1906,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ],
         );
 
-        // Update customer loyalty points (1 point per 1000 IDR)
-        const pointsEarned = Math.floor(total / 1000);
-        await client.unsafe(
-          "UPDATE customers SET loyalty_points = loyalty_points + $1, updated_at = NOW() WHERE id = $2",
-          [pointsEarned, customerId],
-        );
+        // Award loyalty points only for immediate-payment sales (Cash/Debit/QRIS/Transfer).
+        // Utang sales get points when marked as paid (markSaleAsPaid / recordInstallment).
+        if (isPaid !== false) {
+          const pointsEarned = Math.floor(total / 1000);
+          await tx.unsafe(
+            "UPDATE customers SET loyalty_points = loyalty_points + $1, updated_at = NOW() WHERE id = $2",
+            [pointsEarned, customerId],
+          );
+        }
+
+        await tx.commit();
 
         // Return the created sale
         const result = await client.unsafe("SELECT * FROM sales WHERE id = $1", [id]);
         return res.status(201).json(parseDbSale(result[0]));
       } catch (err) {
+        try { await tx.rollback(); } catch { /* rollback may fail if already rolled back */ }
         console.error("Sale error:", err);
         return res.status(500).json({ error: "Failed to create sale" });
       }
@@ -1799,6 +1940,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       try {
+        // Fetch pre-update state to check if sale was already paid
+        const [preUpdate] = await client.unsafe(
+          "SELECT is_paid, customer_id, total FROM sales WHERE id = $1",
+          [saleId],
+        );
+        if (!preUpdate) {
+          return res.status(404).json({ error: "Sale not found" });
+        }
+        const wasAlreadyPaid = preUpdate.is_paid === true;
+
         const now = new Date().toISOString();
         const updateResult = await client.unsafe(
           "UPDATE sales SET is_paid = true, paid_at = $1 WHERE id = $2 RETURNING *",
@@ -1810,13 +1961,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
 
         const sale = updateResult[0];
-        const pointsEarned = Math.floor(Number(sale.total) / 1000);
-        if (pointsEarned > 0) {
-          await client.unsafe(
-            "UPDATE customers SET loyalty_points = loyalty_points + $1, updated_at = NOW() WHERE id = $2",
-            [pointsEarned, sale.customer_id],
-          );
+
+        // Award loyalty points only if transitioning from unpaid → paid.
+        // Prevents double-counting: immediate-payment sales already got points at creation.
+        let pointsAwarded = 0;
+        if (!wasAlreadyPaid) {
+          pointsAwarded = Math.floor(Number(sale.total) / 1000);
+          if (pointsAwarded > 0) {
+            await client.unsafe(
+              "UPDATE customers SET loyalty_points = loyalty_points + $1, updated_at = NOW() WHERE id = $2",
+              [pointsAwarded, sale.customer_id],
+            );
+          }
         }
+
+        const pointsLogMsg = wasAlreadyPaid
+          ? "Loyalty points: already awarded at sale creation"
+          : `Loyalty points awarded: ${pointsAwarded}`;
 
         await client.unsafe(
           "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
@@ -1824,7 +1985,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
             staffName,
             "General",
-            `Marked sale ${saleId} as paid. Loyalty points awarded: ${pointsEarned}`,
+            `Marked sale ${saleId} as paid. ${pointsLogMsg}`,
             saleId,
           ],
         );
@@ -1887,14 +2048,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           params,
         );
 
+        // Award loyalty points when installment completes payment (unpaid → paid transition).
+        // Prevents double-counting: points are only awarded once, at the moment the sale becomes fully paid.
+        let pointsAwarded = 0;
+        if (isNowPaid && !sale.is_paid) {
+          pointsAwarded = Math.floor(parseFloat(sale.total) / 1000);
+          if (pointsAwarded > 0) {
+            await client.unsafe(
+              "UPDATE customers SET loyalty_points = loyalty_points + $1, updated_at = NOW() WHERE id = $2",
+              [pointsAwarded, sale.customer_id],
+            );
+          }
+        }
+
         // Audit log
+        const pointsLogSuffix = isNowPaid
+          ? `. Loyalty points awarded: ${pointsAwarded}`
+          : "";
         await client.unsafe(
           "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
           [
             `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
             staffName,
             "General",
-            `Installment of Rp ${new Intl.NumberFormat("id-ID").format(amount)} recorded for sale ${saleId}. Total paid: Rp ${new Intl.NumberFormat("id-ID").format(newTotalPaid)}/Rp ${new Intl.NumberFormat("id-ID").format(saleTotal)}${isNowPaid ? " (FULLY PAID)" : ""}`,
+            `Installment of Rp ${new Intl.NumberFormat("id-ID").format(amount)} recorded for sale ${saleId}. Total paid: Rp ${new Intl.NumberFormat("id-ID").format(newTotalPaid)}/Rp ${new Intl.NumberFormat("id-ID").format(saleTotal)}${isNowPaid ? " (FULLY PAID)" : ""}${pointsLogSuffix}`,
             saleId,
           ],
         );
@@ -1934,7 +2111,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { page, limit } = getPageLimit(req);
       const offset = (page - 1) * limit;
       const result = await client.unsafe(
-        `SELECT * FROM warranty_claims ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`,
+        `SELECT * FROM warranty_claims ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
+        [limit, offset],
       );
       const countResult = await client.unsafe("SELECT COUNT(*) as count FROM warranty_claims");
       const total = Number(countResult[0]?.count) || 0;
@@ -1994,7 +2172,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { page, limit } = getPageLimit(req);
       const offset = (page - 1) * limit;
       const result = await client.unsafe(
-        `SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT ${limit} OFFSET ${offset}`,
+        `SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT $1 OFFSET $2`,
+        [limit, offset],
       );
       const countResult = await client.unsafe("SELECT COUNT(*) as count FROM audit_logs");
       const total = Number(countResult[0]?.count) || 0;
