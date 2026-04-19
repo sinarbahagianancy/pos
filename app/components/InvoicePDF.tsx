@@ -307,6 +307,21 @@ export const InvoiceDocument: React.FC<{ data: InvoiceData; layout?: InvoiceLayo
   const isQuotation = data.isQuotation || false;
   const isA4 = layout === "a4";
 
+  // Fake PPN: when taxEnabled is false, the DB records tax=0 but the PDF
+  // should still show 11% PPN. Back-calculate from total so:
+  //   displaySubtotal + displayTax (11%) = total
+  // Compute tax first to guarantee the 11% ratio holds exactly,
+  // then derive subtotal as the remainder so they always sum to total.
+  // This is purely visual — the DB is unchanged.
+  const fakePpnEnabled = data.taxEnabled === false;
+  const displayTax = fakePpnEnabled
+    ? Math.round(data.total * 0.11 / 1.11)
+    : data.tax;
+  const displaySubtotal = fakePpnEnabled
+    ? data.total - displayTax
+    : data.subtotal;
+  const displayTaxRate = fakePpnEnabled ? 11 : (data.taxRate || 11);
+
   const pageContent = (
     <>
       {/* Header */}
@@ -418,13 +433,13 @@ export const InvoiceDocument: React.FC<{ data: InvoiceData; layout?: InvoiceLayo
         <View style={styles.totals}>
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>Subtotal</Text>
-            <Text style={styles.totalValue}>{formatCurrency(data.subtotal)}</Text>
+            <Text style={styles.totalValue}>{formatCurrency(displaySubtotal)}</Text>
           </View>
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>
-              Tax ({data.taxEnabled === false ? 0 : data.taxRate || 11}% PPN)
+              Tax ({displayTaxRate}% PPN)
             </Text>
-            <Text style={styles.totalValue}>{formatCurrency(data.tax)}</Text>
+            <Text style={styles.totalValue}>{formatCurrency(displayTax)}</Text>
           </View>
           <View style={styles.grandTotalRow}>
             {/* <Text style={styles.grandTotalLabel}>Grand Total</Text> */}

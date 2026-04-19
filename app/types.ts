@@ -1,6 +1,6 @@
 export type MountType = "E-mount" | "RF-mount" | "X-mount" | "L-mount" | "Z-mount" | "M-mount";
 export type ConditionType = "New" | "Used";
-export type PaymentMethod = "Cash" | "Debit" | "QRIS" | "Utang";
+export type PaymentMethod = "Cash" | "Debit" | "QRIS" | "Transfer" | "Utang";
 export type WarrantyType =
   | "Official Sony Indonesia"
   | "Official Canon Indonesia"

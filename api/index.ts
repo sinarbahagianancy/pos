@@ -159,7 +159,7 @@ interface Customer {
   updatedAt: string;
 }
 
-type PaymentMethod = "Cash" | "Debit" | "Credit Card" | "QRIS" | "Transfer";
+type PaymentMethod = "Cash" | "Debit" | "QRIS" | "Transfer" | "Utang";
 
 interface SaleItem {
   productId: string;

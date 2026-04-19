@@ -823,8 +823,8 @@ const POSView: React.FC<POSProps> = ({
             </label>
             <div className="grid grid-cols-2 gap-3">
               {(isAdmin
-                ? (["Cash", "Debit", "QRIS", "Utang"] as PaymentMethod[])
-                : (["Cash", "Debit", "QRIS"] as PaymentMethod[])
+                ? (["Cash", "Debit", "QRIS", "Transfer", "Utang"] as PaymentMethod[])
+                : (["Cash", "Debit", "QRIS", "Transfer"] as PaymentMethod[])
               ).map((method) => (
                 <button
                   key={method}

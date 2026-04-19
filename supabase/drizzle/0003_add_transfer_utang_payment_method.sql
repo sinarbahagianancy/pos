@@ -1,0 +1,3 @@
+-- Add Transfer and Utang to payment_method enum
+ALTER TYPE "public"."payment_method" ADD VALUE IF NOT EXISTS 'Transfer';
+ALTER TYPE "public"."payment_method" ADD VALUE IF NOT EXISTS 'Utang';
