@@ -613,7 +613,6 @@ const CustomersComponent = () => {
         loyaltyPoints: customer.loyaltyPoints,
       });
       await queryClient.invalidateQueries({ queryKey: ["customers"] });
-      setCustomerPage(1);
       notify(`${customer.name} berhasil didaftarkan ke sistem.`, "success");
     } catch (error) {
       console.error("Failed to add customer:", error);
