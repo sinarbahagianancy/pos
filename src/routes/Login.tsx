@@ -48,7 +48,7 @@ const LoginView: React.FC<LoginProps> = ({ staffList, onLogin }) => {
           <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight mb-2">
             Sinar Bahagia POS
           </h1>
-          <p className="text-slate-500 text-sm font-medium">Premium Imaging & Inventory System</p>
+          <p className="text-slate-500 text-sm font-medium">Cutting Edge Photography</p>
         </div>
 
         <div className="p-8 lg:p-10 pt-0">

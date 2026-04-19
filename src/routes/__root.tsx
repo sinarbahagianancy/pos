@@ -68,7 +68,7 @@ export function AppLayout() {
             </div>
           </div>
           <p className="text-slate-500 text-[10px] font-black ml-1 uppercase tracking-widest">
-            Premium Imaging Store
+            Cutting Edge Photography
           </p>
         </div>
 

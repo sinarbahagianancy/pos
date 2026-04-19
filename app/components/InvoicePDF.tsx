@@ -2,12 +2,27 @@ import React from "react";
 import { Document, Page, Text, View, StyleSheet, Image } from "@react-pdf/renderer";
 
 const styles = StyleSheet.create({
-  page: {
+  pageA5: {
     padding: 20,
     fontFamily: "Helvetica",
     fontSize: 10,
     color: "#0f172a",
     lineHeight: 1.5,
+  },
+  pageA4: {
+    flexDirection: "row",
+    fontFamily: "Helvetica",
+    fontSize: 10,
+    color: "#0f172a",
+    lineHeight: 1.5,
+  },
+  spacer: {
+    flex: 1,
+  },
+  invoiceContainer: {
+    width: 420,
+    height: 595,
+    padding: 20,
   },
   header: {
     flexDirection: "row",
@@ -283,139 +298,155 @@ const formatCurrency = (amount: number): string => {
   }).format(amount);
 };
 
-export const InvoiceDocument: React.FC<{ data: InvoiceData }> = ({ data }) => {
+export type InvoiceLayout = "a5" | "a4";
+
+export const InvoiceDocument: React.FC<{ data: InvoiceData; layout?: InvoiceLayout }> = ({
+  data,
+  layout = "a5",
+}) => {
   const isQuotation = data.isQuotation || false;
+  const isA4 = layout === "a4";
+
+  const pageContent = (
+    <>
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.logoSection}>
+          <Image src="/logo.png" style={styles.logo} />
+          <View style={styles.storeInfo}>
+            <Text style={styles.storeName}>{data.storeName}</Text>
+            <Text style={styles.storeTagline}>Cutting Edge Photography</Text>
+            <Text style={styles.storeAddress}>{data.address}</Text>
+          </View>
+        </View>
+        <View style={styles.invoiceInfo}>
+          <Text style={[styles.invoiceLabel, isQuotation ? { color: "#f97316" } : {}]}>
+            {isQuotation ? "Quotation" : "Faktur Penjualan"}
+          </Text>
+          <Text style={styles.invoiceId}>{data.invoiceNumber}</Text>
+          <Text style={styles.invoiceDate}>{data.date}</Text>
+          {isQuotation && (
+            <View
+              style={{
+                backgroundColor: "#fef2f2",
+                padding: "4 8",
+                borderRadius: 4,
+                marginTop: 6,
+              }}
+            >
+              <Text style={{ color: "#dc2626", fontSize: 7, fontWeight: 800 }}>
+                BUKAN BUKTI PEMBAYARAN
+              </Text>
+            </View>
+          )}
+        </View>
+      </View>
+
+      {/* Customer Section - Hidden for quotations */}
+      {!isQuotation && (
+        <View style={styles.customerSection}>
+          <View style={styles.customerLeft}>
+            <Text style={styles.sectionLabel}>Bill To / Penerima</Text>
+            <Text style={styles.customerName}>{data.customerName}</Text>
+            <Text style={styles.customerDetail}>{data.customerAddress || "-"}</Text>
+            <Text style={styles.customerDetail}>Telp: {data.customerPhone || "-"}</Text>
+          </View>
+          <View style={styles.customerRight}>
+            <Text style={styles.sectionLabel}>Tax Registration</Text>
+            {data.customerNpwp ? (
+              <Text style={styles.customerNpwp}>{data.customerNpwp}</Text>
+            ) : (
+              <Text style={styles.noNpwp}>No NPWP Provided</Text>
+            )}
+            <View style={styles.paymentBadge}>
+              <Text style={styles.paymentText}>
+                {data.paymentMethod === "Credit" ? "UTANG (BON)" : data.paymentMethod}
+              </Text>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Table */}
+      <View style={styles.table}>
+        <View style={styles.tableHeader}>
+          <Text style={[styles.tableHeaderText, styles.col1]}>
+            {isQuotation ? "Description" : "Description / Serial Number"}
+          </Text>
+          <Text style={[styles.tableHeaderText, styles.col3]}>Total</Text>
+        </View>
+        {data.items.map((item, index) => (
+          <View key={index} style={styles.tableRow}>
+            <View style={styles.col1}>
+              <Text style={styles.itemModel}>
+                {item.merk ? `${item.merk} ` : ""}
+                {item.model}
+              </Text>
+              {!isQuotation && item.sn && <Text style={styles.itemSn}>S/N: {item.sn}</Text>}
+            </View>
+            <View style={styles.col3}>
+              <Text
+                style={[styles.tableRowText, { textAlign: "right", fontWeight: 800, fontSize: 11 }]}
+              >
+                {formatCurrency(item.price)}
+              </Text>
+            </View>
+          </View>
+        ))}
+      </View>
+
+      {/* Totals Section */}
+      <View style={styles.totalsSection}>
+        <View style={styles.footerSection}>
+          <Text style={styles.disclaimer}>
+            Barang yang sudah dibeli tidak dapat ditukar atau dikembalikan.
+          </Text>
+          {data.notes && (
+            <Text
+              style={{
+                fontSize: 7,
+                color: "#475569",
+                fontWeight: 700,
+                marginTop: 6,
+                fontStyle: "italic",
+              }}
+            >
+              Catatan: {data.notes}
+            </Text>
+          )}
+        </View>
+        <View style={styles.totals}>
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Subtotal</Text>
+            <Text style={styles.totalValue}>{formatCurrency(data.subtotal)}</Text>
+          </View>
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>
+              Tax ({data.taxEnabled === false ? 0 : data.taxRate || 11}% PPN)
+            </Text>
+            <Text style={styles.totalValue}>{formatCurrency(data.tax)}</Text>
+          </View>
+          <View style={styles.grandTotalRow}>
+            {/* <Text style={styles.grandTotalLabel}>Grand Total</Text> */}
+            <Text style={styles.grandTotalValue}>{formatCurrency(data.total)}</Text>
+          </View>
+        </View>
+      </View>
+    </>
+  );
 
   return (
     <Document>
-      <Page size="A5" style={styles.page}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.logoSection}>
-            <Image src="/logo.png" style={styles.logo} />
-            <View style={styles.storeInfo}>
-              <Text style={styles.storeName}>{data.storeName}</Text>
-              <Text style={styles.storeTagline}>Premium Imaging Solution</Text>
-              <Text style={styles.storeAddress}>{data.address}</Text>
-            </View>
-          </View>
-          <View style={styles.invoiceInfo}>
-            <Text style={[styles.invoiceLabel, isQuotation ? { color: "#f97316" } : {}]}>
-              {isQuotation ? "Quotation" : "Faktur Penjualan"}
-            </Text>
-            <Text style={styles.invoiceId}>{data.invoiceNumber}</Text>
-            <Text style={styles.invoiceDate}>{data.date}</Text>
-            {isQuotation && (
-              <View
-                style={{
-                  backgroundColor: "#fef2f2",
-                  padding: "4 8",
-                  borderRadius: 4,
-                  marginTop: 6,
-                }}
-              >
-                <Text style={{ color: "#dc2626", fontSize: 7, fontWeight: 800 }}>
-                  BUKAN BUKTI PEMBAYARAN
-                </Text>
-              </View>
-            )}
-          </View>
-        </View>
-
-        {/* Customer Section - Hidden for quotations */}
-        {!isQuotation && (
-          <View style={styles.customerSection}>
-            <View style={styles.customerLeft}>
-              <Text style={styles.sectionLabel}>Bill To / Penerima</Text>
-              <Text style={styles.customerName}>{data.customerName}</Text>
-              <Text style={styles.customerDetail}>{data.customerAddress || "-"}</Text>
-              <Text style={styles.customerDetail}>Telp: {data.customerPhone || "-"}</Text>
-            </View>
-            <View style={styles.customerRight}>
-              <Text style={styles.sectionLabel}>Tax Registration</Text>
-              {data.customerNpwp ? (
-                <Text style={styles.customerNpwp}>{data.customerNpwp}</Text>
-              ) : (
-                <Text style={styles.noNpwp}>No NPWP Provided</Text>
-              )}
-              <View style={styles.paymentBadge}>
-                <Text style={styles.paymentText}>
-                  {data.paymentMethod === "Credit" ? "UTANG (BON)" : data.paymentMethod}
-                </Text>
-              </View>
-            </View>
-          </View>
-        )}
-
-        {/* Table */}
-        <View style={styles.table}>
-          <View style={styles.tableHeader}>
-            <Text style={[styles.tableHeaderText, styles.col1]}>
-              {isQuotation ? "Description" : "Description / Serial Number"}
-            </Text>
-            <Text style={[styles.tableHeaderText, styles.col3]}>Total</Text>
-          </View>
-          {data.items.map((item, index) => (
-            <View key={index} style={styles.tableRow}>
-              <View style={styles.col1}>
-                <Text style={styles.itemModel}>
-                  {item.merk ? `${item.merk}` : ""}
-                  {item.model}
-                </Text>
-                {!isQuotation && item.sn && <Text style={styles.itemSn}>S/N: {item.sn}</Text>}
-              </View>
-              <View style={styles.col3}>
-                <Text
-                  style={[
-                    styles.tableRowText,
-                    { textAlign: "right", fontWeight: 800, fontSize: 11 },
-                  ]}
-                >
-                  {formatCurrency(item.price)}
-                </Text>
-              </View>
-            </View>
-          ))}
-        </View>
-
-        {/* Totals Section */}
-        <View style={styles.totalsSection}>
-          <View style={styles.footerSection}>
-            <Text style={styles.disclaimer}>
-              Barang yang sudah dibeli tidak dapat ditukar atau dikembalikan.
-            </Text>
-            {data.notes && (
-              <Text
-                style={{
-                  fontSize: 7,
-                  color: "#475569",
-                  fontWeight: 700,
-                  marginTop: 6,
-                  fontStyle: "italic",
-                }}
-              >
-                Catatan: {data.notes}
-              </Text>
-            )}
-          </View>
-          <View style={styles.totals}>
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Subtotal</Text>
-              <Text style={styles.totalValue}>{formatCurrency(data.subtotal)}</Text>
-            </View>
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>
-                Tax ({data.taxEnabled === false ? 0 : data.taxRate || 11}% PPN)
-              </Text>
-              <Text style={styles.totalValue}>{formatCurrency(data.tax)}</Text>
-            </View>
-            <View style={styles.grandTotalRow}>
-              {/* <Text style={styles.grandTotalLabel}>Grand Total</Text> */}
-              <Text style={styles.grandTotalValue}>{formatCurrency(data.total)}</Text>
-            </View>
-          </View>
-        </View>
-      </Page>
+      {isA4 ? (
+        <Page size={[842, 595]} style={styles.pageA4}>
+          <View style={styles.spacer} />
+          <View style={styles.invoiceContainer}>{pageContent}</View>
+        </Page>
+      ) : (
+        <Page size="A5" style={styles.pageA5}>
+          {pageContent}
+        </Page>
+      )}
     </Document>
   );
 };

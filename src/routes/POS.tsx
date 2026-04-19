@@ -10,7 +10,7 @@ import {
 } from "../../app/types";
 import { formatIDR, calculateWarrantyExpiry, formatDate } from "../../app/utils/formatters";
 import { pdf } from "@react-pdf/renderer";
-import { InvoiceDocument } from "../../app/components/InvoicePDF";
+import { InvoiceDocument, InvoiceLayout } from "../../app/components/InvoicePDF";
 import { RupiahInput } from "../../app/components/RupiahInput";
 
 interface POSProps {
@@ -54,6 +54,7 @@ const POSView: React.FC<POSProps> = ({
   const [printPdfUrl, setPrintPdfUrl] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [isQuotation, setIsQuotation] = useState(false);
+  const [invoiceLayout, setInvoiceLayout] = useState<InvoiceLayout>("a5");
   const [confirmCheckout, setConfirmCheckout] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processResult, setProcessResult] = useState<{ success: boolean; message: string } | null>(
@@ -277,13 +278,16 @@ const POSView: React.FC<POSProps> = ({
   const tax = ppnEnabled ? subtotal * taxRate : 0;
   const total = subtotal + tax;
 
-  const generateInvoicePdf = async (sale: Sale, quotation: boolean) => {
+  const generateInvoicePdf = async (sale: Sale, quotation: boolean, layout: InvoiceLayout = "a5") => {
+    // Revoke previous blob URL to prevent memory leak
+    if (printPdfUrl) URL.revokeObjectURL(printPdfUrl);
     setIsPrinting(true);
     try {
       const saleCustomer =
         customers.find((c) => c.id === sale.customerId) || customers[0];
       const pdfBlob = await pdf(
         <InvoiceDocument
+          layout={layout}
           data={{
             storeName: storeConfig.storeName,
             address: storeConfig.address,
@@ -353,7 +357,7 @@ const POSView: React.FC<POSProps> = ({
 
     setLastSale(quotation);
     setIsQuotation(true);
-    await generateInvoicePdf(quotation, true);
+    await generateInvoicePdf(quotation, true, invoiceLayout);
   };
 
   const handleCheckout = async () => {
@@ -1076,7 +1080,7 @@ const POSView: React.FC<POSProps> = ({
                 onClick={async () => {
                   if (processResult.success && lastSale) {
                     setProcessResult(null);
-                    await generateInvoicePdf(lastSale, isQuotation);
+                    await generateInvoicePdf(lastSale, isQuotation, invoiceLayout);
                   } else {
                     setProcessResult(null);
                   }
@@ -1093,6 +1097,13 @@ const POSView: React.FC<POSProps> = ({
       {printPdfUrl && (
         <PrintModal
           pdfUrl={printPdfUrl}
+          invoiceLayout={invoiceLayout}
+          onLayoutChange={async (layout) => {
+            setInvoiceLayout(layout);
+            if (lastSale) {
+              await generateInvoicePdf(lastSale, isQuotation, layout);
+            }
+          }}
           onClose={() => {
             URL.revokeObjectURL(printPdfUrl);
             setPrintPdfUrl(null);
@@ -1120,10 +1131,12 @@ const POSView: React.FC<POSProps> = ({
 
 interface PrintModalProps {
   pdfUrl: string;
+  invoiceLayout: "a5" | "a4";
+  onLayoutChange: (layout: "a5" | "a4") => void;
   onClose: () => void;
 }
 
-const PrintModal: React.FC<PrintModalProps> = ({ pdfUrl, onClose }) => {
+const PrintModal: React.FC<PrintModalProps> = ({ pdfUrl, invoiceLayout, onLayoutChange, onClose }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const handlePrint = () => {
@@ -1146,7 +1159,29 @@ const PrintModal: React.FC<PrintModalProps> = ({ pdfUrl, onClose }) => {
       >
         <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
           <h3 className="font-black text-slate-900 uppercase tracking-tight">Print Invoice</h3>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            <div className="flex bg-slate-100 rounded-lg p-0.5">
+              <button
+                onClick={() => onLayoutChange("a5")}
+                className={`px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${
+                  invoiceLayout === "a5"
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                A5
+              </button>
+              <button
+                onClick={() => onLayoutChange("a4")}
+                className={`px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${
+                  invoiceLayout === "a4"
+                    ? "bg-white text-indigo-600 shadow-sm"
+                    : "text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                A4 (Bawah)
+              </button>
+            </div>
             <button
               onClick={handlePrint}
               className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold uppercase hover:bg-indigo-700"

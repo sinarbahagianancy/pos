@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { Sale, Customer, SaleItem } from "../../app/types";
 import { formatIDR, formatDate } from "../../app/utils/formatters";
 import { pdf } from "@react-pdf/renderer";
-import { InvoiceDocument } from "../../app/components/InvoicePDF";
+import { InvoiceDocument, InvoiceLayout } from "../../app/components/InvoicePDF";
 import Pagination from "../../app/components/Pagination";
 import { RupiahInput } from "../../app/components/RupiahInput";
 
@@ -36,8 +36,9 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
   const [search, setSearch] = useState("");
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [customerMap, setCustomerMap] = useState<Record<string, Customer>>({});
-  const [printModalHtml, setPrintModalHtml] = useState("");
+  const [printPdfUrl, setPrintPdfUrl] = useState<string | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
+  const [invoiceLayout, setInvoiceLayout] = useState<InvoiceLayout>("a5");
   const [installmentPopover, setInstallmentPopover] = useState<{
     saleId: string;
     customerName: string;
@@ -141,7 +142,8 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
     }
   };
 
-  const handlePrint = async (sale: Sale) => {
+  const handlePrint = async (sale: Sale, layoutOverride?: InvoiceLayout) => {
+    const layout = layoutOverride || invoiceLayout;
     const customer = customerMap[sale.customerId];
     const invoiceData = {
       storeName: storeConfig.storeName || "Sinar Bahagia",
@@ -170,11 +172,11 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
 
     try {
       setIsPrinting(true);
-      const blob = await pdf(<InvoiceDocument data={invoiceData} />).toBlob();
+      // Revoke previous blob URL to prevent memory leak
+      if (printPdfUrl) URL.revokeObjectURL(printPdfUrl);
+      const blob = await pdf(<InvoiceDocument layout={layout} data={invoiceData} />).toBlob();
       const url = URL.createObjectURL(blob);
-      setPrintModalHtml(
-        `<iframe src="${url}" style="width:100%;height:100%;border:none;"></iframe>`,
-      );
+      setPrintPdfUrl(url);
       setSelectedSale(sale);
     } catch (error) {
       console.error("Failed to generate PDF:", error);
@@ -184,7 +186,8 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
   };
 
   const closePrintModal = () => {
-    setPrintModalHtml("");
+    if (printPdfUrl) URL.revokeObjectURL(printPdfUrl);
+    setPrintPdfUrl(null);
     setSelectedSale(null);
   };
 
@@ -411,14 +414,42 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
       />
 
       {/* Print Modal */}
-      {printModalHtml && (
+      {printPdfUrl && (
         <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-xl z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-4xl h-[90vh] overflow-hidden flex flex-col">
             <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <h3 className="font-black text-slate-900 uppercase tracking-tight">
                 Print Invoice - {selectedSale?.id}
               </h3>
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2">
+                <div className="flex bg-slate-100 rounded-lg p-0.5">
+                  <button
+                    onClick={() => {
+                      setInvoiceLayout("a5");
+                      if (selectedSale) handlePrint(selectedSale, "a5");
+                    }}
+                    className={`px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${
+                      invoiceLayout === "a5"
+                        ? "bg-white text-slate-900 shadow-sm"
+                        : "text-slate-400 hover:text-slate-600"
+                    }`}
+                  >
+                    A5
+                  </button>
+                  <button
+                    onClick={() => {
+                      setInvoiceLayout("a4");
+                      if (selectedSale) handlePrint(selectedSale, "a4");
+                    }}
+                    className={`px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${
+                      invoiceLayout === "a4"
+                        ? "bg-white text-indigo-600 shadow-sm"
+                        : "text-slate-400 hover:text-slate-600"
+                    }`}
+                  >
+                    A4 (Bawah)
+                  </button>
+                </div>
                 <button
                   onClick={() => {
                     const iframe = document.querySelector("iframe") as HTMLIFrameElement;
@@ -447,7 +478,7 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
             </div>
             <div className="flex-1 overflow-hidden">
               <iframe
-                src={printModalHtml.split('src="')[1]?.split('"')[0] || ""}
+                src={printPdfUrl}
                 className="w-full h-full border-0"
                 title="Invoice Print"
               />

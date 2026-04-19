@@ -231,7 +231,7 @@ const AppLayout = () => {
             </div>
           </div>
           <p className="text-slate-500 text-[10px] font-black ml-1 uppercase tracking-widest">
-            Premium Imaging Store
+            Cutting Edge Photography
           </p>
         </div>
 
@@ -409,7 +409,15 @@ const InventoryComponent = () => {
     invoiceNumber?: string,
   ) => {
     try {
-      await dbAdjustStock(productId, newStock, reason, staffName, supplier, dateRestocked, invoiceNumber);
+      await dbAdjustStock(
+        productId,
+        newStock,
+        reason,
+        staffName,
+        supplier,
+        dateRestocked,
+        invoiceNumber,
+      );
       queryClient.invalidateQueries({ queryKey: ["products"] });
     } catch (error) {
       console.error("Failed to adjust stock:", error);
