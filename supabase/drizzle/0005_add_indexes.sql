@@ -16,8 +16,12 @@ CREATE INDEX IF NOT EXISTS idx_sales_timestamp ON sales(timestamp DESC);
 -- audit_logs.timestamp: always ordered by timestamp DESC for pagination
 CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp DESC);
 
--- products.deleted: filtered on every GET /api/products request (WHERE deleted = false)
-CREATE INDEX IF NOT EXISTS idx_products_deleted ON products(deleted) WHERE deleted = false;
+-- products: composite partial index covers both WHERE deleted=false AND ORDER BY created_at DESC
+-- This makes GET /api/products use an index scan instead of full table scan + sort
+CREATE INDEX IF NOT EXISTS idx_products_created_at ON products(created_at DESC) WHERE deleted = false;
 
--- customers.deleted: filtered on every GET /api/customers request (WHERE deleted = false)
-CREATE INDEX IF NOT EXISTS idx_customers_deleted ON customers(deleted) WHERE deleted = false;
+-- customers: same pattern -- WHERE deleted=false + ORDER BY name
+CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(name) WHERE deleted = false;
+
+-- suppliers: same pattern -- WHERE deleted=false
+CREATE INDEX IF NOT EXISTS idx_suppliers_name ON suppliers(name) WHERE deleted = false;

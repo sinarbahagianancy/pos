@@ -8,12 +8,39 @@ import postgres from "postgres";
 
 const connectionString = process.env.DATABASE_URL || "";
 
-const client = postgres(connectionString, {
-  prepare: false,
-  max: 1, // Serverless: limit pool to 1 connection per function instance
-  idle_timeout: 30, // Keep connection alive longer to reduce cold-start reconnects
-  connect_timeout: 10, // Give pooler a bit more time for TLS handshake
-});
+// Lazy client: only connects when first query runs, not at module load.
+// This avoids paying the TLS handshake cost during cold start module initialization.
+let _client: ReturnType<typeof postgres> | null = null;
+function getClient() {
+  if (!_client) {
+    _client = postgres(connectionString, {
+      prepare: false,
+      max: 1,
+      idle_timeout: 120, // Keep connection alive 2min to survive between Vercel function invocations
+      connect_timeout: 5, // Fail fast -- retry logic handles transient failures
+    });
+  }
+  return _client;
+}
+
+// Wrapper that retries queries on connection errors (common during cold starts)
+async function query<T = Record<string, unknown>[]>(
+  sql: string,
+  params?: unknown[],
+): Promise<T> {
+  const c = getClient();
+  try {
+    return await c.unsafe(sql, params as any[]) as T;
+  } catch (err: any) {
+    // Connection errors during cold start: reset client and retry once
+    if (err?.code === "ECONNRESET" || err?.code === "ECONNREFUSED" || err?.message?.includes("Connection")) {
+      _client = null; // Force fresh connection on next getClient()
+      const fresh = getClient();
+      return await fresh.unsafe(sql, params as any[]) as T;
+    }
+    throw err;
+  }
+}
 
 type ProductCategory = "Body" | "Lens" | "Accessory";
 type ConditionType = "New" | "Used";
@@ -474,15 +501,15 @@ const db = {
     where?: { column: string; value: unknown },
   ) => {
     const cols = columns.join(", ");
-    let query = `SELECT ${cols} FROM ${table}`;
+    let sql = `SELECT ${cols} FROM ${table}`;
     const params: (string | number | boolean | null)[] = [];
 
     if (where) {
       params.push(where.value as string | number | boolean | null);
-      query += ` WHERE ${where.column} = $${params.length}`;
+      sql += ` WHERE ${where.column} = $${params.length}`;
     }
 
-    const result = await client.unsafe(query, params);
+    const result = await query(sql, params);
     return result;
   },
 
@@ -495,9 +522,9 @@ const db = {
       .map((_, i) => `(${keys.map((_, j) => `$${i * keys.length + j + 1}`).join(", ")})`)
       .join(", ");
 
-    const query = `INSERT INTO ${table} (${keys.join(", ")}) VALUES ${placeholders} RETURNING *`;
+    const sql = `INSERT INTO ${table} (${keys.join(", ")}) VALUES ${placeholders} RETURNING *`;
     const flatValues = values.flat() as (string | number | boolean | null)[];
-    const result = await client.unsafe(query, flatValues);
+    const result = await query(sql, flatValues);
     return result;
   },
 
@@ -509,8 +536,8 @@ const db = {
     const sets = Object.keys(data)
       .map((k, i) => `${k} = $${i + 1}`)
       .join(", ");
-    const query = `UPDATE ${table} SET ${sets}, updated_at = NOW() WHERE ${where.column} = $${Object.keys(data).length + 1} RETURNING *`;
-    const result = await client.unsafe(query, [
+    const sql = `UPDATE ${table} SET ${sets}, updated_at = NOW() WHERE ${where.column} = $${Object.keys(data).length + 1} RETURNING *`;
+    const result = await query(sql, [
       ...(Object.values(data) as (string | number | boolean | null)[]),
       where.value as string | number | boolean | null,
     ]);
@@ -518,8 +545,8 @@ const db = {
   },
 
   delete: async (table: string, where: { column: string; value: unknown }) => {
-    const query = `DELETE FROM ${table} WHERE ${where.column} = $1`;
-    await client.unsafe(query, [where.value as string | number | boolean | null]);
+    const sql = `DELETE FROM ${table} WHERE ${where.column} = $1`;
+    await query(sql, [where.value as string | number | boolean | null]);
     return [];
   },
 };
@@ -544,11 +571,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     limit: number,
   ) => {
     const offset = (page - 1) * limit;
-    const result = await client.unsafe(
+    const result = await query(
       `SELECT * FROM ${table} WHERE ${whereClause} ORDER BY ${orderBy} LIMIT $1 OFFSET $2`,
       [limit, offset],
     );
-    const countResult = await client.unsafe(
+    const countResult = await query(
       `SELECT COUNT(*) as count FROM ${table} WHERE ${whereClause}`,
     );
     const total = Number(countResult[0]?.count) || 0;
@@ -641,7 +668,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ? `Created product ${validated.brand} ${validated.model} with ${validated.serialNumbers.length} serial numbers, price: ${fmtIDR(validated.price)}, cogs: ${fmtIDR(validated.cogs)}, from supplier ${validated.supplier}`
           : `Created product ${validated.brand} ${validated.model} with ${validated.quantity || 0} units, price: ${fmtIDR(validated.price)}, cogs: ${fmtIDR(validated.cogs)}, from supplier ${validated.supplier}`;
 
-      await client.unsafe(
+      await query(
         "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
         [
           `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -818,7 +845,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const productId = url.replace("/api/products/", "");
 
       // Check if there are In Stock serial numbers
-      const sns = await client.unsafe(
+      const sns = await query(
         "SELECT sn FROM serial_numbers WHERE product_id = $1 AND status = $2",
         [productId, "In Stock"],
       );
@@ -829,10 +856,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // Check for NOSN stock (stock without serial numbers)
-      const product = await client.unsafe("SELECT stock FROM products WHERE id = $1", [productId]);
+      const product = await query("SELECT stock FROM products WHERE id = $1", [productId]);
       if (product.length > 0) {
         const stock = Number(product[0].stock);
-        const totalSNs = await client.unsafe(
+        const totalSNs = await query(
           "SELECT COUNT(*) as count FROM serial_numbers WHERE product_id = $1",
           [productId],
         );
@@ -847,19 +874,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // Get product info for audit logging
-      const [productInfo] = await client.unsafe("SELECT brand, model FROM products WHERE id = $1", [
+      const [productInfo] = await query("SELECT brand, model FROM products WHERE id = $1", [
         productId,
       ]);
 
       // Soft delete - mark as deleted (same as dev server)
-      await client.unsafe("UPDATE products SET deleted = true, updated_at = NOW() WHERE id = $1", [
+      await query("UPDATE products SET deleted = true, updated_at = NOW() WHERE id = $1", [
         productId,
       ]);
 
       // Audit log for product deletion
       if (productInfo) {
         try {
-          await client.unsafe(
+          await query(
             "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
             [
               `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -884,7 +911,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { hidden, staffName = "System" } = input;
 
       // Get product info for audit logging
-      const [productInfo] = await client.unsafe("SELECT brand, model FROM products WHERE id = $1", [
+      const [productInfo] = await query("SELECT brand, model FROM products WHERE id = $1", [
         productId,
       ]);
 
@@ -893,7 +920,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } catch (err) {
         // Column might not exist, try to add it first
         try {
-          await client.unsafe(
+          await query(
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS hidden INTEGER DEFAULT 0",
           );
           await db.update(
@@ -910,7 +937,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Audit log for product hidden/unhidden
       if (productInfo) {
         try {
-          await client.unsafe(
+          await query(
             "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
             [
               `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -925,7 +952,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
 
-      const result = await client.unsafe("SELECT * FROM products WHERE id = $1", [productId]);
+      const result = await query("SELECT * FROM products WHERE id = $1", [productId]);
       return res.status(200).json(parseDbProduct(result[0]));
     }
 
@@ -936,7 +963,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { staffName: restoreStaffName = "System" } = input || {};
 
       // Get product info for audit logging
-      const [restoreProductInfo] = await client.unsafe(
+      const [restoreProductInfo] = await query(
         "SELECT brand, model FROM products WHERE id = $1",
         [productId],
       );
@@ -945,7 +972,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         await db.update("products", { deleted: false }, { column: "id", value: productId });
       } catch (err) {
         try {
-          await client.unsafe(
+          await query(
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS deleted BOOLEAN DEFAULT false",
           );
           await db.update("products", { deleted: false }, { column: "id", value: productId });
@@ -958,7 +985,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Audit log for product restore
       if (restoreProductInfo) {
         try {
-          await client.unsafe(
+          await query(
             "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
             [
               `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -973,7 +1000,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
 
-      const result = await client.unsafe("SELECT * FROM products WHERE id = $1", [productId]);
+      const result = await query("SELECT * FROM products WHERE id = $1", [productId]);
       return res.status(200).json(parseDbProduct(result[0]));
     }
 
@@ -982,12 +1009,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const queryStatus = (req.query as Record<string, string>)?.status;
       let result;
       if (queryStatus) {
-        result = await client.unsafe(
+        result = await query(
           "SELECT * FROM serial_numbers WHERE status = $1",
           [queryStatus],
         );
       } else {
-        result = await client.unsafe("SELECT * FROM serial_numbers");
+        result = await query("SELECT * FROM serial_numbers");
       }
       return res.status(200).json(result.map(parseDbSerialNumber));
     }
@@ -1024,7 +1051,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const productIds = Array.from(productCounts.keys());
 
       // Batch-fetch ALL product data upfront (eliminates N+1)
-      const productRows = await client.unsafe(
+      const productRows = await query(
         `SELECT id, brand, model, invoice_number FROM products WHERE id = ANY($1)`,
         [productIds],
       );
@@ -1067,7 +1094,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         params.push(productId);
 
         updatePromises.push(
-          client.unsafe(
+          query(
             `UPDATE products SET ${setClauses.join(", ")} WHERE id = $${paramIdx}`,
             params,
           ),
@@ -1096,7 +1123,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               `($${i * 4 + 1}, $${i * 4 + 2}, 'Stock Addition', $${i * 4 + 3}, $${i * 4 + 4}, NOW())`,
           )
           .join(", ");
-        await client.unsafe(
+        await query(
           `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ${placeholders}`,
           auditRows.flat(),
         );
@@ -1112,12 +1139,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { status, reason } = input;
 
       // Get the SN to find product info and current status before updating
-      const [existingSN] = await client.unsafe(
+      const [existingSN] = await query(
         "SELECT product_id, status FROM serial_numbers WHERE sn = $1",
         [sn],
       );
 
-      const result = await client.unsafe(
+      const result = await query(
         "UPDATE serial_numbers SET status = $1 WHERE sn = $2 RETURNING *",
         [status, sn],
       );
@@ -1132,13 +1159,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (existingSN && existingSN.status !== status) {
         if (wasInStock && !nowInStock) {
           // SN left inventory — decrement stock
-          await client.unsafe(
+          await query(
             "UPDATE products SET stock = GREATEST(stock - 1, 0), updated_at = NOW() WHERE id = $1",
             [existingSN.product_id],
           );
         } else if (!wasInStock && nowInStock) {
           // SN returned to inventory — increment stock
-          await client.unsafe(
+          await query(
             "UPDATE products SET stock = stock + 1, updated_at = NOW() WHERE id = $1",
             [existingSN.product_id],
           );
@@ -1147,7 +1174,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Create audit log for status change
       if (existingSN) {
-        const [product] = await client.unsafe("SELECT brand, model FROM products WHERE id = $1", [
+        const [product] = await query("SELECT brand, model FROM products WHERE id = $1", [
           existingSN.product_id,
         ]);
         const reasonInfo = reason || "Not specified";
@@ -1160,7 +1187,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 : ""
             : "";
 
-        await client.unsafe(
+        await query(
           `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) 
            VALUES ($1, $2, $3, $4, $5, NOW())`,
           [
@@ -1188,7 +1215,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const passwordHash = btoa(password);
-      const result = await client.unsafe(
+      const result = await query(
         "SELECT id, name, role FROM staff_members WHERE name = $1 AND password_hash = $2",
         [name, passwordHash],
       );
@@ -1201,7 +1228,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Record login audit log
       try {
-        await client.unsafe(
+        await query(
           "INSERT INTO audit_logs (id, staff_name, action, details, timestamp) VALUES ($1, $2, $3, $4, NOW())",
           [
             `LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
@@ -1228,7 +1255,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       if (name) {
         try {
-          await client.unsafe(
+          await query(
             "INSERT INTO audit_logs (id, staff_name, action, details, timestamp) VALUES ($1, $2, $3, $4, NOW())",
             [
               `LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
@@ -1249,7 +1276,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // GET /api/staff
     if (method === "GET" && url === "/api/staff") {
-      const result = await client.unsafe(
+      const result = await query(
         "SELECT id, name, role, created_at FROM staff_members ORDER BY name",
       );
       return res.status(200).json(result.map(parseDbStaffMember));
@@ -1267,14 +1294,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const passwordHash = btoa(password);
 
       try {
-        const result = await client.unsafe(
+        const result = await query(
           "INSERT INTO staff_members (name, role, password_hash) VALUES ($1, $2, $3) RETURNING id, name, role, created_at",
           [name, role, passwordHash],
         );
 
         // Audit log for staff creation
         try {
-          await client.unsafe(
+          await query(
             "INSERT INTO audit_logs (id, staff_name, action, details, timestamp) VALUES ($1, $2, $3, $4, NOW())",
             [
               `LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
@@ -1301,16 +1328,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const staffId = url.replace("/api/staff/", "");
 
       // Get staff name for audit logging
-      const [staffInfo] = await client.unsafe("SELECT name FROM staff_members WHERE id = $1", [
+      const [staffInfo] = await query("SELECT name FROM staff_members WHERE id = $1", [
         staffId,
       ]);
 
-      await client.unsafe("DELETE FROM staff_members WHERE id = $1", [staffId]);
+      await query("DELETE FROM staff_members WHERE id = $1", [staffId]);
 
       // Audit log for staff deletion
       if (staffInfo) {
         try {
-          await client.unsafe(
+          await query(
             "INSERT INTO audit_logs (id, staff_name, action, details, timestamp) VALUES ($1, $2, $3, $4, NOW())",
             [
               `LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
@@ -1333,7 +1360,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const { name, role, password } = input;
 
-      const [current] = await client.unsafe("SELECT * FROM staff_members WHERE id = $1", [staffId]);
+      const [current] = await query("SELECT * FROM staff_members WHERE id = $1", [staffId]);
       if (!current) {
         return res.status(404).json({ error: "Staff not found" });
       }
@@ -1342,7 +1369,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const newRole = role ?? current.role;
       const newPasswordHash = password ? btoa(password) : current.password_hash;
 
-      const result = await client.unsafe(
+      const result = await query(
         "UPDATE staff_members SET name = $1, role = $2, password_hash = $3 WHERE id = $4 RETURNING id, name, role, created_at",
         [newName, newRole, newPasswordHash, staffId],
       );
@@ -1355,7 +1382,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       if (changes.length > 0) {
         try {
-          await client.unsafe(
+          await query(
             "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
             [
               `LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
@@ -1382,7 +1409,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // GET /api/store-config
     if (method === "GET" && url === "/api/store-config") {
-      const result = await client.unsafe("SELECT * FROM store_config WHERE id = 1");
+      const result = await query("SELECT * FROM store_config WHERE id = 1");
       if (!result || result.length === 0) {
         return res.status(404).json({ error: "Store config not found" });
       }
@@ -1395,9 +1422,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { storeName, address, ppnRate, currency, monthlyTarget } = input;
 
       // Get current config for audit logging
-      const currentConfig = await client.unsafe("SELECT * FROM store_config WHERE id = 1");
+      const currentConfig = await query("SELECT * FROM store_config WHERE id = 1");
 
-      const result = await client.unsafe(
+      const result = await query(
         "UPDATE store_config SET store_name = $1, address = $2, ppn_rate = $3, currency = $4, monthly_target = $5, updated_at = NOW() WHERE id = 1 RETURNING *",
         [storeName, address, ppnRate, currency, monthlyTarget || 500000000],
       );
@@ -1419,7 +1446,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         if (changes.length > 0) {
           try {
-            await client.unsafe(
+            await query(
               "INSERT INTO audit_logs (id, staff_name, action, details, timestamp) VALUES ($1, $2, $3, $4, NOW())",
               [
                 `LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
@@ -1443,11 +1470,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (method === "GET" && (url === "/api/suppliers" || url?.startsWith("/api/suppliers?"))) {
       const { page, limit } = getPageLimit(req);
       const offset = (page - 1) * limit;
-      const result = await client.unsafe(
+      const result = await query(
         `SELECT * FROM suppliers WHERE deleted = false ORDER BY name LIMIT $1 OFFSET $2`,
         [limit, offset],
       );
-      const countResult = await client.unsafe(
+      const countResult = await query(
         "SELECT COUNT(*) as count FROM suppliers WHERE deleted = false",
       );
       const total = Number(countResult[0]?.count) || 0;
@@ -1477,17 +1504,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       try {
-        await client.unsafe("INSERT INTO suppliers (name, phone, address) VALUES ($1, $2, $3)", [
+        await query("INSERT INTO suppliers (name, phone, address) VALUES ($1, $2, $3)", [
           name,
           phone || null,
           address || null,
         ]);
 
-        const result = await client.unsafe("SELECT * FROM suppliers WHERE name = $1", [name]);
+        const result = await query("SELECT * FROM suppliers WHERE name = $1", [name]);
 
         // Audit log for supplier creation
         try {
-          await client.unsafe(
+          await query(
             "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
             [
               `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -1528,7 +1555,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       };
 
       // Get old supplier for audit logging
-      const [oldSupplier] = await client.unsafe("SELECT * FROM suppliers WHERE id = $1", [
+      const [oldSupplier] = await query("SELECT * FROM suppliers WHERE id = $1", [
         supplierId,
       ]);
 
@@ -1562,7 +1589,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       values.push(supplierId);
 
       // @ts-ignore - values array type
-      await client.unsafe(
+      await query(
         `UPDATE suppliers SET ${updates.join(", ")} WHERE id = $${paramIndex}`,
         values as any,
       );
@@ -1570,7 +1597,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Audit log for supplier update
       if (changeDescriptions.length > 0 && oldSupplier) {
         try {
-          await client.unsafe(
+          await query(
             "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
             [
               `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -1585,7 +1612,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
 
-      const result = await client.unsafe("SELECT * FROM suppliers WHERE id = $1", [supplierId]);
+      const result = await query("SELECT * FROM suppliers WHERE id = $1", [supplierId]);
       return res.status(200).json({
         id: result[0].id,
         name: result[0].name,
@@ -1601,16 +1628,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const supplierId = url.replace("/api/suppliers/", "");
 
       // Get supplier name for audit logging
-      const [delSupplier] = await client.unsafe("SELECT name FROM suppliers WHERE id = $1", [
+      const [delSupplier] = await query("SELECT name FROM suppliers WHERE id = $1", [
         supplierId,
       ]);
 
-      await client.unsafe("UPDATE suppliers SET deleted = true WHERE id = $1", [supplierId]);
+      await query("UPDATE suppliers SET deleted = true WHERE id = $1", [supplierId]);
 
       // Audit log for supplier deletion
       if (delSupplier) {
         try {
-          await client.unsafe(
+          await query(
             "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
             [
               `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -1634,11 +1661,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (method === "GET" && (url === "/api/customers" || url?.startsWith("/api/customers?"))) {
       const { page, limit } = getPageLimit(req);
       const offset = (page - 1) * limit;
-      const result = await client.unsafe(
+      const result = await query(
         `SELECT * FROM customers WHERE deleted = false ORDER BY name LIMIT $1 OFFSET $2`,
         [limit, offset],
       );
-      const countResult = await client.unsafe(
+      const countResult = await query(
         "SELECT COUNT(*) as count FROM customers WHERE deleted = false",
       );
       const total = Number(countResult[0]?.count) || 0;
@@ -1654,7 +1681,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // GET /api/customers/:id
     if (method === "GET" && url?.startsWith("/api/customers/")) {
       const customerId = url.replace("/api/customers/", "");
-      const result = await client.unsafe("SELECT * FROM customers WHERE id = $1", [customerId]);
+      const result = await query("SELECT * FROM customers WHERE id = $1", [customerId]);
       if (!result || result.length === 0) {
         return res.status(404).json({ error: "Customer not found" });
       }
@@ -1670,14 +1697,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: "ID and name are required" });
       }
 
-      const result = await client.unsafe(
+      const result = await query(
         "INSERT INTO customers (id, name, phone, email, address, npwp, loyalty_points) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *",
         [id, name, phone || null, email || null, address || null, npwp || null, loyaltyPoints],
       );
 
       // Audit log for customer creation
       try {
-        await client.unsafe(
+        await query(
           "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
           [
             `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -1701,7 +1728,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { name, phone, email, address, npwp, loyaltyPoints, staffName = "System" } = input;
 
       // Get old customer for audit logging
-      const [oldCustomer] = await client.unsafe("SELECT * FROM customers WHERE id = $1", [
+      const [oldCustomer] = await query("SELECT * FROM customers WHERE id = $1", [
         customerId,
       ]);
       if (!oldCustomer) {
@@ -1756,7 +1783,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       updates.push(`updated_at = NOW()`);
       values.push(customerId);
 
-      const result = await client.unsafe(
+      const result = await query(
         `UPDATE customers SET ${updates.join(", ")} WHERE id = $${paramIndex} RETURNING *`,
         values as (string | number | null)[],
       );
@@ -1766,7 +1793,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // Audit log for customer update
-      await client.unsafe(
+      await query(
         "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
         [
           `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -1787,7 +1814,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { staffName = "System" } = input || {};
 
       // Get customer name for audit logging
-      const [customer] = await client.unsafe("SELECT name FROM customers WHERE id = $1", [
+      const [customer] = await query("SELECT name FROM customers WHERE id = $1", [
         customerId,
       ]);
       if (!customer) {
@@ -1795,12 +1822,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // Soft delete - set deleted = true
-      await client.unsafe("UPDATE customers SET deleted = true, updated_at = NOW() WHERE id = $1", [
+      await query("UPDATE customers SET deleted = true, updated_at = NOW() WHERE id = $1", [
         customerId,
       ]);
 
       // Audit log for customer deletion
-      await client.unsafe(
+      await query(
         "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
         [
           `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -1823,11 +1850,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Use a single JOIN query instead of N+1 queries
       // 1) Get paginated sale IDs first (lightweight)
-      const saleIds = await client.unsafe(
+      const saleIds = await query(
         `SELECT id FROM sales ORDER BY timestamp DESC LIMIT $1 OFFSET $2`,
         [limit, offset],
       );
-      const countResult = await client.unsafe("SELECT COUNT(*) as count FROM sales");
+      const countResult = await query("SELECT COUNT(*) as count FROM sales");
       const total = Number(countResult[0]?.count) || 0;
 
       if (saleIds.length === 0) {
@@ -1837,7 +1864,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // 2) Fetch all sales + their items in ONE query using JOIN
       const idList = saleIds.map((r: Record<string, unknown>) => r.id as string);
       const placeholders = idList.map((_: string, i: number) => `$${i + 1}`).join(", ");
-      const joinedRows = await client.unsafe(
+      const joinedRows = await query(
         `SELECT s.*, si.id as si_id, si.product_id as si_product_id, si.brand as si_brand,
                 si.model as si_model, si.sn as si_sn, si.price as si_price,
                 si.cogs as si_cogs, si.warranty_expiry as si_warranty_expiry
@@ -1893,7 +1920,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // GET /api/sales/customer/:customerId
     if (method === "GET" && url?.startsWith("/api/sales/customer/")) {
       const customerId = url.replace("/api/sales/customer/", "");
-      const result = await client.unsafe(
+      const result = await query(
         "SELECT * FROM sales WHERE customer_id = $1 ORDER BY timestamp DESC",
         [customerId],
       );
@@ -1931,7 +1958,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           : "[]";
 
       try {
-        const result = await client.begin(async (tx) => {
+        const result = await getClient().begin(async (tx) => {
           // Aggregate quantities by product
           const productQuantities = new Map<string, number>();
           for (const item of items) {
@@ -2098,7 +2125,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       try {
         // Fetch pre-update state to check if sale was already paid
-        const [preUpdate] = await client.unsafe(
+        const [preUpdate] = await query(
           "SELECT is_paid, customer_id, total FROM sales WHERE id = $1",
           [saleId],
         );
@@ -2108,7 +2135,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const wasAlreadyPaid = preUpdate.is_paid === true;
 
         const now = new Date().toISOString();
-        const updateResult = await client.unsafe(
+        const updateResult = await query(
           "UPDATE sales SET is_paid = true, paid_at = $1 WHERE id = $2 RETURNING *",
           [now, saleId],
         );
@@ -2125,7 +2152,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (!wasAlreadyPaid) {
           pointsAwarded = Math.floor(Number(sale.total) / 1000);
           if (pointsAwarded > 0) {
-            await client.unsafe(
+            await query(
               "UPDATE customers SET loyalty_points = loyalty_points + $1, updated_at = NOW() WHERE id = $2",
               [pointsAwarded, sale.customer_id],
             );
@@ -2136,7 +2163,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ? "Loyalty points: already awarded at sale creation"
           : `Loyalty points awarded: ${pointsAwarded}`;
 
-        await client.unsafe(
+        await query(
           "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
           [
             `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
@@ -2169,7 +2196,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       try {
         // Get current sale
-        const saleResult = await client.unsafe("SELECT * FROM sales WHERE id = $1", [saleId]);
+        const saleResult = await query("SELECT * FROM sales WHERE id = $1", [saleId]);
         if (saleResult.length === 0) {
           return res.status(404).json({ error: "Sale not found" });
         }
@@ -2201,7 +2228,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ? [JSON.stringify(installments), String(newTotalPaid), now, saleId]
           : [JSON.stringify(installments), String(newTotalPaid), saleId];
 
-        const updateResult = await client.unsafe(
+        const updateResult = await query(
           `UPDATE sales SET ${updateFields} WHERE id = $${isNowPaid ? 4 : 3} RETURNING *`,
           params,
         );
@@ -2212,7 +2239,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (isNowPaid && !sale.is_paid) {
           pointsAwarded = Math.floor(parseFloat(sale.total) / 1000);
           if (pointsAwarded > 0) {
-            await client.unsafe(
+            await query(
               "UPDATE customers SET loyalty_points = loyalty_points + $1, updated_at = NOW() WHERE id = $2",
               [pointsAwarded, sale.customer_id],
             );
@@ -2221,7 +2248,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         // Audit log
         const pointsLogSuffix = isNowPaid ? `. Loyalty points awarded: ${pointsAwarded}` : "";
-        await client.unsafe(
+        await query(
           "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
           [
             `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
@@ -2243,14 +2270,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // GET /api/sale-items
     if (method === "GET" && url === "/api/sale-items") {
-      const result = await client.unsafe("SELECT * FROM sale_items ORDER BY id DESC");
+      const result = await query("SELECT * FROM sale_items ORDER BY id DESC");
       return res.status(200).json(result.map(parseDbSaleItem));
     }
 
     // GET /api/sale-items/:saleId
     if (method === "GET" && url?.startsWith("/api/sale-items/")) {
       const saleId = url.replace("/api/sale-items/", "");
-      const result = await client.unsafe("SELECT * FROM sale_items WHERE sale_id = $1", [saleId]);
+      const result = await query("SELECT * FROM sale_items WHERE sale_id = $1", [saleId]);
       return res.status(200).json(result.map(parseDbSaleItem));
     }
 
@@ -2263,11 +2290,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ) {
       const { page, limit } = getPageLimit(req);
       const offset = (page - 1) * limit;
-      const result = await client.unsafe(
+      const result = await query(
         `SELECT * FROM warranty_claims ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
         [limit, offset],
       );
-      const countResult = await client.unsafe("SELECT COUNT(*) as count FROM warranty_claims");
+      const countResult = await query("SELECT COUNT(*) as count FROM warranty_claims");
       const total = Number(countResult[0]?.count) || 0;
       return res.status(200).json({
         claims: result.map(parseDbWarrantyClaim),
@@ -2287,14 +2314,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: "Missing required fields" });
       }
 
-      const result = await client.unsafe(
+      const result = await query(
         "INSERT INTO warranty_claims (id, sn, product_model, issue, status) VALUES ($1, $2, $3, $4, $5) RETURNING *",
         [id, sn, productModel, issue, status],
       );
 
       // Audit log for warranty claim creation
       try {
-        await client.unsafe(
+        await query(
           "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
           [
             `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -2322,11 +2349,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // Get old claim for audit logging
-      const [oldClaim] = await client.unsafe("SELECT * FROM warranty_claims WHERE id = $1", [
+      const [oldClaim] = await query("SELECT * FROM warranty_claims WHERE id = $1", [
         claimId,
       ]);
 
-      const result = await client.unsafe(
+      const result = await query(
         "UPDATE warranty_claims SET status = $1 WHERE id = $2 RETURNING *",
         [status, claimId],
       );
@@ -2338,7 +2365,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Audit log for warranty claim update
       if (oldClaim) {
         try {
-          await client.unsafe(
+          await query(
             "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
             [
               `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -2360,11 +2387,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (method === "GET" && (url === "/api/audit-logs" || url?.startsWith("/api/audit-logs?"))) {
       const { page, limit } = getPageLimit(req);
       const offset = (page - 1) * limit;
-      const result = await client.unsafe(
+      const result = await query(
         `SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT $1 OFFSET $2`,
         [limit, offset],
       );
-      const countResult = await client.unsafe("SELECT COUNT(*) as count FROM audit_logs");
+      const countResult = await query("SELECT COUNT(*) as count FROM audit_logs");
       const total = Number(countResult[0]?.count) || 0;
       const logs = result.map((row: Record<string, unknown>) => ({
         id: String(row.id),
