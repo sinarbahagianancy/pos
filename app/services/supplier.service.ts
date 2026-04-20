@@ -27,25 +27,34 @@ export const getAllSuppliers = async (
   const response = await fetch(`${API_BASE}/suppliers?${queryString}`);
   if (!response.ok) {
     let message = "Failed to fetch suppliers";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();
 };
 
-export const createSupplier = async (input: {
-  name: string;
-  phone?: string;
-  address?: string;
-}): Promise<Supplier> => {
+export const createSupplier = async (
+  input: {
+    name: string;
+    phone?: string;
+    address?: string;
+  },
+  staffName: string = "System",
+): Promise<Supplier> => {
   const response = await fetch(`${API_BASE}/suppliers`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
+    body: JSON.stringify({ ...input, staffName }),
   });
   if (!response.ok) {
     let message = "Failed to create supplier";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();
@@ -58,27 +67,36 @@ export const updateSupplier = async (
     phone?: string;
     address?: string;
   },
+  staffName: string = "System",
 ): Promise<Supplier> => {
   const response = await fetch(`${API_BASE}/suppliers/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
+    body: JSON.stringify({ ...input, staffName }),
   });
   if (!response.ok) {
     let message = "Failed to update supplier";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();
 };
 
-export const deleteSupplier = async (id: string): Promise<void> => {
+export const deleteSupplier = async (id: string, staffName: string = "System"): Promise<void> => {
   const response = await fetch(`${API_BASE}/suppliers/${id}`, {
     method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ staffName }),
   });
   if (!response.ok) {
     let message = "Failed to delete supplier";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
 };

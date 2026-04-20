@@ -20,7 +20,13 @@ export const mountTypeEnum = pgEnum("mount_type", [
 
 export const conditionTypeEnum = pgEnum("condition_type", ["New", "Used"]);
 
-export const paymentMethodEnum = pgEnum("payment_method", ["Cash", "Debit", "QRIS", "Transfer", "Utang"]);
+export const paymentMethodEnum = pgEnum("payment_method", [
+  "Cash",
+  "Debit",
+  "QRIS",
+  "Transfer",
+  "Utang",
+]);
 
 export const warrantyTypeEnum = pgEnum("warranty_type", [
   "Official Sony Indonesia",
@@ -48,6 +54,21 @@ export const auditActionEnum = pgEnum("audit_action", [
   "General",
   "Settings Update",
   "Product Update",
+  "Product Deleted",
+  "Product Restored",
+  "Product Hidden",
+  "Customer Created",
+  "Customer Updated",
+  "Customer Deleted",
+  "Supplier Created",
+  "Supplier Updated",
+  "Supplier Deleted",
+  "Staff Created",
+  "Staff Updated",
+  "Staff Deleted",
+  "Warranty Created",
+  "Warranty Updated",
+  "Sale Created",
   "Login",
   "Logout",
 ]);

@@ -456,7 +456,7 @@ const InventoryComponent = () => {
 
   const handleDeleteProduct = async (id: string) => {
     try {
-      await dbDeleteProduct(id);
+      await dbDeleteProduct(id, staffName);
       queryClient.invalidateQueries({ queryKey: ["products"] });
     } catch (error) {
       console.error("Failed to delete product:", error);
@@ -465,7 +465,7 @@ const InventoryComponent = () => {
 
   const handleRestoreProduct = async (id: string) => {
     try {
-      await dbRestoreProduct(id);
+      await dbRestoreProduct(id, staffName);
       queryClient.invalidateQueries({ queryKey: ["products"] });
     } catch (error) {
       console.error("Failed to restore product:", error);
@@ -474,7 +474,7 @@ const InventoryComponent = () => {
 
   const handleToggleHidden = async (id: string, hidden: boolean) => {
     try {
-      await toggleProductHidden(id, hidden);
+      await toggleProductHidden(id, hidden, staffName);
       queryClient.invalidateQueries({ queryKey: ["products"] });
     } catch (error) {
       console.error("Failed to toggle product hidden:", error);
@@ -517,25 +517,21 @@ const InventoryComponent = () => {
 // Suppliers
 const SuppliersComponent = () => {
   const queryClient = useQueryClient();
-  const [supplierPage, setSupplierPage] = useState(1);
-  const [suppliersPerPage, setSuppliersPerPage] = useState(20);
 
   const user = getCurrentUser();
   const staffName = user?.name || "System";
 
   const { data: suppliersData, isLoading: suppliersLoading } = useQuery({
-    queryKey: ["suppliers", supplierPage, suppliersPerPage],
-    queryFn: () => getAllSuppliers({ page: supplierPage, limit: suppliersPerPage }),
+    queryKey: ["suppliers"],
+    queryFn: () => getAllSuppliers({ page: 1, limit: 1000 }),
   });
 
   const suppliers = suppliersData?.suppliers || [];
-  const totalSuppliers = suppliersData?.total || 0;
-  const totalSupplierPages = suppliersData?.totalPages || 0;
   const loading = suppliersLoading;
 
   const handleAddSupplier = async (data: { name: string; phone?: string; address?: string }) => {
     try {
-      await createSupplier(data);
+      await createSupplier(data, staffName);
       await queryClient.invalidateQueries({ queryKey: ["suppliers"] });
     } catch (error) {
       console.error("Failed to add supplier:", error);
@@ -548,7 +544,7 @@ const SuppliersComponent = () => {
     data: { name?: string; phone?: string; address?: string },
   ) => {
     try {
-      await updateSupplier(id, data);
+      await updateSupplier(id, data, staffName);
       await queryClient.invalidateQueries({ queryKey: ["suppliers"] });
     } catch (error) {
       console.error("Failed to update supplier:", error);
@@ -558,7 +554,7 @@ const SuppliersComponent = () => {
 
   const handleDeleteSupplier = async (id: string) => {
     try {
-      await deleteSupplier(id);
+      await deleteSupplier(id, staffName);
       await queryClient.invalidateQueries({ queryKey: ["suppliers"] });
     } catch (error) {
       console.error("Failed to delete supplier:", error);
@@ -573,12 +569,6 @@ const SuppliersComponent = () => {
       onAddSupplier={handleAddSupplier}
       onUpdateSupplier={handleUpdateSupplier}
       onDeleteSupplier={handleDeleteSupplier}
-      currentPage={supplierPage}
-      totalPages={totalSupplierPages}
-      totalItems={totalSuppliers}
-      onPageChange={setSupplierPage}
-      perPage={suppliersPerPage}
-      onPerPageChange={setSuppliersPerPage}
     />
   );
 };
@@ -619,6 +609,7 @@ const CustomersComponent = () => {
         address: customer.address,
         npwp: customer.npwp,
         loyaltyPoints: customer.loyaltyPoints,
+        staffName,
       });
       await queryClient.invalidateQueries({ queryKey: ["customers"] });
       notify(`${customer.name} berhasil didaftarkan ke sistem.`, "success");
@@ -787,6 +778,8 @@ const WarrantyComponent = () => {
 
   const handleAddClaim = async (claim: WarrantyClaim) => {
     const { createWarrantyClaim } = await import("../app/services/reports.api");
+    const user = getCurrentUser();
+    const staffName = user?.name || "System";
     try {
       await createWarrantyClaim({
         id: claim.id,
@@ -794,6 +787,7 @@ const WarrantyComponent = () => {
         productModel: claim.productModel,
         issue: claim.issue,
         status: claim.status,
+        staffName,
       });
       await queryClient.invalidateQueries({ queryKey: ["warrantyClaims"] });
       notify("Klaim garansi berhasil diajukan.", "success");
@@ -806,8 +800,10 @@ const WarrantyComponent = () => {
 
   const handleUpdateStatus = async (id: string, status: string) => {
     const { updateWarrantyClaim } = await import("../app/services/reports.api");
+    const user = getCurrentUser();
+    const staffName = user?.name || "System";
     try {
-      await updateWarrantyClaim(id, status);
+      await updateWarrantyClaim(id, status, staffName);
       await queryClient.invalidateQueries({ queryKey: ["warrantyClaims"] });
       notify("Status klaim diperbarui.", "success");
     } catch (error) {
@@ -971,10 +967,12 @@ const SettingsComponent = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  const user = getCurrentUser();
+  const staffName = user?.name || "System";
+
   useEffect(() => {
     const loadData = async () => {
       try {
-        const user = getCurrentUser();
         if (user) {
           setIsAdmin(user.role === "Admin");
         }
@@ -993,7 +991,7 @@ const SettingsComponent = () => {
 
   const handleUpdateStoreConfig = async (config: StoreConfigType) => {
     try {
-      const updated = await updateStoreConfig(config);
+      const updated = await updateStoreConfig({ ...config, staffName });
       setStoreConfig(updated);
     } catch (error) {
       console.error("Failed to update store config:", error);
@@ -1002,7 +1000,7 @@ const SettingsComponent = () => {
 
   const handleAddStaff = async (name: string, password: string, role: "Admin" | "Staff") => {
     try {
-      const newStaff = await addStaff(name, password, role);
+      const newStaff = await addStaff(name, password, role, staffName);
       setStaffList((prev) => [...prev, newStaff]);
     } catch (error) {
       console.error("Failed to add staff:", error);
@@ -1012,7 +1010,7 @@ const SettingsComponent = () => {
 
   const handleDeleteStaff = async (id: string) => {
     try {
-      await deleteStaff(id);
+      await deleteStaff(id, staffName);
       setStaffList((prev) => prev.filter((s) => s.id !== id));
     } catch (error) {
       console.error("Failed to delete staff:", error);
@@ -1024,7 +1022,7 @@ const SettingsComponent = () => {
     data: { name?: string; role?: "Admin" | "Staff"; password?: string },
   ) => {
     try {
-      const updated = await updateStaff(id, data);
+      const updated = await updateStaff(id, { ...data, staffName });
       setStaffList((prev) => prev.map((s) => (s.id === id ? updated : s)));
     } catch (error) {
       console.error("Failed to update staff:", error);
@@ -1147,6 +1145,7 @@ const POSComponent = () => {
         name,
         phone,
         address,
+        staffName,
       });
       setCustomers((prev) => [...prev, newCustomer]);
       return newCustomer;

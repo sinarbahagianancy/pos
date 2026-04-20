@@ -1,8 +1,11 @@
 export function formatIDR(amount: number): string {
-  return "Rp " + new Intl.NumberFormat("id-ID", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
+  return (
+    "Rp " +
+    new Intl.NumberFormat("id-ID", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount)
+  );
 }
 
 export function formatDate(date: Date | string): string {

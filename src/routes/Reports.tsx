@@ -57,10 +57,7 @@ const ReportsView: React.FC<ReportsProps> = ({
   const grossProfit = totalRevenue - totalCogs;
 
   const unpaidUtang = sales.filter((s) => s.paymentMethod === "Utang" && !s.isPaid);
-  const totalReceivables = unpaidUtang.reduce(
-    (acc, s) => acc + (s.total - (s.amountPaid || 0)),
-    0,
-  );
+  const totalReceivables = unpaidUtang.reduce((acc, s) => acc + (s.total - (s.amountPaid || 0)), 0);
 
   const priorityReceivables = unpaidUtang.sort((a, b) => {
     const aOverdue = !a.dueDate || new Date(a.dueDate) < new Date();
@@ -216,8 +213,8 @@ const ReportsView: React.FC<ReportsProps> = ({
               Catat Cicilan
             </h3>
             <p className="text-sm text-slate-500 mb-6">
-              Nota <span className="font-black text-amber-600">{installmentPopover.saleId}</span> dari{" "}
-              <span className="font-black">{installmentPopover.customerName}</span>
+              Nota <span className="font-black text-amber-600">{installmentPopover.saleId}</span>{" "}
+              dari <span className="font-black">{installmentPopover.customerName}</span>
             </p>
             <div className="space-y-2 mb-6">
               <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
@@ -514,7 +511,10 @@ const ReportsView: React.FC<ReportsProps> = ({
               {logEntries.map((entry, idx) => {
                 const isInstallment = entry.type === "installment";
                 return (
-                  <tr key={`${entry.saleId}-${idx}`} className={`hover:bg-slate-50 transition-colors ${isInstallment ? "bg-amber-50/30" : ""}`}>
+                  <tr
+                    key={`${entry.saleId}-${idx}`}
+                    className={`hover:bg-slate-50 transition-colors ${isInstallment ? "bg-amber-50/30" : ""}`}
+                  >
                     <td className="px-10 py-6 font-mono text-slate-500 text-xs font-bold">
                       {entry.saleId}
                     </td>
@@ -522,12 +522,21 @@ const ReportsView: React.FC<ReportsProps> = ({
                     <td className="px-10 py-6 font-black text-slate-900 uppercase tracking-tighter">
                       {entry.customerName}
                     </td>
-                    <td className={`px-10 py-6 text-right font-black tabular-nums ${isInstallment ? "text-amber-600" : "text-slate-900"}`}>
-                      {isInstallment ? "+" : ""}{formatIDR(entry.amount)}
+                    <td
+                      className={`px-10 py-6 text-right font-black tabular-nums ${isInstallment ? "text-amber-600" : "text-slate-900"}`}
+                    >
+                      {isInstallment ? "+" : ""}
+                      {formatIDR(entry.amount)}
                     </td>
                     {canViewSensitive && (
                       <td className="px-10 py-6 text-right font-black text-green-600 tabular-nums">
-                        {isInstallment ? "-" : formatIDR(entry.sale!.total - (entry.sale!.items.reduce((sum, i) => sum + i.cogs, 0) + entry.sale!.tax))}
+                        {isInstallment
+                          ? "-"
+                          : formatIDR(
+                              entry.sale!.total -
+                                (entry.sale!.items.reduce((sum, i) => sum + i.cogs, 0) +
+                                  entry.sale!.tax),
+                            )}
                       </td>
                     )}
                     <td className="px-10 py-6 text-center">
@@ -537,7 +546,8 @@ const ReportsView: React.FC<ReportsProps> = ({
                             Cicilan {entry.installmentIndex}x
                           </span>
                           <span className="text-[9px] text-slate-400 font-bold">
-                            Terbayar: {formatIDR(entry.sale!.amountPaid || 0)} / {formatIDR(entry.sale!.total)}
+                            Terbayar: {formatIDR(entry.sale!.amountPaid || 0)} /{" "}
+                            {formatIDR(entry.sale!.total)}
                           </span>
                         </div>
                       ) : (
@@ -561,11 +571,14 @@ const ReportsView: React.FC<ReportsProps> = ({
                                   : "Utang"
                               : entry.paymentMethod}
                           </span>
-                          {entry.paymentMethod === "Utang" && !entry.isPaid && (entry.sale!.amountPaid || 0) > 0 && (
-                            <span className="text-[9px] text-slate-400 font-bold">
-                              {formatIDR(entry.sale!.amountPaid || 0)} / {formatIDR(entry.sale!.total)}
-                            </span>
-                          )}
+                          {entry.paymentMethod === "Utang" &&
+                            !entry.isPaid &&
+                            (entry.sale!.amountPaid || 0) > 0 && (
+                              <span className="text-[9px] text-slate-400 font-bold">
+                                {formatIDR(entry.sale!.amountPaid || 0)} /{" "}
+                                {formatIDR(entry.sale!.total)}
+                              </span>
+                            )}
                         </div>
                       )}
                     </td>

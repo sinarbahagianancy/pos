@@ -16,8 +16,7 @@ import postgres from "postgres";
  */
 
 const TEST_DB_URL =
-  process.env.TEST_DATABASE_URL ||
-  "postgresql://postgres:postgres@localhost:5433/pos_test";
+  process.env.TEST_DATABASE_URL || "postgresql://postgres:postgres@localhost:5433/pos_test";
 
 const SEED_SQL = `
   -- Clean existing data
@@ -68,9 +67,7 @@ async function globalSetup(config: FullConfig) {
     });
     console.log("  ✓ Test database started");
   } catch {
-    console.warn(
-      "  ⚠ Docker compose failed (may already be running). Continuing...",
-    );
+    console.warn("  ⚠ Docker compose failed (may already be running). Continuing...");
   }
 
   // Step 2: Wait for Postgres to be ready using Node.js client
@@ -84,7 +81,10 @@ async function globalSetup(config: FullConfig) {
       console.log("  ✓ Postgres is ready");
       break;
     } catch {
-      if (sql) { await sql.end(); sql = null; }
+      if (sql) {
+        await sql.end();
+        sql = null;
+      }
       retries--;
       if (retries === 0) {
         throw new Error("Postgres did not become ready in time");
@@ -103,10 +103,7 @@ async function globalSetup(config: FullConfig) {
     });
     console.log("  ✓ Schema pushed");
   } catch (e: any) {
-    console.warn(
-      "  ⚠ Drizzle push failed (schema may already exist):",
-      e.message?.slice(0, 200),
-    );
+    console.warn("  ⚠ Drizzle push failed (schema may already exist):", e.message?.slice(0, 200));
   }
 
   // Step 4: Seed test data using Node.js postgres client
@@ -116,8 +113,7 @@ async function globalSetup(config: FullConfig) {
       sql = postgres(TEST_DB_URL, { prepare: false });
     }
     // Execute each statement separately to avoid issues with multi-statement queries
-    const statements = SEED_SQL
-      .split(";")
+    const statements = SEED_SQL.split(";")
       .map((s) => s.trim())
       .filter((s) => s.length > 0 && !s.startsWith("--"));
 

@@ -30,7 +30,10 @@ export const getAllSaleItems = async (): Promise<SaleItem[]> => {
   const response = await fetch(`${API_BASE}/sale-items`);
   if (!response.ok) {
     let message = "Failed to fetch sale items";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();
@@ -40,7 +43,10 @@ export const getSaleItemsBySaleId = async (saleId: string): Promise<SaleItem[]> 
   const response = await fetch(`${API_BASE}/sale-items/${saleId}`);
   if (!response.ok) {
     let message = "Failed to fetch sale items";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();
@@ -58,7 +64,10 @@ export const getAllWarrantyClaims = async (
   const response = await fetch(`${API_BASE}/warranty-claims?${queryString}`);
   if (!response.ok) {
     let message = "Failed to fetch warranty claims";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();
@@ -70,6 +79,7 @@ export const createWarrantyClaim = async (input: {
   productModel: string;
   issue: string;
   status?: string;
+  staffName?: string;
 }): Promise<WarrantyClaim> => {
   const response = await fetch(`${API_BASE}/warranty-claims`, {
     method: "POST",
@@ -78,21 +88,31 @@ export const createWarrantyClaim = async (input: {
   });
   if (!response.ok) {
     let message = "Failed to create warranty claim";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();
 };
 
-export const updateWarrantyClaim = async (id: string, status: string): Promise<WarrantyClaim> => {
+export const updateWarrantyClaim = async (
+  id: string,
+  status: string,
+  staffName: string = "System",
+): Promise<WarrantyClaim> => {
   const response = await fetch(`${API_BASE}/warranty-claims/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status }),
+    body: JSON.stringify({ status, staffName }),
   });
   if (!response.ok) {
     let message = "Failed to update warranty claim";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();

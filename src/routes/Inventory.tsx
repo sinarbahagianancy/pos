@@ -435,10 +435,13 @@ const InventoryView: React.FC<InventoryProps> = ({
     const modelLower = (newP.model || "").trim().toLowerCase();
 
     const sameProduct = products.find(
-      (p) => p.brand.trim().toLowerCase() === brandLower && p.model.trim().toLowerCase() === modelLower,
+      (p) =>
+        p.brand.trim().toLowerCase() === brandLower && p.model.trim().toLowerCase() === modelLower,
     );
     if (sameProduct) {
-      warnings.push(`Produk "${sameProduct.brand} ${sameProduct.model}" sudah terdaftar di sistem (stok: ${getProductStock(sameProduct)}).`);
+      warnings.push(
+        `Produk "${sameProduct.brand} ${sameProduct.model}" sudah terdaftar di sistem (stok: ${getProductStock(sameProduct)}).`,
+      );
     }
 
     setAddDuplicateWarnings(warnings);
@@ -553,7 +556,10 @@ const InventoryView: React.FC<InventoryProps> = ({
           </p>
         </div>
         <button
-          onClick={() => { setShowAddModal(true); setConfirmAdd(false); }}
+          onClick={() => {
+            setShowAddModal(true);
+            setConfirmAdd(false);
+          }}
           className="bg-indigo-600 text-white px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all w-full sm:w-auto"
         >
           Input Barang Baru
@@ -737,7 +743,11 @@ const InventoryView: React.FC<InventoryProps> = ({
                         </span>
                         {p.restockHistory && p.restockHistory.length > 0 && (
                           <span className="text-[9px] text-indigo-500 font-bold uppercase tracking-widest mt-0.5">
-                            Inv: {p.restockHistory.map(e => e.inv).filter(Boolean).join(", ")}
+                            Inv:{" "}
+                            {p.restockHistory
+                              .map((e) => e.inv)
+                              .filter(Boolean)
+                              .join(", ")}
                           </span>
                         )}
                       </div>
@@ -787,7 +797,10 @@ const InventoryView: React.FC<InventoryProps> = ({
                       </span>
                       {p.restockHistory && p.restockHistory.length > 0 && (
                         <button
-                          onClick={(e) => { e.stopPropagation(); setHistoryProduct(p); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setHistoryProduct(p);
+                          }}
                           className="text-[10px] font-medium text-indigo-500 hover:text-indigo-700 transition-colors cursor-pointer"
                         >
                           📋 {p.restockHistory.length} riwayat restok
@@ -1320,7 +1333,10 @@ const InventoryView: React.FC<InventoryProps> = ({
                 Penerimaan Barang Baru
               </h2>
               <button
-                onClick={() => { setShowAddModal(false); setConfirmAdd(false); }}
+                onClick={() => {
+                  setShowAddModal(false);
+                  setConfirmAdd(false);
+                }}
                 disabled={isAdding}
                 className="text-slate-400 hover:text-slate-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
@@ -1337,7 +1353,7 @@ const InventoryView: React.FC<InventoryProps> = ({
             <form
               onSubmit={handleAddSubmit}
               className="flex-1 overflow-y-auto p-6 lg:p-8 custom-scrollbar grid grid-cols-1 md:grid-cols-2 gap-6"
-           >
+            >
               <div className="md:col-span-2">
                 <h3 className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-4">
                   Produk Info
@@ -1538,7 +1554,10 @@ const InventoryView: React.FC<InventoryProps> = ({
               <div className="md:col-span-2 flex gap-4 pt-4">
                 <button
                   type="button"
-                  onClick={() => { setShowAddModal(false); setConfirmAdd(false); }}
+                  onClick={() => {
+                    setShowAddModal(false);
+                    setConfirmAdd(false);
+                  }}
                   disabled={isAdding}
                   className="flex-1 py-5 bg-white border border-slate-200 text-slate-700 font-black rounded-3xl text-[10px] uppercase tracking-widest disabled:opacity-50"
                 >
@@ -1593,10 +1612,15 @@ const InventoryView: React.FC<InventoryProps> = ({
                 const brandLower = (editForm.brand || "").trim().toLowerCase();
                 const modelLower = (editForm.model || "").trim().toLowerCase();
                 const sameProduct = products.find(
-                  (p) => p.id !== editingProduct.id && p.brand.trim().toLowerCase() === brandLower && p.model.trim().toLowerCase() === modelLower,
+                  (p) =>
+                    p.id !== editingProduct.id &&
+                    p.brand.trim().toLowerCase() === brandLower &&
+                    p.model.trim().toLowerCase() === modelLower,
                 );
                 if (sameProduct) {
-                  warnings.push(`Produk "${sameProduct.brand} ${sameProduct.model}" sudah terdaftar di sistem (stok: ${getProductStock(sameProduct)}).`);
+                  warnings.push(
+                    `Produk "${sameProduct.brand} ${sameProduct.model}" sudah terdaftar di sistem (stok: ${getProductStock(sameProduct)}).`,
+                  );
                 }
                 setEditDuplicateWarnings(warnings);
                 setConfirmEdit(true);
@@ -1782,8 +1806,18 @@ const InventoryView: React.FC<InventoryProps> = ({
             <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
               <div className="flex items-center space-x-4">
                 <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center">
-                  <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <svg
+                    className="w-6 h-6 text-indigo-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
                   </svg>
                 </div>
                 <div>
@@ -1801,7 +1835,12 @@ const InventoryView: React.FC<InventoryProps> = ({
                 className="text-slate-300 hover:text-slate-600 disabled:cursor-not-allowed"
               >
                 <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2.5"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </button>
             </div>
@@ -1810,13 +1849,27 @@ const InventoryView: React.FC<InventoryProps> = ({
               {addDuplicateWarnings.length > 0 && (
                 <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4">
                   <div className="flex items-start space-x-3">
-                    <svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    <svg
+                      className="w-5 h-5 text-amber-500 shrink-0 mt-0.5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                      />
                     </svg>
                     <div>
-                      <p className="text-xs font-black text-amber-800 uppercase tracking-widest mb-1">Kemungkinan Duplikat</p>
+                      <p className="text-xs font-black text-amber-800 uppercase tracking-widest mb-1">
+                        Kemungkinan Duplikat
+                      </p>
                       {addDuplicateWarnings.map((w, i) => (
-                        <p key={i} className="text-sm text-amber-700 font-medium">{w}</p>
+                        <p key={i} className="text-sm text-amber-700 font-medium">
+                          {w}
+                        </p>
                       ))}
                     </div>
                   </div>
@@ -1824,11 +1877,15 @@ const InventoryView: React.FC<InventoryProps> = ({
               )}
 
               <div className="bg-slate-50 rounded-2xl p-4 mb-4">
-                <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-3">Data Produk</p>
+                <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-3">
+                  Data Produk
+                </p>
                 <div className="space-y-2">
                   <div className="flex justify-between">
                     <span className="text-xs text-slate-500 font-medium">Merk & Model</span>
-                    <span className="text-sm font-black text-slate-900">{newP.brand} {newP.model}</span>
+                    <span className="text-sm font-black text-slate-900">
+                      {newP.brand} {newP.model}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-xs text-slate-500 font-medium">Kategori</span>
@@ -1836,41 +1893,61 @@ const InventoryView: React.FC<InventoryProps> = ({
                   </div>
                   <div className="flex justify-between">
                     <span className="text-xs text-slate-500 font-medium">Kondisi</span>
-                    <span className="text-sm font-bold text-slate-700">{newP.condition === "New" ? "Baru" : "Bekas"}</span>
+                    <span className="text-sm font-bold text-slate-700">
+                      {newP.condition === "New" ? "Baru" : "Bekas"}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-xs text-slate-500 font-medium">Garansi</span>
-                    <span className="text-sm font-bold text-slate-700">{newP.warrantyMonths} Bulan ({newP.warrantyType})</span>
+                    <span className="text-sm font-bold text-slate-700">
+                      {newP.warrantyMonths} Bulan ({newP.warrantyType})
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-xs text-slate-500 font-medium">PPN</span>
-                    <span className="text-sm font-bold text-slate-700">{newP.taxEnabled ? "Ya" : "Tidak"}</span>
+                    <span className="text-sm font-bold text-slate-700">
+                      {newP.taxEnabled ? "Ya" : "Tidak"}
+                    </span>
                   </div>
                   <div className="border-t border-slate-200 my-2"></div>
                   <div className="flex justify-between">
                     <span className="text-xs text-slate-500 font-medium">Harga Jual</span>
-                    <span className="text-sm font-black text-slate-900">{formatIDR(newP.price || 0)}</span>
+                    <span className="text-sm font-black text-slate-900">
+                      {formatIDR(newP.price || 0)}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-xs text-slate-500 font-medium">Harga Modal</span>
-                    <span className="text-sm font-black text-indigo-600">{formatIDR(newP.cogs || 0)}</span>
+                    <span className="text-sm font-black text-indigo-600">
+                      {formatIDR(newP.cogs || 0)}
+                    </span>
                   </div>
                   <div className="border-t border-slate-200 my-2"></div>
                   <div className="flex justify-between">
                     <span className="text-xs text-slate-500 font-medium">Tipe Stok</span>
-                    <span className="text-sm font-bold text-slate-700">{newProductHasSN ? "Serial Number" : "Non-SN"}</span>
+                    <span className="text-sm font-bold text-slate-700">
+                      {newProductHasSN ? "Serial Number" : "Non-SN"}
+                    </span>
                   </div>
                   {newProductHasSN ? (
                     <div className="flex justify-between">
                       <span className="text-xs text-slate-500 font-medium">Jumlah SN</span>
                       <span className="text-sm font-black text-slate-900">
-                        {newSerials.split("\n").map(s => s.trim()).filter(s => s.length > 0).length} unit
+                        {
+                          newSerials
+                            .split("\n")
+                            .map((s) => s.trim())
+                            .filter((s) => s.length > 0).length
+                        }{" "}
+                        unit
                       </span>
                     </div>
                   ) : (
                     <div className="flex justify-between">
                       <span className="text-xs text-slate-500 font-medium">Jumlah Stok</span>
-                      <span className="text-sm font-black text-slate-900">{newProductQuantity} unit</span>
+                      <span className="text-sm font-black text-slate-900">
+                        {newProductQuantity} unit
+                      </span>
                     </div>
                   )}
                   <div className="flex justify-between">
@@ -1880,7 +1957,9 @@ const InventoryView: React.FC<InventoryProps> = ({
                   {newProductInvoiceNumber && (
                     <div className="flex justify-between">
                       <span className="text-xs text-slate-500 font-medium">No. Invoice</span>
-                      <span className="text-sm font-bold text-indigo-600">{newProductInvoiceNumber}</span>
+                      <span className="text-sm font-bold text-indigo-600">
+                        {newProductInvoiceNumber}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -1902,8 +1981,20 @@ const InventoryView: React.FC<InventoryProps> = ({
                   {isAdding ? (
                     <>
                       <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                          fill="none"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                        />
                       </svg>
                       Menyimpan...
                     </>
@@ -1924,8 +2015,18 @@ const InventoryView: React.FC<InventoryProps> = ({
             <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between shrink-0">
               <div className="flex items-center space-x-4">
                 <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center">
-                  <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  <svg
+                    className="w-6 h-6 text-indigo-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                    />
                   </svg>
                 </div>
                 <div>
@@ -1943,7 +2044,12 @@ const InventoryView: React.FC<InventoryProps> = ({
                 className="text-slate-300 hover:text-slate-600 disabled:cursor-not-allowed"
               >
                 <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2.5"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </button>
             </div>
@@ -1952,13 +2058,27 @@ const InventoryView: React.FC<InventoryProps> = ({
               {editDuplicateWarnings.length > 0 && (
                 <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4">
                   <div className="flex items-start space-x-3">
-                    <svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    <svg
+                      className="w-5 h-5 text-amber-500 shrink-0 mt-0.5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                      />
                     </svg>
                     <div>
-                      <p className="text-xs font-black text-amber-800 uppercase tracking-widest mb-1">Kemungkinan Duplikat</p>
+                      <p className="text-xs font-black text-amber-800 uppercase tracking-widest mb-1">
+                        Kemungkinan Duplikat
+                      </p>
                       {editDuplicateWarnings.map((w, i) => (
-                        <p key={i} className="text-sm text-amber-700 font-medium">{w}</p>
+                        <p key={i} className="text-sm text-amber-700 font-medium">
+                          {w}
+                        </p>
                       ))}
                     </div>
                   </div>
@@ -1967,22 +2087,50 @@ const InventoryView: React.FC<InventoryProps> = ({
 
               {!hasEditChanges() ? (
                 <div className="bg-slate-50 rounded-2xl p-4 mb-4 text-center">
-                  <svg className="w-8 h-8 text-slate-300 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                  <svg
+                    className="w-8 h-8 text-slate-300 mx-auto mb-2"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
+                    />
                   </svg>
                   <p className="text-sm font-bold text-slate-400">Tidak ada perubahan terdeteksi</p>
                 </div>
               ) : (
                 <div className="bg-slate-50 rounded-2xl p-4 mb-4">
-                  <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-3">Ringkasan Perubahan</p>
+                  <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-3">
+                    Ringkasan Perubahan
+                  </p>
                   <div className="space-y-2">
                     {(editForm.brand ?? "") !== editingProduct.brand && (
                       <div className="flex justify-between items-center">
                         <span className="text-xs text-slate-500 font-medium">Merk</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-slate-400 line-through">{editingProduct.brand}</span>
-                          <svg className="w-3 h-3 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7" /></svg>
-                          <span className="text-sm font-black text-slate-900">{editForm.brand}</span>
+                          <span className="text-xs text-slate-400 line-through">
+                            {editingProduct.brand}
+                          </span>
+                          <svg
+                            className="w-3 h-3 text-indigo-400"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="3"
+                              d="M9 5l7 7-7 7"
+                            />
+                          </svg>
+                          <span className="text-sm font-black text-slate-900">
+                            {editForm.brand}
+                          </span>
                         </div>
                       </div>
                     )}
@@ -1990,9 +2138,25 @@ const InventoryView: React.FC<InventoryProps> = ({
                       <div className="flex justify-between items-center">
                         <span className="text-xs text-slate-500 font-medium">Model</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-slate-400 line-through">{editingProduct.model}</span>
-                          <svg className="w-3 h-3 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7" /></svg>
-                          <span className="text-sm font-black text-slate-900">{editForm.model}</span>
+                          <span className="text-xs text-slate-400 line-through">
+                            {editingProduct.model}
+                          </span>
+                          <svg
+                            className="w-3 h-3 text-indigo-400"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="3"
+                              d="M9 5l7 7-7 7"
+                            />
+                          </svg>
+                          <span className="text-sm font-black text-slate-900">
+                            {editForm.model}
+                          </span>
                         </div>
                       </div>
                     )}
@@ -2000,9 +2164,25 @@ const InventoryView: React.FC<InventoryProps> = ({
                       <div className="flex justify-between items-center">
                         <span className="text-xs text-slate-500 font-medium">Kategori</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-slate-400 line-through">{editingProduct.category}</span>
-                          <svg className="w-3 h-3 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7" /></svg>
-                          <span className="text-sm font-black text-slate-900">{editForm.category}</span>
+                          <span className="text-xs text-slate-400 line-through">
+                            {editingProduct.category}
+                          </span>
+                          <svg
+                            className="w-3 h-3 text-indigo-400"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="3"
+                              d="M9 5l7 7-7 7"
+                            />
+                          </svg>
+                          <span className="text-sm font-black text-slate-900">
+                            {editForm.category}
+                          </span>
                         </div>
                       </div>
                     )}
@@ -2010,9 +2190,25 @@ const InventoryView: React.FC<InventoryProps> = ({
                       <div className="flex justify-between items-center">
                         <span className="text-xs text-slate-500 font-medium">Kondisi</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-slate-400 line-through">{editingProduct.condition === "New" ? "Baru" : "Bekas"}</span>
-                          <svg className="w-3 h-3 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7" /></svg>
-                          <span className="text-sm font-black text-slate-900">{editForm.condition === "New" ? "Baru" : "Bekas"}</span>
+                          <span className="text-xs text-slate-400 line-through">
+                            {editingProduct.condition === "New" ? "Baru" : "Bekas"}
+                          </span>
+                          <svg
+                            className="w-3 h-3 text-indigo-400"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="3"
+                              d="M9 5l7 7-7 7"
+                            />
+                          </svg>
+                          <span className="text-sm font-black text-slate-900">
+                            {editForm.condition === "New" ? "Baru" : "Bekas"}
+                          </span>
                         </div>
                       </div>
                     )}
@@ -2020,9 +2216,25 @@ const InventoryView: React.FC<InventoryProps> = ({
                       <div className="flex justify-between items-center">
                         <span className="text-xs text-slate-500 font-medium">Garansi</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-slate-400 line-through">{editingProduct.warrantyMonths} bln</span>
-                          <svg className="w-3 h-3 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7" /></svg>
-                          <span className="text-sm font-black text-slate-900">{editForm.warrantyMonths} bln</span>
+                          <span className="text-xs text-slate-400 line-through">
+                            {editingProduct.warrantyMonths} bln
+                          </span>
+                          <svg
+                            className="w-3 h-3 text-indigo-400"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="3"
+                              d="M9 5l7 7-7 7"
+                            />
+                          </svg>
+                          <span className="text-sm font-black text-slate-900">
+                            {editForm.warrantyMonths} bln
+                          </span>
                         </div>
                       </div>
                     )}
@@ -2030,9 +2242,25 @@ const InventoryView: React.FC<InventoryProps> = ({
                       <div className="flex justify-between items-center">
                         <span className="text-xs text-slate-500 font-medium">Tipe Garansi</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-slate-400 line-through">{editingProduct.warrantyType}</span>
-                          <svg className="w-3 h-3 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7" /></svg>
-                          <span className="text-sm font-black text-slate-900">{editForm.warrantyType}</span>
+                          <span className="text-xs text-slate-400 line-through">
+                            {editingProduct.warrantyType}
+                          </span>
+                          <svg
+                            className="w-3 h-3 text-indigo-400"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="3"
+                              d="M9 5l7 7-7 7"
+                            />
+                          </svg>
+                          <span className="text-sm font-black text-slate-900">
+                            {editForm.warrantyType}
+                          </span>
                         </div>
                       </div>
                     )}
@@ -2040,9 +2268,25 @@ const InventoryView: React.FC<InventoryProps> = ({
                       <div className="flex justify-between items-center">
                         <span className="text-xs text-slate-500 font-medium">PPN</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-slate-400 line-through">{editingProduct.taxEnabled ? "Ya" : "Tidak"}</span>
-                          <svg className="w-3 h-3 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7" /></svg>
-                          <span className="text-sm font-black text-slate-900">{editForm.taxEnabled ? "Ya" : "Tidak"}</span>
+                          <span className="text-xs text-slate-400 line-through">
+                            {editingProduct.taxEnabled ? "Ya" : "Tidak"}
+                          </span>
+                          <svg
+                            className="w-3 h-3 text-indigo-400"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="3"
+                              d="M9 5l7 7-7 7"
+                            />
+                          </svg>
+                          <span className="text-sm font-black text-slate-900">
+                            {editForm.taxEnabled ? "Ya" : "Tidak"}
+                          </span>
                         </div>
                       </div>
                     )}
@@ -2050,9 +2294,25 @@ const InventoryView: React.FC<InventoryProps> = ({
                       <div className="flex justify-between items-center">
                         <span className="text-xs text-slate-500 font-medium">Harga Jual</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-slate-400 line-through">{formatIDR(editingProduct.price)}</span>
-                          <svg className="w-3 h-3 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7" /></svg>
-                          <span className="text-sm font-black text-slate-900">{formatIDR(editForm.price ?? 0)}</span>
+                          <span className="text-xs text-slate-400 line-through">
+                            {formatIDR(editingProduct.price)}
+                          </span>
+                          <svg
+                            className="w-3 h-3 text-indigo-400"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="3"
+                              d="M9 5l7 7-7 7"
+                            />
+                          </svg>
+                          <span className="text-sm font-black text-slate-900">
+                            {formatIDR(editForm.price ?? 0)}
+                          </span>
                         </div>
                       </div>
                     )}
@@ -2060,9 +2320,25 @@ const InventoryView: React.FC<InventoryProps> = ({
                       <div className="flex justify-between items-center">
                         <span className="text-xs text-slate-500 font-medium">Harga Modal</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-slate-400 line-through">{formatIDR(editingProduct.cogs)}</span>
-                          <svg className="w-3 h-3 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7" /></svg>
-                          <span className="text-sm font-black text-indigo-600">{formatIDR(editForm.cogs ?? 0)}</span>
+                          <span className="text-xs text-slate-400 line-through">
+                            {formatIDR(editingProduct.cogs)}
+                          </span>
+                          <svg
+                            className="w-3 h-3 text-indigo-400"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="3"
+                              d="M9 5l7 7-7 7"
+                            />
+                          </svg>
+                          <span className="text-sm font-black text-indigo-600">
+                            {formatIDR(editForm.cogs ?? 0)}
+                          </span>
                         </div>
                       </div>
                     )}
@@ -2086,8 +2362,20 @@ const InventoryView: React.FC<InventoryProps> = ({
                   {isUpdating ? (
                     <>
                       <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                          fill="none"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                        />
                       </svg>
                       Menyimpan...
                     </>
@@ -2397,7 +2685,8 @@ const InventoryView: React.FC<InventoryProps> = ({
                   {historyProduct.brand} {historyProduct.model}
                 </p>
                 <p className="text-[10px] text-indigo-500 font-medium mt-1">
-                  Stok saat ini: {getProductStock(historyProduct)} unit • {historyProduct.restockHistory?.length || 0} riwayat restok
+                  Stok saat ini: {getProductStock(historyProduct)} unit •{" "}
+                  {historyProduct.restockHistory?.length || 0} riwayat restok
                 </p>
               </div>
               <button
@@ -2405,17 +2694,34 @@ const InventoryView: React.FC<InventoryProps> = ({
                 className="text-slate-300 hover:text-slate-900 transition-colors"
               >
                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2.5"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-6 lg:p-8 custom-scrollbar">
-              {(!historyProduct.restockHistory || historyProduct.restockHistory.length === 0) ? (
+              {!historyProduct.restockHistory || historyProduct.restockHistory.length === 0 ? (
                 <div className="text-center py-12">
-                  <svg className="w-12 h-12 text-slate-200 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  <svg
+                    className="w-12 h-12 text-slate-200 mx-auto mb-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="1.5"
+                      d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                    />
                   </svg>
-                  <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Belum ada riwayat restok</p>
+                  <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">
+                    Belum ada riwayat restok
+                  </p>
                 </div>
               ) : (
                 <div className="overflow-hidden rounded-2xl border border-slate-200">
@@ -2444,7 +2750,9 @@ const InventoryView: React.FC<InventoryProps> = ({
                         return (
                           <tr key={idx} className="hover:bg-slate-50 transition-colors">
                             <td className="px-4 py-3 text-center">
-                              <span className="text-[10px] font-black text-slate-400">{totalEntries - idx}</span>
+                              <span className="text-[10px] font-black text-slate-400">
+                                {totalEntries - idx}
+                              </span>
                             </td>
                             <td className="px-4 py-3">
                               {entry.inv ? (
@@ -2477,7 +2785,9 @@ const InventoryView: React.FC<InventoryProps> = ({
                               </span>
                             </td>
                             <td className="px-4 py-3">
-                              <span className="text-[11px] font-bold text-slate-600">{entryDate}</span>
+                              <span className="text-[11px] font-bold text-slate-600">
+                                {entryDate}
+                              </span>
                             </td>
                           </tr>
                         );

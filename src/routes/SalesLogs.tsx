@@ -257,20 +257,31 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
               {filteredEntries.map((entry, idx) => {
                 const isInstallment = entry.type === "installment";
                 return (
-                  <tr key={`${entry.saleId}-${idx}`} className={`hover:bg-slate-50 transition-colors ${isInstallment ? "bg-amber-50/30" : ""}`}>
+                  <tr
+                    key={`${entry.saleId}-${idx}`}
+                    className={`hover:bg-slate-50 transition-colors ${isInstallment ? "bg-amber-50/30" : ""}`}
+                  >
                     <td className="px-6 py-4">
-                      <span className={`font-mono font-black px-3 py-1.5 rounded-lg text-xs ${isInstallment ? "text-amber-600 bg-amber-50" : "text-indigo-600 bg-indigo-50"}`}>
+                      <span
+                        className={`font-mono font-black px-3 py-1.5 rounded-lg text-xs ${isInstallment ? "text-amber-600 bg-amber-50" : "text-indigo-600 bg-indigo-50"}`}
+                      >
                         {entry.saleId}
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="font-bold text-slate-900">{formatDate(entry.timestamp)}</span>
+                      <span className="font-bold text-slate-900">
+                        {formatDate(entry.timestamp)}
+                      </span>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col">
-                        <span className="font-bold text-slate-900 uppercase">{entry.customerName}</span>
+                        <span className="font-bold text-slate-900 uppercase">
+                          {entry.customerName}
+                        </span>
                         {customerMap[entry.customerId]?.phone && (
-                          <span className="text-xs text-slate-400">{customerMap[entry.customerId]?.phone}</span>
+                          <span className="text-xs text-slate-400">
+                            {customerMap[entry.customerId]?.phone}
+                          </span>
                         )}
                       </div>
                     </td>
@@ -278,8 +289,11 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
                       <span className="font-bold text-slate-900">{entry.itemCount} item(s)</span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <span className={`font-black tracking-tight ${isInstallment ? "text-amber-600" : "text-green-600"}`}>
-                        {isInstallment ? "+" : ""}{formatIDR(entry.amount)}
+                      <span
+                        className={`font-black tracking-tight ${isInstallment ? "text-amber-600" : "text-green-600"}`}
+                      >
+                        {isInstallment ? "+" : ""}
+                        {formatIDR(entry.amount)}
                       </span>
                     </td>
                     <td className="px-6 py-4">
@@ -287,10 +301,13 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
                         <div className="flex flex-col gap-1">
                           <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider">
                             <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                            <span className="text-amber-700">Cicilan {entry.installmentIndex}x</span>
+                            <span className="text-amber-700">
+                              Cicilan {entry.installmentIndex}x
+                            </span>
                           </span>
                           <span className="text-[10px] text-slate-400 font-bold pl-3.5">
-                            Terbayar: {formatIDR(entry.sale.amountPaid || 0)} / {formatIDR(entry.total)}
+                            Terbayar: {formatIDR(entry.sale.amountPaid || 0)} /{" "}
+                            {formatIDR(entry.total)}
                           </span>
                           {entry.sale.notes && (
                             <span className="text-[10px] text-slate-500 font-medium pl-3.5 italic truncate max-w-[200px]">
@@ -370,8 +387,18 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
                             className="text-amber-600 hover:bg-amber-50 p-2 rounded-lg text-xs font-bold transition-all"
                             title="Catat Cicilan"
                           >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            <svg
+                              className="w-5 h-5"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="2"
+                                d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                              />
                             </svg>
                           </button>
                         )}
@@ -381,8 +408,18 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
                             className="text-indigo-600 hover:bg-indigo-50 p-2 rounded-lg text-xs font-bold transition-all"
                             title="Print Invoice"
                           >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5 2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                            <svg
+                              className="w-5 h-5"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="2"
+                                d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5 2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"
+                              />
                             </svg>
                           </button>
                         )}
@@ -478,11 +515,7 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
               </div>
             </div>
             <div className="flex-1 overflow-hidden">
-              <iframe
-                src={printPdfUrl}
-                className="w-full h-full border-0"
-                title="Invoice Print"
-              />
+              <iframe src={printPdfUrl} className="w-full h-full border-0" title="Invoice Print" />
             </div>
           </div>
         </div>
@@ -521,8 +554,8 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
               Catat Cicilan
             </h3>
             <p className="text-sm text-slate-500 mb-6">
-              Nota <span className="font-black text-amber-600">{installmentPopover.saleId}</span> dari{" "}
-              <span className="font-black">{installmentPopover.customerName}</span>
+              Nota <span className="font-black text-amber-600">{installmentPopover.saleId}</span>{" "}
+              dari <span className="font-black">{installmentPopover.customerName}</span>
             </p>
             <div className="space-y-2 mb-6">
               <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">

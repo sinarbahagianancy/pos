@@ -69,8 +69,7 @@ export default defineConfig({
     env: {
       // Point the app at the test database
       DATABASE_URL:
-        process.env.TEST_DATABASE_URL ||
-        "postgresql://postgres:postgres@localhost:5433/pos_test",
+        process.env.TEST_DATABASE_URL || "postgresql://postgres:postgres@localhost:5433/pos_test",
     },
   },
 });

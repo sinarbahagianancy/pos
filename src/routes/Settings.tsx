@@ -94,12 +94,6 @@ const SettingsView: React.FC<SettingsProps> = ({
           {isAdmin && (
             <>
               <button
-                onClick={onReset}
-                className="flex-1 sm:flex-none bg-white border border-red-200 text-red-600 px-6 py-3 rounded-2xl text-sm font-black hover:bg-red-50 transition-all active:scale-95 uppercase tracking-widest"
-              >
-                Reset Data
-              </button>
-              <button
                 onClick={handleSave}
                 disabled={saving}
                 className="flex-1 sm:flex-none bg-indigo-600 text-white px-8 py-3 rounded-2xl text-sm font-black hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all active:scale-95 uppercase tracking-widest disabled:opacity-50"

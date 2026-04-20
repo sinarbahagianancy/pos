@@ -18,9 +18,7 @@ export default function apiServerPlugin() {
           await pg.unsafe(
             `ALTER TABLE products ADD COLUMN IF NOT EXISTS tax_enabled boolean DEFAULT true`,
           );
-          await pg.unsafe(
-            `ALTER TABLE products ADD COLUMN IF NOT EXISTS invoice_number text`,
-          );
+          await pg.unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS invoice_number text`);
           await pg.unsafe(
             `ALTER TABLE sales ADD COLUMN IF NOT EXISTS tax_enabled boolean DEFAULT true`,
           );
@@ -40,15 +38,58 @@ export default function apiServerPlugin() {
           await pg.unsafe(
             `ALTER TABLE sales ADD COLUMN IF NOT EXISTS is_paid boolean DEFAULT false`,
           );
-          await pg.unsafe(
-            `ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS brand text`,
-          );
+          await pg.unsafe(`ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS brand text`);
           await pg.unsafe(
             `ALTER TABLE sales ADD COLUMN IF NOT EXISTS paid_at timestamp with time zone`,
           );
           await pg.unsafe(`ALTER TYPE payment_method ADD VALUE IF NOT EXISTS 'Utang'`);
           await pg.unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Login'`);
           await pg.unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Logout'`);
+          await pg
+            .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Product Deleted'`)
+            .catch(() => {});
+          await pg
+            .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Product Restored'`)
+            .catch(() => {});
+          await pg
+            .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Product Hidden'`)
+            .catch(() => {});
+          await pg
+            .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Customer Created'`)
+            .catch(() => {});
+          await pg
+            .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Customer Updated'`)
+            .catch(() => {});
+          await pg
+            .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Customer Deleted'`)
+            .catch(() => {});
+          await pg
+            .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Supplier Created'`)
+            .catch(() => {});
+          await pg
+            .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Supplier Updated'`)
+            .catch(() => {});
+          await pg
+            .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Supplier Deleted'`)
+            .catch(() => {});
+          await pg
+            .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Staff Created'`)
+            .catch(() => {});
+          await pg
+            .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Staff Updated'`)
+            .catch(() => {});
+          await pg
+            .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Staff Deleted'`)
+            .catch(() => {});
+          await pg
+            .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Warranty Created'`)
+            .catch(() => {});
+          await pg
+            .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Warranty Updated'`)
+            .catch(() => {});
+          await pg
+            .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Sale Created'`)
+            .catch(() => {});
           await pg.end();
           schemaMigrated = true;
         } catch (e) {
@@ -148,14 +189,19 @@ export default function apiServerPlugin() {
           if (path.startsWith("products/") && req.method === "DELETE") {
             const productId = path.replace("products/", "");
             const { deleteProduct } = await import("./products.js");
-            try {
-              await deleteProduct(productId);
-              res.statusCode = 204;
-              res.end();
-            } catch (error) {
-              res.statusCode = 500;
-              res.end(JSON.stringify({ error: String(error) }));
-            }
+            let body = "";
+            req.on("data", (chunk) => (body += chunk));
+            req.on("end", async () => {
+              try {
+                const data = body ? JSON.parse(body) : {};
+                await deleteProduct(productId, data.staffName);
+                res.statusCode = 204;
+                res.end();
+              } catch (error) {
+                res.statusCode = 500;
+                res.end(JSON.stringify({ error: String(error) }));
+              }
+            });
             return;
           }
 
@@ -171,7 +217,7 @@ export default function apiServerPlugin() {
             req.on("end", async () => {
               try {
                 const data = JSON.parse(body);
-                const product = await toggleProductHidden(productId, data.hidden);
+                const product = await toggleProductHidden(productId, data.hidden, data.staffName);
                 res.setHeader("Content-Type", "application/json");
                 res.end(JSON.stringify(product));
               } catch (error) {
@@ -185,14 +231,19 @@ export default function apiServerPlugin() {
           if (path.startsWith("products/") && path.includes("/restore") && req.method === "POST") {
             const productId = path.replace("products/", "").replace("/restore", "");
             const { restoreProduct } = await import("./products.js");
-            try {
-              const product = await restoreProduct(productId);
-              res.setHeader("Content-Type", "application/json");
-              res.end(JSON.stringify(product));
-            } catch (error) {
-              res.statusCode = 500;
-              res.end(JSON.stringify({ error: String(error) }));
-            }
+            let restoreBody = "";
+            req.on("data", (chunk) => (restoreBody += chunk));
+            req.on("end", async () => {
+              try {
+                const data = restoreBody ? JSON.parse(restoreBody) : {};
+                const product = await restoreProduct(productId, data.staffName);
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify(product));
+              } catch (error) {
+                res.statusCode = 500;
+                res.end(JSON.stringify({ error: String(error) }));
+              }
+            });
             return;
           }
 
@@ -319,7 +370,12 @@ export default function apiServerPlugin() {
             req.on("end", async () => {
               try {
                 const data = JSON.parse(body);
-                const result = await addStaffHandler(data.name, data.password, data.role);
+                const result = await addStaffHandler(
+                  data.name,
+                  data.password,
+                  data.role,
+                  data.staffName,
+                );
                 res.setHeader("Content-Type", "application/json");
                 res.end(JSON.stringify(result));
               } catch (error) {
@@ -333,14 +389,19 @@ export default function apiServerPlugin() {
           if (path.startsWith("staff/") && req.method === "DELETE") {
             const { deleteStaffHandler } = await import("./auth.js");
             const staffId = path.replace("staff/", "");
-            try {
-              await deleteStaffHandler(staffId);
-              res.statusCode = 204;
-              res.end();
-            } catch (error) {
-              res.statusCode = 500;
-              res.end(JSON.stringify({ error: String(error) }));
-            }
+            let body = "";
+            req.on("data", (chunk) => (body += chunk));
+            req.on("end", async () => {
+              try {
+                const data = body ? JSON.parse(body) : {};
+                await deleteStaffHandler(staffId, data.staffName);
+                res.statusCode = 204;
+                res.end();
+              } catch (error) {
+                res.statusCode = 500;
+                res.end(JSON.stringify({ error: String(error) }));
+              }
+            });
             return;
           }
 
@@ -352,7 +413,10 @@ export default function apiServerPlugin() {
             req.on("end", async () => {
               try {
                 const data = JSON.parse(body);
-                const result = await updateStaffHandler(staffId, data);
+                const result = await updateStaffHandler(staffId, {
+                  ...data,
+                  staffName: data.staffName,
+                });
                 res.setHeader("Content-Type", "application/json");
                 res.end(JSON.stringify(result));
               } catch (error) {
@@ -383,7 +447,10 @@ export default function apiServerPlugin() {
             req.on("end", async () => {
               try {
                 const data = JSON.parse(body);
-                const result = await updateStoreConfigHandler(data);
+                const result = await updateStoreConfigHandler({
+                  ...data,
+                  staffName: data.staffName,
+                });
                 res.setHeader("Content-Type", "application/json");
                 res.end(JSON.stringify(result));
               } catch (error) {
@@ -416,7 +483,7 @@ export default function apiServerPlugin() {
             req.on("end", async () => {
               try {
                 const data = JSON.parse(body);
-                const supplier = await createSupplier(data);
+                const supplier = await createSupplier(data, data.staffName);
                 res.setHeader("Content-Type", "application/json");
                 res.end(JSON.stringify(supplier));
               } catch (error) {
@@ -435,7 +502,7 @@ export default function apiServerPlugin() {
             req.on("end", async () => {
               try {
                 const data = JSON.parse(body);
-                const supplier = await updateSupplier(supplierId, data);
+                const supplier = await updateSupplier(supplierId, data, data.staffName);
                 res.setHeader("Content-Type", "application/json");
                 res.end(JSON.stringify(supplier));
               } catch (error) {
@@ -449,14 +516,19 @@ export default function apiServerPlugin() {
           if (path.startsWith("suppliers/") && req.method === "DELETE") {
             const supplierId = path.replace("suppliers/", "");
             const { deleteSupplier } = await import("./suppliers.js");
-            try {
-              await deleteSupplier(supplierId);
-              res.setHeader("Content-Type", "application/json");
-              res.end(JSON.stringify({ success: true }));
-            } catch (error) {
-              res.statusCode = 500;
-              res.end(JSON.stringify({ error: String(error) }));
-            }
+            let delBody = "";
+            req.on("data", (chunk) => (delBody += chunk));
+            req.on("end", async () => {
+              try {
+                const data = delBody ? JSON.parse(delBody) : {};
+                await deleteSupplier(supplierId, data.staffName);
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify({ success: true }));
+              } catch (error) {
+                res.statusCode = 500;
+                res.end(JSON.stringify({ error: String(error) }));
+              }
+            });
             return;
           }
 
@@ -482,7 +554,7 @@ export default function apiServerPlugin() {
             req.on("end", async () => {
               try {
                 const data = JSON.parse(body);
-                const result = await createCustomerHandler(data);
+                const result = await createCustomerHandler({ ...data, staffName: data.staffName });
                 res.setHeader("Content-Type", "application/json");
                 res.statusCode = 201;
                 res.end(JSON.stringify(result));
@@ -687,7 +759,11 @@ export default function apiServerPlugin() {
             req.on("end", async () => {
               try {
                 const data = JSON.parse(body);
-                const result = await updateWarrantyClaimHandler(claimId, data.status);
+                const result = await updateWarrantyClaimHandler(
+                  claimId,
+                  data.status,
+                  data.staffName,
+                );
                 res.setHeader("Content-Type", "application/json");
                 res.end(JSON.stringify(result));
               } catch (error) {

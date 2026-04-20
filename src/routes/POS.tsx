@@ -125,9 +125,7 @@ const POSView: React.FC<POSProps> = ({
   // Get effective stock for a product: for SN products, count available serial numbers;
   // for non-SN products, use the product.stock field.
   const getEffectiveStock = (p: Product) =>
-    p.hasSerialNumber
-      ? availableSNs.filter((sn) => sn.productId === p.id).length
-      : p.stock;
+    p.hasSerialNumber ? availableSNs.filter((sn) => sn.productId === p.id).length : p.stock;
 
   const fuzzyMatch = (text: string, query: string): boolean => {
     const textLower = text.toLowerCase();
@@ -286,13 +284,23 @@ const POSView: React.FC<POSProps> = ({
   const tax = ppnEnabled ? subtotal * taxRate : 0;
   const total = subtotal + tax;
 
-  const generateInvoicePdf = async (sale: Sale, quotation: boolean, layout: InvoiceLayout = "a5") => {
+  // Fake PPN: when PPN is off, the DB records tax=0 but the display should still
+  // show the PPN breakdown (as if the price includes 11% tax).
+  // Back-calculate from total so: displaySubtotal + displayTax = total
+  const fakePpnEnabled = !ppnEnabled;
+  const displayTax = fakePpnEnabled ? Math.round((total * taxRate) / (1 + taxRate)) : tax;
+  const displaySubtotal = fakePpnEnabled ? total - displayTax : subtotal;
+
+  const generateInvoicePdf = async (
+    sale: Sale,
+    quotation: boolean,
+    layout: InvoiceLayout = "a5",
+  ) => {
     // Revoke previous blob URL to prevent memory leak
     if (printPdfUrl) URL.revokeObjectURL(printPdfUrl);
     setIsPrinting(true);
     try {
-      const saleCustomer =
-        customers.find((c) => c.id === sale.customerId) || customers[0];
+      const saleCustomer = customers.find((c) => c.id === sale.customerId) || customers[0];
       const pdfBlob = await pdf(
         <InvoiceDocument
           layout={layout}
@@ -318,13 +326,11 @@ const POSView: React.FC<POSProps> = ({
             taxEnabled: sale.taxEnabled,
             total: sale.total,
             staffName: sale.staffName,
-            paymentMethod: quotation
-              ? "Menunggu Pembayaran"
-              : sale.paymentMethod,
+            paymentMethod: quotation ? "Menunggu Pembayaran" : sale.paymentMethod,
             notes: sale.notes,
             isQuotation: quotation,
           }}
-        />
+        />,
       ).toBlob();
       const url = URL.createObjectURL(pdfBlob);
       setPrintPdfUrl(url);
@@ -527,7 +533,8 @@ const POSView: React.FC<POSProps> = ({
                       (sn) => sn.productId === product.id,
                     ).length;
                     // Only show NO SN badge for non-SN products that have stock but no serial numbers
-                    const hasNoSN = !product.hasSerialNumber && product.stock > 0 && availableCount === 0;
+                    const hasNoSN =
+                      !product.hasSerialNumber && product.stock > 0 && availableCount === 0;
                     const effectiveStock = getEffectiveStock(product);
                     const isOutOfStock = effectiveStock === 0;
                     return (
@@ -916,11 +923,11 @@ const POSView: React.FC<POSProps> = ({
             </div>
             <div className="flex justify-between text-xs text-slate-500 font-bold">
               <span>Subtotal</span>
-              <span className="tabular-nums text-slate-300">{formatIDR(subtotal)}</span>
+              <span className="tabular-nums text-slate-300">{formatIDR(displaySubtotal)}</span>
             </div>
             <div className="flex justify-between text-xs text-slate-500 font-bold">
-              <span>Gov Tax ({ppnEnabled ? (taxRate * 100).toFixed(0) : 0}% PPN)</span>
-              <span className="tabular-nums text-slate-300">{formatIDR(tax)}</span>
+              <span>Gov Tax ({(taxRate * 100).toFixed(0)}% PPN)</span>
+              <span className="tabular-nums text-slate-300">{formatIDR(displayTax)}</span>
             </div>
             <div className="flex justify-between items-end pt-6">
               <div>
@@ -1128,8 +1135,20 @@ const POSView: React.FC<POSProps> = ({
           <div className="bg-white rounded-2xl p-6 shadow-xl">
             <div className="flex items-center gap-3">
               <svg className="animate-spin h-5 w-5 text-indigo-600" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                  fill="none"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                />
               </svg>
               <span className="font-bold text-slate-700">Generating PDF...</span>
             </div>
@@ -1147,7 +1166,12 @@ interface PrintModalProps {
   onClose: () => void;
 }
 
-const PrintModal: React.FC<PrintModalProps> = ({ pdfUrl, invoiceLayout, onLayoutChange, onClose }) => {
+const PrintModal: React.FC<PrintModalProps> = ({
+  pdfUrl,
+  invoiceLayout,
+  onLayoutChange,
+  onClose,
+}) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const handlePrint = () => {

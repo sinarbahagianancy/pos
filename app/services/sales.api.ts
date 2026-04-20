@@ -25,7 +25,10 @@ export const getAllSales = async (params: SalesParams = {}): Promise<PaginatedSa
   const response = await fetch(`${API_BASE}/sales?${queryString}`);
   if (!response.ok) {
     let message = "Failed to fetch sales";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();
@@ -35,7 +38,10 @@ export const getSalesByCustomer = async (customerId: string): Promise<Sale[]> =>
   const response = await fetch(`${API_BASE}/sales/customer/${customerId}`);
   if (!response.ok) {
     let message = "Failed to fetch customer sales";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();
@@ -64,7 +70,10 @@ export const createSale = async (input: {
   });
   if (!response.ok) {
     let message = "Failed to create sale";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();
@@ -74,7 +83,10 @@ export const getAllSaleItems = async (): Promise<SaleItem[]> => {
   const response = await fetch(`${API_BASE}/sale-items`);
   if (!response.ok) {
     let message = "Failed to fetch sale items";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();
@@ -88,7 +100,10 @@ export const markSaleAsPaid = async (saleId: string, staffName: string): Promise
   });
   if (!response.ok) {
     let message = "Failed to mark sale as paid";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();
@@ -106,7 +121,10 @@ export const recordInstallment = async (
   });
   if (!response.ok) {
     let message = "Failed to record installment";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();

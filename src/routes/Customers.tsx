@@ -75,12 +75,13 @@ const CustomersView: React.FC<CustomersProps> = ({
   const filteredCustomers = useMemo(() => {
     if (!searchQuery.trim()) return customers;
     const q = searchQuery.trim();
-    return customers.filter((c) =>
-      fuzzyMatch(c.name, q) ||
-      fuzzyMatch(c.phone || "", q) ||
-      fuzzyMatch(c.email || "", q) ||
-      fuzzyMatch(c.address || "", q) ||
-      fuzzyMatch(c.npwp || "", q),
+    return customers.filter(
+      (c) =>
+        fuzzyMatch(c.name, q) ||
+        fuzzyMatch(c.phone || "", q) ||
+        fuzzyMatch(c.email || "", q) ||
+        fuzzyMatch(c.address || "", q) ||
+        fuzzyMatch(c.npwp || "", q),
     );
   }, [customers, searchQuery]);
 
@@ -109,20 +110,14 @@ const CustomersView: React.FC<CustomersProps> = ({
     const nameLower = newCustomer.name.trim().toLowerCase();
     const phoneTrim = newCustomer.phone.trim();
 
-    const sameName = customers.find(
-      (c) => c.name.trim().toLowerCase() === nameLower,
-    );
+    const sameName = customers.find((c) => c.name.trim().toLowerCase() === nameLower);
     if (sameName) {
       warnings.push(`Nama "${sameName.name}" sudah terdaftar di sistem.`);
     }
 
-    const samePhone = customers.find(
-      (c) => c.phone?.trim() === phoneTrim && phoneTrim !== "",
-    );
+    const samePhone = customers.find((c) => c.phone?.trim() === phoneTrim && phoneTrim !== "");
     if (samePhone) {
-      warnings.push(
-        `Nomor telepon "${phoneTrim}" sudah digunakan oleh ${samePhone.name}.`,
-      );
+      warnings.push(`Nomor telepon "${phoneTrim}" sudah digunakan oleh ${samePhone.name}.`);
     }
 
     setDuplicateWarnings(warnings);
@@ -194,9 +189,7 @@ const CustomersView: React.FC<CustomersProps> = ({
       (c) => c.id !== editingCustomer.id && c.phone?.trim() === phoneTrim && phoneTrim !== "",
     );
     if (samePhone) {
-      warnings.push(
-        `Nomor telepon "${phoneTrim}" sudah digunakan oleh ${samePhone.name}.`,
-      );
+      warnings.push(`Nomor telepon "${phoneTrim}" sudah digunakan oleh ${samePhone.name}.`);
     }
 
     setEditDuplicateWarnings(warnings);
@@ -754,8 +747,18 @@ const CustomersView: React.FC<CustomersProps> = ({
             <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
               <div className="flex items-center space-x-4">
                 <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center">
-                  <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <svg
+                    className="w-6 h-6 text-indigo-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
                   </svg>
                 </div>
                 <div>
@@ -773,7 +776,12 @@ const CustomersView: React.FC<CustomersProps> = ({
                 className="text-slate-300 hover:text-slate-600 disabled:cursor-not-allowed"
               >
                 <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2.5"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </button>
             </div>
@@ -781,23 +789,37 @@ const CustomersView: React.FC<CustomersProps> = ({
               {/* Customer data summary */}
               <div className="bg-slate-50 rounded-2xl p-4 mb-4 space-y-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Nama</span>
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">
+                    Nama
+                  </span>
                   <span className="text-sm font-black text-slate-900">{newCustomer.name}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Telepon</span>
-                  <span className="text-sm font-bold text-slate-700">{newCustomer.phone || "-"}</span>
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">
+                    Telepon
+                  </span>
+                  <span className="text-sm font-bold text-slate-700">
+                    {newCustomer.phone || "-"}
+                  </span>
                 </div>
                 {newCustomer.npwp && (
                   <div className="flex items-center gap-2">
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">NPWP</span>
-                    <span className="text-xs font-mono font-bold text-slate-700">{newCustomer.npwp}</span>
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">
+                      NPWP
+                    </span>
+                    <span className="text-xs font-mono font-bold text-slate-700">
+                      {newCustomer.npwp}
+                    </span>
                   </div>
                 )}
                 {newCustomer.address && (
                   <div className="flex items-start gap-2">
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Alamat</span>
-                    <span className="text-xs font-medium text-slate-600">{newCustomer.address}</span>
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">
+                      Alamat
+                    </span>
+                    <span className="text-xs font-medium text-slate-600">
+                      {newCustomer.address}
+                    </span>
                   </div>
                 )}
               </div>
@@ -806,8 +828,18 @@ const CustomersView: React.FC<CustomersProps> = ({
               {duplicateWarnings.length > 0 && (
                 <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4">
                   <div className="flex items-start space-x-3">
-                    <svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    <svg
+                      className="w-5 h-5 text-amber-500 shrink-0 mt-0.5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                      />
                     </svg>
                     <div>
                       <p className="text-sm font-black text-amber-800 uppercase tracking-tighter">
@@ -837,8 +869,20 @@ const CustomersView: React.FC<CustomersProps> = ({
                   {isAdding ? (
                     <>
                       <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                          fill="none"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                        />
                       </svg>
                       Menyimpan...
                     </>
@@ -870,7 +914,10 @@ const CustomersView: React.FC<CustomersProps> = ({
                 Edit Pelanggan
               </h2>
               <button
-                onClick={() => { setEditingCustomer(null); setConfirmEdit(false); }}
+                onClick={() => {
+                  setEditingCustomer(null);
+                  setConfirmEdit(false);
+                }}
                 disabled={isUpdating}
                 className="text-slate-400 hover:text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -950,7 +997,10 @@ const CustomersView: React.FC<CustomersProps> = ({
               <div className="flex gap-4 pt-4">
                 <button
                   type="button"
-                  onClick={() => { setEditingCustomer(null); setConfirmEdit(false); }}
+                  onClick={() => {
+                    setEditingCustomer(null);
+                    setConfirmEdit(false);
+                  }}
                   disabled={isUpdating}
                   className="flex-1 py-4 bg-white border border-slate-200 text-slate-700 font-black rounded-2xl text-xs uppercase tracking-widest disabled:opacity-50"
                 >
@@ -976,8 +1026,18 @@ const CustomersView: React.FC<CustomersProps> = ({
             <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
               <div className="flex items-center space-x-4">
                 <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center">
-                  <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  <svg
+                    className="w-6 h-6 text-indigo-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                    />
                   </svg>
                 </div>
                 <div>
@@ -995,7 +1055,12 @@ const CustomersView: React.FC<CustomersProps> = ({
                 className="text-slate-300 hover:text-slate-600 disabled:cursor-not-allowed"
               >
                 <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2.5"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </button>
             </div>
@@ -1005,52 +1070,133 @@ const CustomersView: React.FC<CustomersProps> = ({
                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">
                   Perubahan data untuk {editingCustomer.name}
                 </p>
-                {editForm.name.trim().toLowerCase() !== editingCustomer.name.trim().toLowerCase() && (
+                {editForm.name.trim().toLowerCase() !==
+                  editingCustomer.name.trim().toLowerCase() && (
                   <div className="flex items-center gap-2">
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Nama</span>
-                    <span className="text-xs text-slate-400 line-through">{editingCustomer.name}</span>
-                    <svg className="w-3 h-3 text-indigo-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">
+                      Nama
+                    </span>
+                    <span className="text-xs text-slate-400 line-through">
+                      {editingCustomer.name}
+                    </span>
+                    <svg
+                      className="w-3 h-3 text-indigo-500 shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M9 5l7 7-7 7"
+                      />
+                    </svg>
                     <span className="text-sm font-black text-slate-900">{editForm.name}</span>
                   </div>
                 )}
                 {editForm.phone.trim() !== (editingCustomer.phone || "").trim() && (
                   <div className="flex items-center gap-2">
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Telepon</span>
-                    <span className="text-xs text-slate-400 line-through">{editingCustomer.phone || "-"}</span>
-                    <svg className="w-3 h-3 text-indigo-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
-                    <span className="text-sm font-bold text-slate-700">{editForm.phone || "-"}</span>
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">
+                      Telepon
+                    </span>
+                    <span className="text-xs text-slate-400 line-through">
+                      {editingCustomer.phone || "-"}
+                    </span>
+                    <svg
+                      className="w-3 h-3 text-indigo-500 shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M9 5l7 7-7 7"
+                      />
+                    </svg>
+                    <span className="text-sm font-bold text-slate-700">
+                      {editForm.phone || "-"}
+                    </span>
                   </div>
                 )}
                 {editForm.npwp.trim() !== (editingCustomer.npwp || "").trim() && (
                   <div className="flex items-center gap-2">
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">NPWP</span>
-                    <span className="text-xs text-slate-400 line-through">{editingCustomer.npwp || "-"}</span>
-                    <svg className="w-3 h-3 text-indigo-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
-                    <span className="text-xs font-mono font-bold text-slate-700">{editForm.npwp || "-"}</span>
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">
+                      NPWP
+                    </span>
+                    <span className="text-xs text-slate-400 line-through">
+                      {editingCustomer.npwp || "-"}
+                    </span>
+                    <svg
+                      className="w-3 h-3 text-indigo-500 shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M9 5l7 7-7 7"
+                      />
+                    </svg>
+                    <span className="text-xs font-mono font-bold text-slate-700">
+                      {editForm.npwp || "-"}
+                    </span>
                   </div>
                 )}
                 {editForm.address.trim() !== (editingCustomer.address || "").trim() && (
                   <div className="flex items-start gap-2">
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Alamat</span>
-                    <span className="text-xs text-slate-400 line-through">{editingCustomer.address || "-"}</span>
-                    <svg className="w-3 h-3 text-indigo-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
-                    <span className="text-xs font-medium text-slate-600">{editForm.address || "-"}</span>
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">
+                      Alamat
+                    </span>
+                    <span className="text-xs text-slate-400 line-through">
+                      {editingCustomer.address || "-"}
+                    </span>
+                    <svg
+                      className="w-3 h-3 text-indigo-500 shrink-0 mt-0.5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M9 5l7 7-7 7"
+                      />
+                    </svg>
+                    <span className="text-xs font-medium text-slate-600">
+                      {editForm.address || "-"}
+                    </span>
                   </div>
                 )}
                 {editForm.name.trim().toLowerCase() === editingCustomer.name.trim().toLowerCase() &&
-                 editForm.phone.trim() === (editingCustomer.phone || "").trim() &&
-                 editForm.npwp.trim() === (editingCustomer.npwp || "").trim() &&
-                 editForm.address.trim() === (editingCustomer.address || "").trim() && (
-                  <p className="text-xs text-slate-400 italic">Tidak ada perubahan data.</p>
-                )}
+                  editForm.phone.trim() === (editingCustomer.phone || "").trim() &&
+                  editForm.npwp.trim() === (editingCustomer.npwp || "").trim() &&
+                  editForm.address.trim() === (editingCustomer.address || "").trim() && (
+                    <p className="text-xs text-slate-400 italic">Tidak ada perubahan data.</p>
+                  )}
               </div>
 
               {/* Duplicate warnings */}
               {editDuplicateWarnings.length > 0 && (
                 <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4">
                   <div className="flex items-start space-x-3">
-                    <svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    <svg
+                      className="w-5 h-5 text-amber-500 shrink-0 mt-0.5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                      />
                     </svg>
                     <div>
                       <p className="text-sm font-black text-amber-800 uppercase tracking-tighter">
@@ -1074,19 +1220,33 @@ const CustomersView: React.FC<CustomersProps> = ({
               <div className="flex flex-col gap-3">
                 <button
                   onClick={handleEditConfirm}
-                  disabled={isUpdating || (
-                    editForm.name.trim().toLowerCase() === editingCustomer.name.trim().toLowerCase() &&
-                    editForm.phone.trim() === (editingCustomer.phone || "").trim() &&
-                    editForm.npwp.trim() === (editingCustomer.npwp || "").trim() &&
-                    editForm.address.trim() === (editingCustomer.address || "").trim()
-                  )}
+                  disabled={
+                    isUpdating ||
+                    (editForm.name.trim().toLowerCase() ===
+                      editingCustomer.name.trim().toLowerCase() &&
+                      editForm.phone.trim() === (editingCustomer.phone || "").trim() &&
+                      editForm.npwp.trim() === (editingCustomer.npwp || "").trim() &&
+                      editForm.address.trim() === (editingCustomer.address || "").trim())
+                  }
                   className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl text-xs uppercase tracking-widest shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {isUpdating ? (
                     <>
                       <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                          fill="none"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                        />
                       </svg>
                       Menyimpan...
                     </>

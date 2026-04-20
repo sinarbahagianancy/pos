@@ -27,7 +27,10 @@ export const getAllCustomers = async (
   const response = await fetch(`${API_BASE}/customers?${queryString}`);
   if (!response.ok) {
     let message = "Failed to fetch customers";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();
@@ -38,7 +41,10 @@ export const getCustomerById = async (id: string): Promise<Customer | null> => {
   if (!response.ok) {
     if (response.status === 404) return null;
     let message = "Failed to fetch customer";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();
@@ -52,6 +58,7 @@ export const createCustomer = async (input: {
   address?: string;
   npwp?: string;
   loyaltyPoints?: number;
+  staffName?: string;
 }): Promise<Customer> => {
   const response = await fetch(`${API_BASE}/customers`, {
     method: "POST",
@@ -60,7 +67,10 @@ export const createCustomer = async (input: {
   });
   if (!response.ok) {
     let message = "Failed to create customer";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();
@@ -85,7 +95,10 @@ export const updateCustomer = async (
   });
   if (!response.ok) {
     let message = "Failed to update customer";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();
@@ -99,7 +112,10 @@ export const deleteCustomer = async (id: string, staffName: string = "System"): 
   });
   if (!response.ok) {
     let message = "Failed to delete customer";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
 };

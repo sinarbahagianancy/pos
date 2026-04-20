@@ -40,7 +40,10 @@ export const getAllAuditLogs = async (
   const response = await fetch(`${API_BASE}/audit-logs?${queryString}`);
   if (!response.ok) {
     let message = "Failed to fetch audit logs";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();
@@ -58,7 +61,10 @@ export const getAllProducts = async (
   const response = await fetch(`${API_BASE}/products?${queryString}`);
   if (!response.ok) {
     let message = "Failed to fetch products";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   const data = await response.json();
@@ -71,7 +77,10 @@ export const getProductById = async (id: string): Promise<Product | null> => {
   if (!response.ok) {
     if (response.status === 404) return null;
     let message = "Failed to fetch product";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();
@@ -88,7 +97,10 @@ export const createProduct = async (
   });
   if (!response.ok) {
     let message = "Failed to create product";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();
@@ -109,7 +121,10 @@ export const updateProduct = async (
   if (!response.ok) {
     if (response.status === 404) return null;
     let message = "Failed to update product";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   const result = await response.json();
@@ -117,11 +132,15 @@ export const updateProduct = async (
   return result;
 };
 
-export const toggleProductHidden = async (id: string, hidden: boolean): Promise<Product | null> => {
+export const toggleProductHidden = async (
+  id: string,
+  hidden: boolean,
+  staffName: string = "System",
+): Promise<Product | null> => {
   const response = await fetch(`${API_BASE}/products/${id}/toggle-hidden`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ hidden }),
+    body: JSON.stringify({ hidden, staffName }),
   });
   if (!response.ok) {
     if (response.status === 404) return null;
@@ -143,20 +162,33 @@ export const adjustStock = async (
   const response = await fetch(`${API_BASE}/products/adjust-stock`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ productId, newStock, reason, staffName, supplier, dateRestocked, invoiceNumber }),
+    body: JSON.stringify({
+      productId,
+      newStock,
+      reason,
+      staffName,
+      supplier,
+      dateRestocked,
+      invoiceNumber,
+    }),
   });
   if (!response.ok) {
     if (response.status === 404) return null;
     let message = "Failed to adjust stock";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();
 };
 
-export const deleteProduct = async (id: string): Promise<void> => {
+export const deleteProduct = async (id: string, staffName: string = "System"): Promise<void> => {
   const response = await fetch(`${API_BASE}/products/${id}`, {
     method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ staffName }),
   });
   if (!response.ok) {
     const text = await response.text();
@@ -172,9 +204,14 @@ export const deleteProduct = async (id: string): Promise<void> => {
   }
 };
 
-export const restoreProduct = async (id: string): Promise<Product> => {
+export const restoreProduct = async (
+  id: string,
+  staffName: string = "System",
+): Promise<Product> => {
   const response = await fetch(`${API_BASE}/products/${id}/restore`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ staffName }),
   });
   if (!response.ok) {
     const text = await response.text();
@@ -195,7 +232,10 @@ export const getAllSerialNumbers = async (): Promise<SerialNumber[]> => {
   const response = await fetch(`${API_BASE}/serial-numbers`);
   if (!response.ok) {
     let message = "Failed to fetch serial numbers";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();
@@ -205,7 +245,10 @@ export const getAvailableSerialNumbers = async (): Promise<SerialNumber[]> => {
   const response = await fetch(`${API_BASE}/serial-numbers?status=In Stock`);
   if (!response.ok) {
     let message = "Failed to fetch serial numbers";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();
@@ -215,7 +258,10 @@ export const getSerialNumbersByProduct = async (productId: string): Promise<Seri
   const response = await fetch(`${API_BASE}/serial-numbers/${productId}`);
   if (!response.ok) {
     let message = "Failed to fetch serial numbers";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();
@@ -229,7 +275,10 @@ export const createSerialNumber = async (input: unknown): Promise<SerialNumber> 
   });
   if (!response.ok) {
     let message = "Failed to create serial number";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();
@@ -249,7 +298,10 @@ export const createSerialNumbersBulk = async (
   });
   if (!response.ok) {
     let message = "Failed to create serial numbers";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();
@@ -270,7 +322,10 @@ export const updateSerialNumberStatus = async (
   if (!response.ok) {
     if (response.status === 404) return null;
     let message = "Failed to update serial number status";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();
@@ -293,7 +348,10 @@ export const generateInvoicePdf = async (html: string, retries = 3): Promise<Blo
       clearTimeout(timeoutId);
       if (!response.ok) {
         let message = "Failed to generate invoice PDF";
-        try { const e = await response.json(); message = e.error || message; } catch {}
+        try {
+          const e = await response.json();
+          message = e.error || message;
+        } catch {}
         throw new Error(message);
       }
       return response.blob();

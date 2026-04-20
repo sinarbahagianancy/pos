@@ -22,13 +22,16 @@ const parseDbSale = (row: Record<string, unknown>) => {
   let installments: { amount: number; timestamp: string }[] = [];
   try {
     installments = JSON.parse((row.installments as string) || "[]");
-  } catch { installments = []; }
+  } catch {
+    installments = [];
+  }
   return {
     id: row.id as string,
     customerId: row.customer_id as string,
     customerName: row.customer_name as string,
     items: [],
-    subtotal: typeof row.subtotal === "string" ? parseFloat(row.subtotal) : (row.subtotal as number),
+    subtotal:
+      typeof row.subtotal === "string" ? parseFloat(row.subtotal) : (row.subtotal as number),
     tax: typeof row.tax === "string" ? parseFloat(row.tax) : (row.tax as number),
     taxEnabled: row.tax_enabled as boolean,
     total: typeof row.total === "string" ? parseFloat(row.total) : (row.total as number),
@@ -38,7 +41,10 @@ const parseDbSale = (row: Record<string, unknown>) => {
     dueDate: row.due_date as string | undefined,
     isPaid: row.is_paid as boolean,
     paidAt: row.paid_at as string | undefined,
-    amountPaid: typeof row.amount_paid === "string" ? parseFloat(row.amount_paid) || 0 : (row.amount_paid as number) || 0,
+    amountPaid:
+      typeof row.amount_paid === "string"
+        ? parseFloat(row.amount_paid) || 0
+        : (row.amount_paid as number) || 0,
     installments,
     timestamp: row.timestamp as string,
   };
@@ -90,6 +96,7 @@ export const createCustomerHandler = async (data: {
   address?: string;
   npwp?: string;
   loyaltyPoints?: number;
+  staffName?: string;
 }) => {
   const result = await client.unsafe(
     "INSERT INTO customers (id, name, phone, email, address, npwp, loyalty_points) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *",
@@ -103,6 +110,20 @@ export const createCustomerHandler = async (data: {
       data.loyaltyPoints || 0,
     ],
   );
+
+  // Audit log for customer creation
+  const staffName = data.staffName || "System";
+  await client.unsafe(
+    "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
+    [
+      `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      staffName,
+      "Customer Created",
+      `Created customer: ${data.name}${data.phone ? `, phone: ${data.phone}` : ""}${data.email ? `, email: ${data.email}` : ""}`,
+      data.id,
+    ],
+  );
+
   return parseDbCustomer(result[0]);
 };
 
@@ -160,7 +181,9 @@ export const updateCustomerHandler = async (
   ) {
     updates.push(`loyalty_points = $${paramIndex++}`);
     values.push(data.loyaltyPoints);
-    changeDescriptions.push(`loyaltyPoints: ${oldCustomer.loyalty_points || 0} -> ${data.loyaltyPoints}`);
+    changeDescriptions.push(
+      `loyaltyPoints: ${oldCustomer.loyalty_points || 0} -> ${data.loyaltyPoints}`,
+    );
   }
 
   if (updates.length === 0) {
@@ -186,7 +209,7 @@ export const updateCustomerHandler = async (
     [
       `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       staffName,
-      "General",
+      "Customer Updated",
       `Updated customer: ${changeDescriptions.join(", ")}`,
       id,
     ],
@@ -213,7 +236,7 @@ export const deleteCustomerHandler = async (id: string, staffName: string = "Sys
     [
       `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       staffName,
-      "General",
+      "Customer Deleted",
       `Deleted customer: ${customer.name}`,
       id,
     ],
@@ -305,22 +328,21 @@ export const createSaleHandler = async (data: {
   amountPaid?: number;
 }) => {
   const amountPaid = data.amountPaid || 0;
-  const installmentsJson = amountPaid > 0
-    ? JSON.stringify([{ amount: amountPaid, timestamp: new Date().toISOString() }])
-    : "[]";
+  const installmentsJson =
+    amountPaid > 0
+      ? JSON.stringify([{ amount: amountPaid, timestamp: new Date().toISOString() }])
+      : "[]";
 
-  // Use a transaction to ensure atomicity of the entire sale creation
-  const tx = await client.begin();
-  try {
+  // Use a transaction to ensure atomicity of the entire sale creation.
+  // postgres.js requires the callback-based API: client.begin(async sql => { ... })
+  // The library commits automatically on success and rolls back on any thrown error.
+  return await client.begin(async (tx) => {
     // --- Pre-flight checks: validate stock & SN status before any writes ---
 
     // Aggregate quantities by product to handle duplicate productIds correctly
     const productQuantities = new Map<string, number>();
     for (const item of data.items) {
-      productQuantities.set(
-        item.productId,
-        (productQuantities.get(item.productId) || 0) + 1,
-      );
+      productQuantities.set(item.productId, (productQuantities.get(item.productId) || 0) + 1);
     }
 
     for (const [productId, quantity] of productQuantities) {
@@ -376,7 +398,9 @@ export const createSaleHandler = async (data: {
       // Look up product brand if not provided
       let brand = item.brand;
       if (!brand) {
-        const [product] = await tx.unsafe("SELECT brand FROM products WHERE id = $1", [item.productId]);
+        const [product] = await tx.unsafe("SELECT brand FROM products WHERE id = $1", [
+          item.productId,
+        ]);
         brand = product?.brand as string | undefined;
       }
       await tx.unsafe(
@@ -395,10 +419,7 @@ export const createSaleHandler = async (data: {
 
       // Only update SN status if it's a real serial number (not NOSN-xxx)
       if (!item.sn.startsWith("NOSN-")) {
-        await tx.unsafe("UPDATE serial_numbers SET status = $1 WHERE sn = $2", [
-          "Sold",
-          item.sn,
-        ]);
+        await tx.unsafe("UPDATE serial_numbers SET status = $1 WHERE sn = $2", ["Sold", item.sn]);
       }
 
       // Deduct stock — safe because we already verified stock > 0 with FOR UPDATE
@@ -439,15 +460,11 @@ export const createSaleHandler = async (data: {
       );
     }
 
-    await tx.commit();
-
-    const result = await client.unsafe("SELECT * FROM sales WHERE id = $1", [data.id]);
+    // The transaction commits automatically when the callback returns.
+    // Fetch and return the newly created sale.
+    const result = await tx.unsafe("SELECT * FROM sales WHERE id = $1", [data.id]);
     return parseDbSale(result[0]);
-  } catch (err) {
-    try { await tx.rollback(); } catch { /* rollback may fail if already rolled back */ }
-    console.error("Sale creation failed:", err);
-    throw err;
-  }
+  });
 };
 
 export const getAllSaleItemsHandler = async () => {
@@ -530,11 +547,26 @@ export const createWarrantyClaimHandler = async (data: {
   productModel: string;
   issue: string;
   status?: string;
+  staffName?: string;
 }) => {
   const result = await client.unsafe(
     "INSERT INTO warranty_claims (id, sn, product_model, issue, status) VALUES ($1, $2, $3, $4, $5) RETURNING *",
     [data.id, data.sn, data.productModel, data.issue, data.status || "Pending"],
   );
+
+  // Audit log for warranty claim creation
+  const staffName = data.staffName || "System";
+  await client.unsafe(
+    "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
+    [
+      `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      staffName,
+      "Warranty Created",
+      `Created warranty claim for ${data.productModel} (SN: ${data.sn}), issue: ${data.issue}`,
+      data.id,
+    ],
+  );
+
   return {
     id: result[0].id as string,
     sn: result[0].sn as string,
@@ -545,7 +577,17 @@ export const createWarrantyClaimHandler = async (data: {
   };
 };
 
-export const updateWarrantyClaimHandler = async (id: string, status: string) => {
+export const updateWarrantyClaimHandler = async (
+  id: string,
+  status: string,
+  staffName: string = "System",
+) => {
+  // Get old claim for audit logging
+  const [oldClaim] = await client.unsafe("SELECT * FROM warranty_claims WHERE id = $1", [id]);
+  if (!oldClaim) {
+    throw new Error("Claim not found");
+  }
+
   const result = await client.unsafe(
     "UPDATE warranty_claims SET status = $1 WHERE id = $2 RETURNING *",
     [status, id],
@@ -553,6 +595,19 @@ export const updateWarrantyClaimHandler = async (id: string, status: string) => 
   if (result.length === 0) {
     throw new Error("Claim not found");
   }
+
+  // Audit log for warranty claim update
+  await client.unsafe(
+    "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
+    [
+      `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      staffName,
+      "Warranty Updated",
+      `Updated warranty claim for ${oldClaim.product_model} (SN: ${oldClaim.sn}): status ${oldClaim.status} -> ${status}`,
+      id,
+    ],
+  );
+
   return {
     id: result[0].id as string,
     sn: result[0].sn as string,
@@ -632,7 +687,11 @@ export const markSaleAsPaidHandler = async (saleId: string, staffName: string) =
   };
 };
 
-export const recordInstallmentHandler = async (saleId: string, amount: number, staffName: string) => {
+export const recordInstallmentHandler = async (
+  saleId: string,
+  amount: number,
+  staffName: string,
+) => {
   // Get current sale
   const saleResult = await client.unsafe("SELECT * FROM sales WHERE id = $1", [saleId]);
   if (saleResult.length === 0) {
@@ -644,7 +703,9 @@ export const recordInstallmentHandler = async (saleId: string, amount: number, s
   let installments: { amount: number; timestamp: string }[] = [];
   try {
     installments = JSON.parse(sale.installments || "[]");
-  } catch { installments = []; }
+  } catch {
+    installments = [];
+  }
 
   // Add new installment
   const now = new Date().toISOString();
@@ -682,9 +743,7 @@ export const recordInstallmentHandler = async (saleId: string, amount: number, s
   }
 
   // Audit log
-  const pointsLogSuffix = isNowPaid
-    ? `. Loyalty points awarded: ${pointsAwarded}`
-    : "";
+  const pointsLogSuffix = isNowPaid ? `. Loyalty points awarded: ${pointsAwarded}` : "";
   await client.unsafe(
     "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
     [
@@ -700,21 +759,30 @@ export const recordInstallmentHandler = async (saleId: string, amount: number, s
   let parsedInstallments: { amount: number; timestamp: string }[] = [];
   try {
     parsedInstallments = JSON.parse(updated.installments || "[]");
-  } catch { parsedInstallments = []; }
+  } catch {
+    parsedInstallments = [];
+  }
 
   return {
     id: updated.id as string,
     customerId: updated.customer_id as string,
     customerName: updated.customer_name as string,
-    subtotal: typeof updated.subtotal === "string" ? parseFloat(updated.subtotal) : (updated.subtotal as number),
+    subtotal:
+      typeof updated.subtotal === "string"
+        ? parseFloat(updated.subtotal)
+        : (updated.subtotal as number),
     tax: typeof updated.tax === "string" ? parseFloat(updated.tax) : (updated.tax as number),
-    total: typeof updated.total === "string" ? parseFloat(updated.total) : (updated.total as number),
+    total:
+      typeof updated.total === "string" ? parseFloat(updated.total) : (updated.total as number),
     paymentMethod: updated.payment_method as string,
     staffName: updated.staff_name as string,
     dueDate: updated.due_date as string | undefined,
     isPaid: updated.is_paid as boolean,
     paidAt: updated.paid_at as string | undefined,
-    amountPaid: typeof updated.amount_paid === "string" ? parseFloat(updated.amount_paid) || 0 : (updated.amount_paid as number) || 0,
+    amountPaid:
+      typeof updated.amount_paid === "string"
+        ? parseFloat(updated.amount_paid) || 0
+        : (updated.amount_paid as number) || 0,
     installments: parsedInstallments,
     timestamp: updated.timestamp as string,
   };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import { Supplier } from "../../app/types";
 import {
   createSupplier,
@@ -6,6 +6,19 @@ import {
   deleteSupplier,
 } from "../../app/services/supplier.service";
 import Pagination from "../../app/components/Pagination";
+
+// Fuzzy match: checks if all characters in query appear in order in text (case-insensitive)
+const fuzzyMatch = (text: string, query: string): boolean => {
+  const t = text.toLowerCase();
+  const q = query.toLowerCase();
+  let ti = 0;
+  for (let qi = 0; qi < q.length; qi++) {
+    const found = t.indexOf(q[qi], ti);
+    if (found === -1) return false;
+    ti = found + 1;
+  }
+  return true;
+};
 
 interface SuppliersViewProps {
   staffName: string;
@@ -17,12 +30,6 @@ interface SuppliersViewProps {
     data: { name?: string; phone?: string; address?: string },
   ) => Promise<void>;
   onDeleteSupplier?: (id: string) => Promise<void>;
-  currentPage?: number;
-  totalPages?: number;
-  totalItems?: number;
-  onPageChange?: (page: number) => void;
-  perPage?: number;
-  onPerPageChange?: (perPage: number) => void;
 }
 
 const SuppliersView: React.FC<SuppliersViewProps> = ({
@@ -32,12 +39,6 @@ const SuppliersView: React.FC<SuppliersViewProps> = ({
   onAddSupplier,
   onUpdateSupplier,
   onDeleteSupplier,
-  currentPage = 1,
-  totalPages = 1,
-  totalItems = 0,
-  onPageChange,
-  perPage = 20,
-  onPerPageChange,
 }) => {
   const [error, setError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -47,6 +48,35 @@ const SuppliersView: React.FC<SuppliersViewProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [confirmSave, setConfirmSave] = useState(false);
   const [duplicateWarnings, setDuplicateWarnings] = useState<string[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [localPage, setLocalPage] = useState(1);
+  const [localPerPage, setLocalPerPage] = useState(20);
+
+  // Fuzzy search across all supplier fields
+  const filteredSuppliers = useMemo(() => {
+    if (!searchQuery.trim()) return suppliers;
+    const q = searchQuery.trim();
+    return suppliers.filter(
+      (s) =>
+        fuzzyMatch(s.name, q) || fuzzyMatch(s.phone || "", q) || fuzzyMatch(s.address || "", q),
+    );
+  }, [suppliers, searchQuery]);
+
+  // Client-side pagination derived from filtered results
+  const totalItems = filteredSuppliers.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / localPerPage));
+  const safeCurrentPage = Math.min(localPage, totalPages);
+
+  const paginatedSuppliers = useMemo(() => {
+    const start = (safeCurrentPage - 1) * localPerPage;
+    return filteredSuppliers.slice(start, start + localPerPage);
+  }, [filteredSuppliers, safeCurrentPage, localPerPage]);
+
+  // Reset to page 1 when search query changes
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchQuery(value);
+    setLocalPage(1);
+  }, []);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -79,9 +109,7 @@ const SuppliersView: React.FC<SuppliersViewProps> = ({
         phoneTrim !== "",
     );
     if (samePhone) {
-      warnings.push(
-        `Nomor telepon "${phoneTrim}" sudah digunakan oleh ${samePhone.name}.`,
-      );
+      warnings.push(`Nomor telepon "${phoneTrim}" sudah digunakan oleh ${samePhone.name}.`);
     }
 
     setDuplicateWarnings(warnings);
@@ -142,19 +170,43 @@ const SuppliersView: React.FC<SuppliersViewProps> = ({
   return (
     <div className="min-h-screen bg-slate-50 p-4 lg:p-8">
       <div className="max-w-6xl mx-auto">
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div>
             <h1 className="text-2xl lg:text-3xl font-black text-slate-900 uppercase tracking-tighter">
               Data Supplier
             </h1>
             <p className="text-slate-500 text-sm font-medium mt-1">Kelola data supplier / vendor</p>
           </div>
-          <button
-            onClick={openAddModal}
-            className="px-6 py-3 bg-indigo-600 text-white font-black text-sm rounded-2xl shadow-lg shadow-indigo-500/20 hover:bg-indigo-700 active:scale-95 transition-all"
-          >
-            + Tambah Supplier
-          </button>
+          <div className="flex gap-3">
+            <div className="relative">
+              <svg
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+              <input
+                type="text"
+                placeholder="Cari nama, no. telp, alamat..."
+                value={searchQuery}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                className="pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent w-full sm:w-64"
+              />
+            </div>
+            <button
+              onClick={openAddModal}
+              className="px-6 py-3 bg-indigo-600 text-white font-black text-sm rounded-2xl shadow-lg shadow-indigo-500/20 hover:bg-indigo-700 active:scale-95 transition-all"
+            >
+              + Tambah Supplier
+            </button>
+          </div>
         </div>
 
         {error && (
@@ -187,6 +239,28 @@ const SuppliersView: React.FC<SuppliersViewProps> = ({
             <h3 className="text-lg font-bold text-slate-900 mb-2">Belum Ada Supplier</h3>
             <p className="text-slate-500 text-sm">Tambah supplier pertama Anda untuk memulai</p>
           </div>
+        ) : totalItems === 0 ? (
+          <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center">
+            <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <svg
+                className="w-8 h-8 text-slate-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+            </div>
+            <h3 className="text-lg font-bold text-slate-900 mb-2">Tidak Ditemukan</h3>
+            <p className="text-slate-500 text-sm">
+              Tidak ada supplier yang cocok dengan "{searchQuery}"
+            </p>
+          </div>
         ) : (
           <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden">
             <table className="w-full">
@@ -207,10 +281,10 @@ const SuppliersView: React.FC<SuppliersViewProps> = ({
                 </tr>
               </thead>
               <tbody>
-                {suppliers.map((supplier, index) => (
+                {paginatedSuppliers.map((supplier, index) => (
                   <tr
                     key={supplier.id}
-                    className={`border-b border-slate-100 ${index !== suppliers.length - 1 ? "" : "border-b-0"}`}
+                    className={`border-b border-slate-100 ${index !== paginatedSuppliers.length - 1 ? "" : "border-b-0"}`}
                   >
                     <td className="px-6 py-4">
                       <span className="font-bold text-slate-900">{supplier.name}</span>
@@ -275,12 +349,12 @@ const SuppliersView: React.FC<SuppliersViewProps> = ({
 
       {/* Pagination */}
       <Pagination
-        currentPage={currentPage}
+        currentPage={safeCurrentPage}
         totalPages={totalPages}
         totalItems={totalItems}
-        onPageChange={onPageChange || (() => {})}
-        perPage={perPage}
-        onPerPageChange={onPerPageChange}
+        onPageChange={setLocalPage}
+        perPage={localPerPage}
+        onPerPageChange={setLocalPerPage}
         itemLabel="suppliers"
       />
 
@@ -381,8 +455,18 @@ const SuppliersView: React.FC<SuppliersViewProps> = ({
             <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
               <div className="flex items-center space-x-4">
                 <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center">
-                  <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <svg
+                    className="w-6 h-6 text-indigo-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
                   </svg>
                 </div>
                 <div>
@@ -400,7 +484,12 @@ const SuppliersView: React.FC<SuppliersViewProps> = ({
                 className="text-slate-300 hover:text-slate-600 disabled:cursor-not-allowed"
               >
                 <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2.5"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </button>
             </div>
@@ -408,54 +497,120 @@ const SuppliersView: React.FC<SuppliersViewProps> = ({
               {/* Data summary */}
               <div className="bg-slate-50 rounded-2xl p-4 mb-4 space-y-2">
                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">
-                  {editingSupplier ? `Perubahan data untuk ${editingSupplier.name}` : "Data supplier baru"}
+                  {editingSupplier
+                    ? `Perubahan data untuk ${editingSupplier.name}`
+                    : "Data supplier baru"}
                 </p>
                 {editingSupplier ? (
                   <>
-                    {formData.name.trim().toLowerCase() !== editingSupplier.name.trim().toLowerCase() && (
+                    {formData.name.trim().toLowerCase() !==
+                      editingSupplier.name.trim().toLowerCase() && (
                       <div className="flex items-center gap-2">
-                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Nama</span>
-                        <span className="text-xs text-slate-400 line-through">{editingSupplier.name}</span>
-                        <svg className="w-3 h-3 text-indigo-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">
+                          Nama
+                        </span>
+                        <span className="text-xs text-slate-400 line-through">
+                          {editingSupplier.name}
+                        </span>
+                        <svg
+                          className="w-3 h-3 text-indigo-500 shrink-0"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M9 5l7 7-7 7"
+                          />
+                        </svg>
                         <span className="text-sm font-black text-slate-900">{formData.name}</span>
                       </div>
                     )}
                     {formData.phone.trim() !== (editingSupplier.phone || "").trim() && (
                       <div className="flex items-center gap-2">
-                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Telepon</span>
-                        <span className="text-xs text-slate-400 line-through">{editingSupplier.phone || "-"}</span>
-                        <svg className="w-3 h-3 text-indigo-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
-                        <span className="text-sm font-bold text-slate-700">{formData.phone || "-"}</span>
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">
+                          Telepon
+                        </span>
+                        <span className="text-xs text-slate-400 line-through">
+                          {editingSupplier.phone || "-"}
+                        </span>
+                        <svg
+                          className="w-3 h-3 text-indigo-500 shrink-0"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M9 5l7 7-7 7"
+                          />
+                        </svg>
+                        <span className="text-sm font-bold text-slate-700">
+                          {formData.phone || "-"}
+                        </span>
                       </div>
                     )}
                     {formData.address.trim() !== (editingSupplier.address || "").trim() && (
                       <div className="flex items-start gap-2">
-                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Alamat</span>
-                        <span className="text-xs text-slate-400 line-through">{editingSupplier.address || "-"}</span>
-                        <svg className="w-3 h-3 text-indigo-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
-                        <span className="text-xs font-medium text-slate-600">{formData.address || "-"}</span>
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">
+                          Alamat
+                        </span>
+                        <span className="text-xs text-slate-400 line-through">
+                          {editingSupplier.address || "-"}
+                        </span>
+                        <svg
+                          className="w-3 h-3 text-indigo-500 shrink-0 mt-0.5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M9 5l7 7-7 7"
+                          />
+                        </svg>
+                        <span className="text-xs font-medium text-slate-600">
+                          {formData.address || "-"}
+                        </span>
                       </div>
                     )}
-                    {formData.name.trim().toLowerCase() === editingSupplier.name.trim().toLowerCase() &&
-                     formData.phone.trim() === (editingSupplier.phone || "").trim() &&
-                     formData.address.trim() === (editingSupplier.address || "").trim() && (
-                      <p className="text-xs text-slate-400 italic">Tidak ada perubahan data.</p>
-                    )}
+                    {formData.name.trim().toLowerCase() ===
+                      editingSupplier.name.trim().toLowerCase() &&
+                      formData.phone.trim() === (editingSupplier.phone || "").trim() &&
+                      formData.address.trim() === (editingSupplier.address || "").trim() && (
+                        <p className="text-xs text-slate-400 italic">Tidak ada perubahan data.</p>
+                      )}
                   </>
                 ) : (
                   <>
                     <div className="flex items-center gap-2">
-                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Nama</span>
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">
+                        Nama
+                      </span>
                       <span className="text-sm font-black text-slate-900">{formData.name}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Telepon</span>
-                      <span className="text-sm font-bold text-slate-700">{formData.phone || "-"}</span>
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">
+                        Telepon
+                      </span>
+                      <span className="text-sm font-bold text-slate-700">
+                        {formData.phone || "-"}
+                      </span>
                     </div>
                     {formData.address && (
                       <div className="flex items-start gap-2">
-                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">Alamat</span>
-                        <span className="text-xs font-medium text-slate-600">{formData.address}</span>
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">
+                          Alamat
+                        </span>
+                        <span className="text-xs font-medium text-slate-600">
+                          {formData.address}
+                        </span>
                       </div>
                     )}
                   </>
@@ -466,8 +621,18 @@ const SuppliersView: React.FC<SuppliersViewProps> = ({
               {duplicateWarnings.length > 0 && (
                 <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4">
                   <div className="flex items-start space-x-3">
-                    <svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    <svg
+                      className="w-5 h-5 text-amber-500 shrink-0 mt-0.5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                      />
                     </svg>
                     <div>
                       <p className="text-sm font-black text-amber-800 uppercase tracking-tighter">
@@ -493,25 +658,46 @@ const SuppliersView: React.FC<SuppliersViewProps> = ({
               <div className="flex flex-col gap-3">
                 <button
                   onClick={handleSaveConfirm}
-                  disabled={isSaving || (editingSupplier &&
-                    formData.name.trim().toLowerCase() === editingSupplier.name.trim().toLowerCase() &&
-                    formData.phone.trim() === (editingSupplier.phone || "").trim() &&
-                    formData.address.trim() === (editingSupplier.address || "").trim()
-                  )}
+                  disabled={
+                    isSaving ||
+                    (editingSupplier &&
+                      formData.name.trim().toLowerCase() ===
+                        editingSupplier.name.trim().toLowerCase() &&
+                      formData.phone.trim() === (editingSupplier.phone || "").trim() &&
+                      formData.address.trim() === (editingSupplier.address || "").trim())
+                  }
                   className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl text-xs uppercase tracking-widest shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {isSaving ? (
                     <>
                       <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                          fill="none"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                        />
                       </svg>
                       Menyimpan...
                     </>
                   ) : duplicateWarnings.length > 0 ? (
-                    editingSupplier ? "Ya, Tetap Simpan Perubahan" : "Ya, Tetap Daftarkan"
+                    editingSupplier ? (
+                      "Ya, Tetap Simpan Perubahan"
+                    ) : (
+                      "Ya, Tetap Daftarkan"
+                    )
+                  ) : editingSupplier ? (
+                    "Konfirmasi & Simpan Perubahan"
                   ) : (
-                    editingSupplier ? "Konfirmasi & Simpan Perubahan" : "Konfirmasi & Daftarkan"
+                    "Konfirmasi & Daftarkan"
                   )}
                 </button>
                 <button
@@ -534,8 +720,18 @@ const SuppliersView: React.FC<SuppliersViewProps> = ({
             <div className="p-6 lg:p-8 border-b border-slate-100 bg-red-50/50 flex items-center justify-between">
               <div className="flex items-center space-x-4">
                 <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center">
-                  <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  <svg
+                    className="w-6 h-6 text-red-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                    />
                   </svg>
                 </div>
                 <div>
@@ -581,8 +777,20 @@ const SuppliersView: React.FC<SuppliersViewProps> = ({
                   {isDeleting ? (
                     <>
                       <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                          fill="none"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                        />
                       </svg>
                       Menghapus...
                     </>

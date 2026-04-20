@@ -40,7 +40,10 @@ export const login = async (name: string, password: string): Promise<LoginRespon
 
   if (!response.ok) {
     let message = "Login failed";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
 
@@ -79,7 +82,10 @@ export const getStaff = async (): Promise<StaffMember[]> => {
   const response = await fetch(`${API_BASE}/staff`);
   if (!response.ok) {
     let message = "Failed to fetch staff";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();
@@ -89,36 +95,45 @@ export const addStaff = async (
   name: string,
   password: string,
   role: "Admin" | "Staff" = "Staff",
+  staffName: string = "System",
 ): Promise<StaffMember> => {
   const response = await fetch(`${API_BASE}/staff`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, password, role }),
+    body: JSON.stringify({ name, password, role, staffName }),
   });
 
   if (!response.ok) {
     let message = "Failed to add staff";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();
 };
 
-export const deleteStaff = async (id: string): Promise<void> => {
+export const deleteStaff = async (id: string, staffName: string = "System"): Promise<void> => {
   const response = await fetch(`${API_BASE}/staff/${id}`, {
     method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ staffName }),
   });
 
   if (!response.ok) {
     let message = "Failed to delete staff";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
 };
 
 export const updateStaff = async (
   id: string,
-  data: { name?: string; role?: "Admin" | "Staff"; password?: string },
+  data: { name?: string; role?: "Admin" | "Staff"; password?: string; staffName?: string },
 ): Promise<StaffMember> => {
   const response = await fetch(`${API_BASE}/staff/${id}`, {
     method: "PUT",
@@ -128,7 +143,10 @@ export const updateStaff = async (
 
   if (!response.ok) {
     let message = "Failed to update staff";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();
@@ -138,13 +156,18 @@ export const getStoreConfig = async (): Promise<StoreConfig> => {
   const response = await fetch(`${API_BASE}/store-config`);
   if (!response.ok) {
     let message = "Failed to fetch store config";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();
 };
 
-export const updateStoreConfig = async (config: Partial<StoreConfig>): Promise<StoreConfig> => {
+export const updateStoreConfig = async (
+  config: Partial<StoreConfig> & { staffName?: string },
+): Promise<StoreConfig> => {
   const response = await fetch(`${API_BASE}/store-config`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -153,7 +176,10 @@ export const updateStoreConfig = async (config: Partial<StoreConfig>): Promise<S
 
   if (!response.ok) {
     let message = "Failed to update store config";
-    try { const e = await response.json(); message = e.error || message; } catch {}
+    try {
+      const e = await response.json();
+      message = e.error || message;
+    } catch {}
     throw new Error(message);
   }
   return response.json();

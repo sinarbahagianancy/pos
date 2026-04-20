@@ -35,23 +35,34 @@ try {
 
   // Add Toko and No Warranty to warranty_type enum
   await client.unsafe(`ALTER TYPE warranty_type ADD VALUE IF NOT EXISTS 'Toko'`).catch(() => {});
-  await client.unsafe(`ALTER TYPE warranty_type ADD VALUE IF NOT EXISTS 'No Warranty'`).catch(() => {});
+  await client
+    .unsafe(`ALTER TYPE warranty_type ADD VALUE IF NOT EXISTS 'No Warranty'`)
+    .catch(() => {});
 
   // Migrate existing 'Store Warranty' data to 'Toko'
-  await client.unsafe(`UPDATE products SET warranty_type = 'Toko' WHERE warranty_type = 'Store Warranty'`).catch((e) => { console.error('Failed to migrate Store Warranty → Toko:', e); });
+  await client
+    .unsafe(`UPDATE products SET warranty_type = 'Toko' WHERE warranty_type = 'Store Warranty'`)
+    .catch((e) => {
+      console.error("Failed to migrate Store Warranty → Toko:", e);
+    });
 
   // Migrate invoice_number to new structured format [{sn:[], inv:"...", timestamp:"..."}]
   // Step 1: Wrap legacy plain strings into JSON array
-  await client.unsafe(`
+  await client
+    .unsafe(`
     UPDATE products
     SET invoice_number = json_build_array(invoice_number)::text
     WHERE invoice_number IS NOT NULL
       AND invoice_number != ''
       AND invoice_number NOT LIKE '[%'
-  `).catch((e) => { console.error('Failed to migrate invoice_number to array:', e); });
+  `)
+    .catch((e) => {
+      console.error("Failed to migrate invoice_number to array:", e);
+    });
   // Step 2: Convert array-of-strings format to array-of-objects format
   // Old: ["INV/001", "INV/002"] → New: [{"sn":[],"inv":"INV/001","timestamp":"..."}, {"sn":[],"inv":"INV/002","timestamp":"..."}]
-  await client.unsafe(`
+  await client
+    .unsafe(`
     UPDATE products
     SET invoice_number = (
       SELECT json_agg(json_build_object('sn', '[]'::json, 'inv', elem, 'timestamp', NOW()::text))::text
@@ -60,7 +71,10 @@ try {
     WHERE invoice_number IS NOT NULL
       AND invoice_number LIKE '[%'
       AND invoice_number NOT LIKE '%"inv"%'
-  `).catch((e) => { console.error('Failed to migrate invoice_number to structured format:', e); });
+  `)
+    .catch((e) => {
+      console.error("Failed to migrate invoice_number to structured format:", e);
+    });
 } catch (e) {
   console.log("Migration check (may be ok):", e);
 }
@@ -144,7 +158,13 @@ export const createProduct = async (input: unknown) => {
       dateRestocked: validated.dateRestocked ? new Date(validated.dateRestocked) : new Date(),
       taxEnabled: validated.taxEnabled === true,
       invoiceNumber: validated.invoiceNumber
-        ? JSON.stringify([{ sn: validated.serialNumbers || [], inv: validated.invoiceNumber, timestamp: new Date().toISOString() }])
+        ? JSON.stringify([
+            {
+              sn: validated.serialNumbers || [],
+              inv: validated.invoiceNumber,
+              timestamp: new Date().toISOString(),
+            },
+          ])
         : null,
     })
     .returning();
@@ -348,26 +368,68 @@ export const adjustStock = async (
   return result ? parseDbProduct(result) : null;
 };
 
-export const deleteProduct = async (id: string) => {
+export const deleteProduct = async (id: string, staffName: string = "System") => {
+  // Get product info for audit logging
+  const [product] = await db.select().from(products).where(eq(products.id, id));
+  if (!product) return;
+
   // Soft delete - mark as deleted
   await db.update(products).set({ deleted: true }).where(eq(products.id, id));
+
+  await db.insert(auditLogs).values({
+    id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    staffName,
+    action: "Product Deleted",
+    details: `Deleted product: ${product.brand} ${product.model}`,
+    relatedId: id,
+  });
 };
 
-export const toggleProductHidden = async (id: string, hidden: boolean) => {
+export const toggleProductHidden = async (
+  id: string,
+  hidden: boolean,
+  staffName: string = "System",
+) => {
+  const [oldProduct] = await db.select().from(products).where(eq(products.id, id));
+
   const result = await db
     .update(products)
     .set({ hidden: hidden ? 1 : 0 })
     .where(eq(products.id, id))
     .returning();
+
+  if (oldProduct) {
+    await db.insert(auditLogs).values({
+      id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      staffName,
+      action: "Product Hidden",
+      details: `${hidden ? "Hidden" : "Unhidden"} product: ${oldProduct.brand} ${oldProduct.model}`,
+      relatedId: id,
+    });
+  }
+
   return result[0] ? parseDbProduct(result[0]) : null;
 };
 
-export const restoreProduct = async (id: string) => {
+export const restoreProduct = async (id: string, staffName: string = "System") => {
+  const [oldProduct] = await db.select().from(products).where(eq(products.id, id));
+
   const result = await db
     .update(products)
     .set({ deleted: false })
     .where(eq(products.id, id))
     .returning();
+
+  if (oldProduct) {
+    await db.insert(auditLogs).values({
+      id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      staffName,
+      action: "Product Restored",
+      details: `Restored product: ${oldProduct.brand} ${oldProduct.model}`,
+      relatedId: id,
+    });
+  }
+
   return result[0] ? parseDbProduct(result[0]) : null;
 };
 
@@ -450,8 +512,14 @@ export const createSerialNumbersBulk = async (
     // Fetch existing product to read current invoice_number for appending
     const [existingProduct] = await db.select().from(products).where(eq(products.id, productId));
 
-    if (supplier) { setClauses.push(`supplier = $${paramIdx++}`); params.push(supplier); }
-    if (date) { setClauses.push(`date_restocked = $${paramIdx++}`); params.push(new Date(date)); }
+    if (supplier) {
+      setClauses.push(`supplier = $${paramIdx++}`);
+      params.push(supplier);
+    }
+    if (date) {
+      setClauses.push(`date_restocked = $${paramIdx++}`);
+      params.push(new Date(date));
+    }
     if (invoiceNumber) {
       // Append new restock entry to existing history
       const existing = parseRestockHistory(existingProduct?.invoiceNumber);
@@ -466,10 +534,7 @@ export const createSerialNumbersBulk = async (
       params,
     );
 
-    const [product] = await db
-      .select()
-      .from(products)
-      .where(eq(products.id, productId));
+    const [product] = await db.select().from(products).where(eq(products.id, productId));
     const snList = sns.join(", ");
     const supplierInfo = supplier || "Unknown";
     const dateInfo = date || new Date().toISOString().split("T")[0];
@@ -506,7 +571,6 @@ export const updateSerialNumberStatus = async (
   const wasInStock = existingSN?.status === "In Stock";
   const nowInStock = status === "In Stock";
   if (existingSN && existingSN.status !== status) {
-
     if (wasInStock && !nowInStock) {
       // SN left inventory — decrement stock
       await client.unsafe(
@@ -526,9 +590,14 @@ export const updateSerialNumberStatus = async (
   if (existingSN) {
     const [product] = await db.select().from(products).where(eq(products.id, existingSN.productId));
     const reasonInfo = reason || "Not specified";
-    const stockChangeNote = existingSN.status !== status
-      ? wasInStock ? " (stock decremented)" : nowInStock ? " (stock incremented)" : ""
-      : "";
+    const stockChangeNote =
+      existingSN.status !== status
+        ? wasInStock
+          ? " (stock decremented)"
+          : nowInStock
+            ? " (stock incremented)"
+            : ""
+        : "";
 
     await db.insert(auditLogs).values({
       id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,

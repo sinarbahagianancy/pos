@@ -7,8 +7,8 @@ const connectionString = process.env.DATABASE_URL || "";
 
 const client = postgres(connectionString, {
   prepare: false,
-  max: 1,           // Serverless: limit pool to 1 connection per function instance
-  idle_timeout: 5,  // Release idle connections quickly
+  max: 1, // Serverless: limit pool to 1 connection per function instance
+  idle_timeout: 5, // Release idle connections quickly
   connect_timeout: 10,
 });
 
@@ -220,7 +220,9 @@ interface SaleItem {
 /** Parse the restock_history / invoice_number column from DB.
  *  Supports: new format [{sn,inv,timestamp}], legacy string array, legacy plain string
  */
-const parseApiRestockHistory = (value: unknown): { sn: string[]; inv: string; timestamp: string }[] => {
+const parseApiRestockHistory = (
+  value: unknown,
+): { sn: string[]; inv: string; timestamp: string }[] => {
   if (!value) return [];
   if (typeof value !== "string") return [];
   const trimmed = value.trim();
@@ -228,14 +230,22 @@ const parseApiRestockHistory = (value: unknown): { sn: string[]; inv: string; ti
   try {
     const parsed = JSON.parse(trimmed);
     if (Array.isArray(parsed)) {
-      if (parsed.length > 0 && typeof parsed[0] === "object" && parsed[0] !== null && "inv" in parsed[0]) {
-        return parsed.filter(
-          (e: unknown) => typeof e === "object" && e !== null && "inv" in (e as Record<string, unknown>)
-        ).map((e: Record<string, unknown>) => ({
-          sn: Array.isArray(e.sn) ? e.sn.filter((s: unknown) => typeof s === "string") : [],
-          inv: typeof e.inv === "string" ? e.inv : "",
-          timestamp: typeof e.timestamp === "string" ? e.timestamp : new Date().toISOString(),
-        }));
+      if (
+        parsed.length > 0 &&
+        typeof parsed[0] === "object" &&
+        parsed[0] !== null &&
+        "inv" in parsed[0]
+      ) {
+        return parsed
+          .filter(
+            (e: unknown) =>
+              typeof e === "object" && e !== null && "inv" in (e as Record<string, unknown>),
+          )
+          .map((e: Record<string, unknown>) => ({
+            sn: Array.isArray(e.sn) ? e.sn.filter((s: unknown) => typeof s === "string") : [],
+            inv: typeof e.inv === "string" ? e.inv : "",
+            timestamp: typeof e.timestamp === "string" ? e.timestamp : new Date().toISOString(),
+          }));
       }
       // Legacy: array of plain strings
       return parsed
@@ -301,13 +311,16 @@ const parseDbSale = (row: Record<string, unknown>): Sale => {
   try {
     const raw = row.installments;
     installments = typeof raw === "string" ? JSON.parse(raw) : (raw as any[]) || [];
-  } catch { installments = []; }
+  } catch {
+    installments = [];
+  }
   return {
     id: row.id as string,
     customerId: row.customer_id as string,
     customerName: row.customer_name as string,
     items: [],
-    subtotal: typeof row.subtotal === "string" ? parseFloat(row.subtotal) : (row.subtotal as number),
+    subtotal:
+      typeof row.subtotal === "string" ? parseFloat(row.subtotal) : (row.subtotal as number),
     tax: typeof row.tax === "string" ? parseFloat(row.tax) : (row.tax as number),
     taxEnabled: row.tax_enabled as boolean,
     total: typeof row.total === "string" ? parseFloat(row.total) : (row.total as number),
@@ -317,7 +330,10 @@ const parseDbSale = (row: Record<string, unknown>): Sale => {
     dueDate: row.due_date as string | undefined,
     isPaid: row.is_paid as boolean,
     paidAt: row.paid_at as string | undefined,
-    amountPaid: typeof row.amount_paid === "string" ? parseFloat(row.amount_paid) || 0 : (row.amount_paid as number) || 0,
+    amountPaid:
+      typeof row.amount_paid === "string"
+        ? parseFloat(row.amount_paid) || 0
+        : (row.amount_paid as number) || 0,
     installments,
     timestamp: row.timestamp as string,
   };
@@ -423,8 +439,12 @@ const initializeDatabase = async () => {
       .unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS tax_enabled boolean DEFAULT true`)
       .catch(() => {});
     await client.unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS notes text`).catch(() => {});
-    await client.unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS invoice_number text`).catch(() => {});
-    await client.unsafe(`ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS brand text`).catch(() => {});
+    await client
+      .unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS invoice_number text`)
+      .catch(() => {});
+    await client
+      .unsafe(`ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS brand text`)
+      .catch(() => {});
 
     // Add new columns to sales if not exists
     await client
@@ -453,9 +473,7 @@ const initializeDatabase = async () => {
       .catch(() => {});
 
     // Add Toko and No Warranty to warranty_type enum
-    await client
-      .unsafe(`ALTER TYPE warranty_type ADD VALUE IF NOT EXISTS 'Toko'`)
-      .catch(() => {});
+    await client.unsafe(`ALTER TYPE warranty_type ADD VALUE IF NOT EXISTS 'Toko'`).catch(() => {});
     await client
       .unsafe(`ALTER TYPE warranty_type ADD VALUE IF NOT EXISTS 'No Warranty'`)
       .catch(() => {});
@@ -463,7 +481,9 @@ const initializeDatabase = async () => {
     // Migrate existing 'Store Warranty' data to 'Toko'
     await client
       .unsafe(`UPDATE products SET warranty_type = 'Toko' WHERE warranty_type = 'Store Warranty'`)
-      .catch((e) => { console.error('Failed to migrate Store Warranty → Toko:', e); });
+      .catch((e) => {
+        console.error("Failed to migrate Store Warranty → Toko:", e);
+      });
 
     // Migrate invoice_number to new structured format [{sn:[], inv:"...", timestamp:"..."}]
     // Step 1: Wrap legacy plain strings into JSON array
@@ -475,7 +495,9 @@ const initializeDatabase = async () => {
           AND invoice_number != ''
           AND invoice_number NOT LIKE '[%'
       `)
-      .catch((e) => { console.error('Failed to migrate invoice_number to array:', e); });
+      .catch((e) => {
+        console.error("Failed to migrate invoice_number to array:", e);
+      });
     // Step 2: Convert array-of-strings format to array-of-objects format
     await client
       .unsafe(`
@@ -488,14 +510,57 @@ const initializeDatabase = async () => {
           AND invoice_number LIKE '[%'
           AND invoice_number NOT LIKE '%"inv"%'
       `)
-      .catch((e) => { console.error('Failed to migrate invoice_number to structured format:', e); });
+      .catch((e) => {
+        console.error("Failed to migrate invoice_number to structured format:", e);
+      });
 
     // Add Login and Logout to audit_action enum
+    await client.unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Login'`).catch(() => {});
+    await client.unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Logout'`).catch(() => {});
     await client
-      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Login'`)
+      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Product Deleted'`)
       .catch(() => {});
     await client
-      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Logout'`)
+      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Product Restored'`)
+      .catch(() => {});
+    await client
+      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Product Hidden'`)
+      .catch(() => {});
+    await client
+      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Customer Created'`)
+      .catch(() => {});
+    await client
+      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Customer Updated'`)
+      .catch(() => {});
+    await client
+      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Customer Deleted'`)
+      .catch(() => {});
+    await client
+      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Supplier Created'`)
+      .catch(() => {});
+    await client
+      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Supplier Updated'`)
+      .catch(() => {});
+    await client
+      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Supplier Deleted'`)
+      .catch(() => {});
+    await client
+      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Staff Created'`)
+      .catch(() => {});
+    await client
+      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Staff Updated'`)
+      .catch(() => {});
+    await client
+      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Staff Deleted'`)
+      .catch(() => {});
+    await client
+      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Warranty Created'`)
+      .catch(() => {});
+    await client
+      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Warranty Updated'`)
+      .catch(() => {});
+    await client
+      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Sale Created'`)
       .catch(() => {});
 
     // Add created_at to warranty_claims if not exists (missing from original migration)
@@ -853,7 +918,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           date_restocked: validated.dateRestocked ? new Date(validated.dateRestocked) : new Date(),
           tax_enabled: validated.taxEnabled ?? true,
           invoice_number: validated.invoiceNumber
-            ? JSON.stringify([{ sn: validated.serialNumbers || [], inv: validated.invoiceNumber, timestamp: new Date().toISOString() }])
+            ? JSON.stringify([
+                {
+                  sn: validated.serialNumbers || [],
+                  inv: validated.invoiceNumber,
+                  timestamp: new Date().toISOString(),
+                },
+              ])
             : null,
         },
       ]);
@@ -991,7 +1062,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       validateStockAdjustmentInput(input);
 
-      const { productId, newStock, reason, staffName = "System", supplier, dateRestocked, invoiceNumber } = input;
+      const {
+        productId,
+        newStock,
+        reason,
+        staffName = "System",
+        supplier,
+        dateRestocked,
+        invoiceNumber,
+      } = input;
 
       const [product] = await db.select("products", ["*"], { column: "id", value: productId });
       if (!product) {
@@ -1078,8 +1157,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
 
+      // Get product info for audit logging
+      const [productInfo] = await client.unsafe("SELECT brand, model FROM products WHERE id = $1", [
+        productId,
+      ]);
+
       // Soft delete - mark as deleted (same as dev server)
-      await client.unsafe("UPDATE products SET deleted = true, updated_at = NOW() WHERE id = $1", [productId]);
+      await client.unsafe("UPDATE products SET deleted = true, updated_at = NOW() WHERE id = $1", [
+        productId,
+      ]);
+
+      // Audit log for product deletion
+      if (productInfo) {
+        try {
+          await client.unsafe(
+            "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
+            [
+              `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+              "System",
+              "Product Deleted",
+              `Deleted product: ${productInfo.brand} ${productInfo.model}`,
+              productId,
+            ],
+          );
+        } catch (e) {
+          console.warn("Failed to record product deletion audit log:", e);
+        }
+      }
+
       return res.status(204).send(null);
     }
 
@@ -1087,7 +1192,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (method === "POST" && url?.startsWith("/api/products/") && url.includes("/toggle-hidden")) {
       const productId = url.replace("/api/products/", "").replace("/toggle-hidden", "");
       const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
-      const { hidden } = input;
+      const { hidden, staffName = "System" } = input;
+
+      // Get product info for audit logging
+      const [productInfo] = await client.unsafe("SELECT brand, model FROM products WHERE id = $1", [
+        productId,
+      ]);
 
       try {
         await db.update("products", { hidden: hidden ? 1 : 0 }, { column: "id", value: productId });
@@ -1108,6 +1218,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
 
+      // Audit log for product hidden/unhidden
+      if (productInfo) {
+        try {
+          await client.unsafe(
+            "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
+            [
+              `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+              staffName,
+              "Product Hidden",
+              `${hidden ? "Hidden" : "Unhidden"} product: ${productInfo.brand} ${productInfo.model}`,
+              productId,
+            ],
+          );
+        } catch (e) {
+          console.warn("Failed to record product toggle hidden audit log:", e);
+        }
+      }
+
       const result = await client.unsafe("SELECT * FROM products WHERE id = $1", [productId]);
       return res.status(200).json(parseDbProduct(result[0]));
     }
@@ -1115,6 +1243,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // POST /api/products/:id/restore
     if (method === "POST" && url?.startsWith("/api/products/") && url.includes("/restore")) {
       const productId = url.replace("/api/products/", "").replace("/restore", "");
+      const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+      const { staffName: restoreStaffName = "System" } = input || {};
+
+      // Get product info for audit logging
+      const [restoreProductInfo] = await client.unsafe(
+        "SELECT brand, model FROM products WHERE id = $1",
+        [productId],
+      );
 
       try {
         await db.update("products", { deleted: false }, { column: "id", value: productId });
@@ -1127,6 +1263,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         } catch (addErr) {
           console.error("Failed to restore product:", addErr);
           return res.status(500).json({ error: "Failed to restore product" });
+        }
+      }
+
+      // Audit log for product restore
+      if (restoreProductInfo) {
+        try {
+          await client.unsafe(
+            "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
+            [
+              `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+              restoreStaffName,
+              "Product Restored",
+              `Restored product: ${restoreProductInfo.brand} ${restoreProductInfo.model}`,
+              productId,
+            ],
+          );
+        } catch (e) {
+          console.warn("Failed to record product restore audit log:", e);
         }
       }
 
@@ -1174,11 +1328,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const params: (string | number | Date | null)[] = [count];
         let paramIdx = 2;
 
-        if (supplier) { setClauses.push(`supplier = $${paramIdx++}`); params.push(supplier); }
-        if (date) { setClauses.push(`date_restocked = $${paramIdx++}`); params.push(new Date(date)); }
+        if (supplier) {
+          setClauses.push(`supplier = $${paramIdx++}`);
+          params.push(supplier);
+        }
+        if (date) {
+          setClauses.push(`date_restocked = $${paramIdx++}`);
+          params.push(new Date(date));
+        }
         if (invoiceNumber) {
           // Append new restock entry to existing history
-          const [existingProduct] = await client.unsafe("SELECT invoice_number FROM products WHERE id = $1", [productId]);
+          const [existingProduct] = await client.unsafe(
+            "SELECT invoice_number FROM products WHERE id = $1",
+            [productId],
+          );
           const existing = parseApiRestockHistory(existingProduct?.invoice_number);
           existing.push({ sn: sns, inv: invoiceNumber, timestamp: new Date().toISOString() });
           setClauses.push(`invoice_number = $${paramIdx++}`);
@@ -1242,7 +1405,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const wasInStock = existingSN?.status === "In Stock";
       const nowInStock = status === "In Stock";
       if (existingSN && existingSN.status !== status) {
-
         if (wasInStock && !nowInStock) {
           // SN left inventory — decrement stock
           await client.unsafe(
@@ -1264,9 +1426,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           existingSN.product_id,
         ]);
         const reasonInfo = reason || "Not specified";
-        const stockChangeNote = existingSN.status !== status
-          ? wasInStock ? " (stock decremented)" : nowInStock ? " (stock incremented)" : ""
-          : "";
+        const stockChangeNote =
+          existingSN.status !== status
+            ? wasInStock
+              ? " (stock decremented)"
+              : nowInStock
+                ? " (stock incremented)"
+                : ""
+            : "";
 
         await client.unsafe(
           `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) 
@@ -1312,7 +1479,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       try {
         await client.unsafe(
           "INSERT INTO audit_logs (id, staff_name, action, details, timestamp) VALUES ($1, $2, $3, $4, NOW())",
-          [`LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`, user.name, "Login", `Staff ${user.name} logged in`],
+          [
+            `LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+            user.name,
+            "Login",
+            `Staff ${user.name} logged in`,
+          ],
         );
       } catch (e) {
         console.warn("Failed to record login audit log:", e);
@@ -1334,7 +1506,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         try {
           await client.unsafe(
             "INSERT INTO audit_logs (id, staff_name, action, details, timestamp) VALUES ($1, $2, $3, $4, NOW())",
-            [`LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`, name, "Logout", `Staff ${name} logged out`],
+            [
+              `LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+              name,
+              "Logout",
+              `Staff ${name} logged out`,
+            ],
           );
         } catch (e) {
           console.warn("Failed to record logout audit log:", e);
@@ -1372,6 +1549,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           "INSERT INTO staff_members (name, role, password_hash) VALUES ($1, $2, $3) RETURNING id, name, role, created_at",
           [name, role, passwordHash],
         );
+
+        // Audit log for staff creation
+        try {
+          await client.unsafe(
+            "INSERT INTO audit_logs (id, staff_name, action, details, timestamp) VALUES ($1, $2, $3, $4, NOW())",
+            [
+              `LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+              input.staffName || "System",
+              "Staff Created",
+              `Created staff member: ${name} (role: ${role})`,
+            ],
+          );
+        } catch (e) {
+          console.warn("Failed to record staff creation audit log:", e);
+        }
+
         return res.status(201).json(parseDbStaffMember(result[0]));
       } catch (error: unknown) {
         if (error && typeof error === "object" && "code" in error && error.code === "23505") {
@@ -1384,7 +1577,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // DELETE /api/staff/:id
     if (method === "DELETE" && url?.startsWith("/api/staff/")) {
       const staffId = url.replace("/api/staff/", "");
+
+      // Get staff name for audit logging
+      const [staffInfo] = await client.unsafe("SELECT name FROM staff_members WHERE id = $1", [
+        staffId,
+      ]);
+
       await client.unsafe("DELETE FROM staff_members WHERE id = $1", [staffId]);
+
+      // Audit log for staff deletion
+      if (staffInfo) {
+        try {
+          await client.unsafe(
+            "INSERT INTO audit_logs (id, staff_name, action, details, timestamp) VALUES ($1, $2, $3, $4, NOW())",
+            [
+              `LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+              "System",
+              "Staff Deleted",
+              `Deleted staff member: ${staffInfo.name}`,
+            ],
+          );
+        } catch (e) {
+          console.warn("Failed to record staff deletion audit log:", e);
+        }
+      }
+
       return res.status(204).send(null);
     }
 
@@ -1408,6 +1625,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         "UPDATE staff_members SET name = $1, role = $2, password_hash = $3 WHERE id = $4 RETURNING id, name, role, created_at",
         [newName, newRole, newPasswordHash, staffId],
       );
+
+      // Audit log for staff update
+      const changes: string[] = [];
+      if (name && name !== current.name) changes.push(`name: ${current.name} -> ${name}`);
+      if (role && role !== current.role) changes.push(`role: ${current.role} -> ${role}`);
+      if (password) changes.push("password updated");
+
+      if (changes.length > 0) {
+        try {
+          await client.unsafe(
+            "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
+            [
+              `LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+              input.staffName || "System",
+              "Staff Updated",
+              `Updated staff ${current.name}: ${changes.join(", ")}`,
+              staffId,
+            ],
+          );
+        } catch (e) {
+          console.warn("Failed to record staff update audit log:", e);
+        }
+      }
 
       return res.status(200).json({
         id: result[0].id,
@@ -1435,10 +1675,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const { storeName, address, ppnRate, currency, monthlyTarget } = input;
 
+      // Get current config for audit logging
+      const currentConfig = await client.unsafe("SELECT * FROM store_config WHERE id = 1");
+
       const result = await client.unsafe(
         "UPDATE store_config SET store_name = $1, address = $2, ppn_rate = $3, currency = $4, monthly_target = $5, updated_at = NOW() WHERE id = 1 RETURNING *",
         [storeName, address, ppnRate, currency, monthlyTarget || 500000000],
       );
+
+      // Audit log for store config update
+      if (currentConfig && currentConfig.length > 0) {
+        const cur = currentConfig[0];
+        const changes: string[] = [];
+        if (storeName && storeName !== cur.store_name)
+          changes.push(`storeName: ${cur.store_name} -> ${storeName}`);
+        if (address && address !== cur.address)
+          changes.push(`address: ${cur.address} -> ${address}`);
+        if (ppnRate !== undefined && String(ppnRate) !== String(cur.ppn_rate))
+          changes.push(`ppnRate: ${cur.ppn_rate} -> ${ppnRate}`);
+        if (currency && currency !== cur.currency)
+          changes.push(`currency: ${cur.currency} -> ${currency}`);
+        if (monthlyTarget !== undefined && String(monthlyTarget) !== String(cur.monthly_target))
+          changes.push(`monthlyTarget: ${cur.monthly_target} -> ${monthlyTarget}`);
+
+        if (changes.length > 0) {
+          try {
+            await client.unsafe(
+              "INSERT INTO audit_logs (id, staff_name, action, details, timestamp) VALUES ($1, $2, $3, $4, NOW())",
+              [
+                `LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+                input.staffName || "System",
+                "Settings Update",
+                `Updated store config: ${changes.join(", ")}`,
+              ],
+            );
+          } catch (e) {
+            console.warn("Failed to record store config audit log:", e);
+          }
+        }
+      }
 
       return res.status(200).json(parseDbStoreConfig(result[0]));
     }
@@ -1492,6 +1767,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ]);
 
         const result = await client.unsafe("SELECT * FROM suppliers WHERE name = $1", [name]);
+
+        // Audit log for supplier creation
+        try {
+          await client.unsafe(
+            "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
+            [
+              `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+              input.staffName || "System",
+              "Supplier Created",
+              `Created supplier: ${name}${phone ? `, phone: ${phone}` : ""}${address ? `, address: ${address}` : ""}`,
+              result[0].id,
+            ],
+          );
+        } catch (e) {
+          console.warn("Failed to record supplier creation audit log:", e);
+        }
+
         return res.status(201).json({
           id: result[0].id,
           name: result[0].name,
@@ -1512,23 +1804,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await initializeDatabase();
       const supplierId = url.replace("/api/suppliers/", "");
       const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
-      const { name, phone, address } = input as { name?: string; phone?: string; address?: string };
+      const { name, phone, address } = input as {
+        name?: string;
+        phone?: string;
+        address?: string;
+        staffName?: string;
+      };
+
+      // Get old supplier for audit logging
+      const [oldSupplier] = await client.unsafe("SELECT * FROM suppliers WHERE id = $1", [
+        supplierId,
+      ]);
 
       const updates: string[] = [];
       const values: unknown[] = [];
+      const changeDescriptions: string[] = [];
       let paramIndex = 1;
 
-      if (name !== undefined) {
+      if (name !== undefined && (!oldSupplier || name !== oldSupplier.name)) {
         updates.push(`name = $${paramIndex++}`);
         values.push(name);
+        if (oldSupplier) changeDescriptions.push(`name: ${oldSupplier.name} -> ${name}`);
       }
-      if (phone !== undefined) {
+      if (phone !== undefined && (!oldSupplier || phone !== oldSupplier.phone)) {
         updates.push(`phone = $${paramIndex++}`);
         values.push(phone);
+        if (oldSupplier)
+          changeDescriptions.push(`phone: ${oldSupplier.phone || "-"} -> ${phone || "-"}`);
       }
-      if (address !== undefined) {
+      if (address !== undefined && (!oldSupplier || address !== oldSupplier.address)) {
         updates.push(`address = $${paramIndex++}`);
         values.push(address);
+        if (oldSupplier)
+          changeDescriptions.push(`address: ${oldSupplier.address || "-"} -> ${address || "-"}`);
       }
 
       if (updates.length === 0) {
@@ -1541,6 +1849,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         `UPDATE suppliers SET ${updates.join(", ")} WHERE id = $${paramIndex}`,
         values,
       );
+
+      // Audit log for supplier update
+      if (changeDescriptions.length > 0 && oldSupplier) {
+        try {
+          await client.unsafe(
+            "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
+            [
+              `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+              input.staffName || "System",
+              "Supplier Updated",
+              `Updated supplier ${oldSupplier.name}: ${changeDescriptions.join(", ")}`,
+              supplierId,
+            ],
+          );
+        } catch (e) {
+          console.warn("Failed to record supplier update audit log:", e);
+        }
+      }
 
       const result = await client.unsafe("SELECT * FROM suppliers WHERE id = $1", [supplierId]);
       return res.status(200).json({
@@ -1558,7 +1884,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await initializeDatabase();
       const supplierId = url.replace("/api/suppliers/", "");
 
+      // Get supplier name for audit logging
+      const [delSupplier] = await client.unsafe("SELECT name FROM suppliers WHERE id = $1", [
+        supplierId,
+      ]);
+
       await client.unsafe("UPDATE suppliers SET deleted = true WHERE id = $1", [supplierId]);
+
+      // Audit log for supplier deletion
+      if (delSupplier) {
+        try {
+          await client.unsafe(
+            "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
+            [
+              `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+              "System",
+              "Supplier Deleted",
+              `Deleted supplier: ${delSupplier.name}`,
+              supplierId,
+            ],
+          );
+        } catch (e) {
+          console.warn("Failed to record supplier deletion audit log:", e);
+        }
+      }
 
       return res.status(200).json({ success: true });
     }
@@ -1612,6 +1961,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         "INSERT INTO customers (id, name, phone, email, address, npwp, loyalty_points) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *",
         [id, name, phone || null, email || null, address || null, npwp || null, loyaltyPoints],
       );
+
+      // Audit log for customer creation
+      try {
+        await client.unsafe(
+          "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
+          [
+            `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            input.staffName || "System",
+            "Customer Created",
+            `Created customer: ${name}${phone ? `, phone: ${phone}` : ""}${email ? `, email: ${email}` : ""}`,
+            id,
+          ],
+        );
+      } catch (e) {
+        console.warn("Failed to record customer creation audit log:", e);
+      }
 
       return res.status(201).json(parseDbCustomer(result[0]));
     }
@@ -1667,7 +2032,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ) {
         updates.push(`loyalty_points = $${paramIndex++}`);
         values.push(loyaltyPoints);
-        changeDescriptions.push(`loyaltyPoints: ${oldCustomer.loyalty_points || 0} -> ${loyaltyPoints}`);
+        changeDescriptions.push(
+          `loyaltyPoints: ${oldCustomer.loyalty_points || 0} -> ${loyaltyPoints}`,
+        );
       }
 
       if (updates.length === 0) {
@@ -1692,7 +2059,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         [
           `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
           staffName,
-          "General",
+          "Customer Updated",
           `Updated customer: ${changeDescriptions.join(", ")}`,
           customerId,
         ],
@@ -1727,7 +2094,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         [
           `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
           staffName,
-          "General",
+          "Customer Deleted",
           `Deleted customer: ${customer.name}`,
           customerId,
         ],
@@ -1808,9 +2175,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const saleAmountPaid = amountPaid || 0;
-      const installmentsJson = saleAmountPaid > 0
-        ? JSON.stringify([{ amount: saleAmountPaid, timestamp: new Date().toISOString() }])
-        : "[]";
+      const installmentsJson =
+        saleAmountPaid > 0
+          ? JSON.stringify([{ amount: saleAmountPaid, timestamp: new Date().toISOString() }])
+          : "[]";
 
       // Use a transaction to ensure atomicity of the entire sale creation
       let tx;
@@ -1825,10 +2193,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Aggregate quantities by product to handle duplicate productIds correctly
         const productQuantities = new Map<string, number>();
         for (const item of items) {
-          productQuantities.set(
-            item.productId,
-            (productQuantities.get(item.productId) || 0) + 1,
-          );
+          productQuantities.set(item.productId, (productQuantities.get(item.productId) || 0) + 1);
         }
 
         for (const [productId, quantity] of productQuantities) {
@@ -1886,7 +2251,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // Look up product brand if not provided
           let brand = item.brand;
           if (!brand) {
-            const [product] = await tx.unsafe("SELECT brand FROM products WHERE id = $1", [item.productId]);
+            const [product] = await tx.unsafe("SELECT brand FROM products WHERE id = $1", [
+              item.productId,
+            ]);
             brand = product?.brand as string | undefined;
           }
           await tx.unsafe(
@@ -1912,9 +2279,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
 
           // Deduct stock — safe because we already verified stock > 0 with FOR UPDATE
-          await tx.unsafe("UPDATE products SET stock = stock - 1 WHERE id = $1", [
-            item.productId,
-          ]);
+          await tx.unsafe("UPDATE products SET stock = stock - 1 WHERE id = $1", [item.productId]);
 
           // Audit log - differentiate between SN and non-SN items
           const snLabel = item.sn.startsWith("NOSN-") ? "tanpa SN" : `SN: ${item.sn}`;
@@ -1958,7 +2323,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const result = await client.unsafe("SELECT * FROM sales WHERE id = $1", [id]);
         return res.status(201).json(parseDbSale(result[0]));
       } catch (err) {
-        try { await tx.rollback(); } catch { /* rollback may fail if already rolled back */ }
+        try {
+          await tx.rollback();
+        } catch {
+          /* rollback may fail if already rolled back */
+        }
         console.error("Sale error:", err);
         return res.status(500).json({ error: "Failed to create sale" });
       }
@@ -2059,7 +2428,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         let installments: { amount: number; timestamp: string }[] = [];
         try {
           installments = JSON.parse(sale.installments || "[]");
-        } catch { installments = []; }
+        } catch {
+          installments = [];
+        }
 
         // Add new installment
         const now = new Date().toISOString();
@@ -2098,9 +2469,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
 
         // Audit log
-        const pointsLogSuffix = isNowPaid
-          ? `. Loyalty points awarded: ${pointsAwarded}`
-          : "";
+        const pointsLogSuffix = isNowPaid ? `. Loyalty points awarded: ${pointsAwarded}` : "";
         await client.unsafe(
           "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
           [
@@ -2176,6 +2545,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         [id, sn, productModel, issue, status],
       );
 
+      // Audit log for warranty claim creation
+      try {
+        await client.unsafe(
+          "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
+          [
+            `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            input.staffName || "System",
+            "Warranty Created",
+            `Created warranty claim for ${productModel} (SN: ${sn}), issue: ${issue}`,
+            id,
+          ],
+        );
+      } catch (e) {
+        console.warn("Failed to record warranty creation audit log:", e);
+      }
+
       return res.status(201).json(parseDbWarrantyClaim(result[0]));
     }
 
@@ -2190,6 +2575,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: "Status is required" });
       }
 
+      // Get old claim for audit logging
+      const [oldClaim] = await client.unsafe("SELECT * FROM warranty_claims WHERE id = $1", [
+        claimId,
+      ]);
+
       const result = await client.unsafe(
         "UPDATE warranty_claims SET status = $1 WHERE id = $2 RETURNING *",
         [status, claimId],
@@ -2197,6 +2587,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       if (!result || result.length === 0) {
         return res.status(404).json({ error: "Claim not found" });
+      }
+
+      // Audit log for warranty claim update
+      if (oldClaim) {
+        try {
+          await client.unsafe(
+            "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
+            [
+              `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+              input.staffName || "System",
+              "Warranty Updated",
+              `Updated warranty claim for ${oldClaim.product_model} (SN: ${oldClaim.sn}): status ${oldClaim.status} -> ${status}`,
+              claimId,
+            ],
+          );
+        } catch (e) {
+          console.warn("Failed to record warranty update audit log:", e);
+        }
       }
 
       return res.status(200).json(parseDbWarrantyClaim(result[0]));

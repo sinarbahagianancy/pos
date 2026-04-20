@@ -114,7 +114,12 @@ export const loginHandler = async (name: string, password: string) => {
     try {
       await client.unsafe(
         `INSERT INTO audit_logs (id, staff_name, action, details) VALUES ($1, $2, $3, $4)`,
-        [`LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`, user.name, "Login", `Staff ${user.name} logged in`],
+        [
+          `LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+          user.name,
+          "Login",
+          `Staff ${user.name} logged in`,
+        ],
       );
     } catch (e) {
       console.warn("Failed to record login audit log:", e);
@@ -135,7 +140,12 @@ export const logoutHandler = async (name: string) => {
   try {
     await client.unsafe(
       `INSERT INTO audit_logs (id, staff_name, action, details) VALUES ($1, $2, $3, $4)`,
-      [`LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`, name, "Logout", `Staff ${name} logged out`],
+      [
+        `LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+        name,
+        "Logout",
+        `Staff ${name} logged out`,
+      ],
     );
   } catch (e) {
     console.warn("Failed to record logout audit log:", e);
@@ -151,7 +161,12 @@ export const getStaffHandler = async () => {
   return result.map(parseDbStaffMember);
 };
 
-export const addStaffHandler = async (name: string, password: string, role: string = "Staff") => {
+export const addStaffHandler = async (
+  name: string,
+  password: string,
+  role: string = "Staff",
+  staffName: string = "System",
+) => {
   await initializeDatabase();
 
   if (!name || !password) {
@@ -164,17 +179,53 @@ export const addStaffHandler = async (name: string, password: string, role: stri
     [name, role, passwordHash],
   );
 
+  // Audit log for staff creation
+  try {
+    await client.unsafe(
+      `INSERT INTO audit_logs (id, staff_name, action, details, timestamp) VALUES ($1, $2, $3, $4, NOW())`,
+      [
+        `LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+        staffName,
+        "Staff Created",
+        `Created staff member: ${name} (role: ${role})`,
+      ],
+    );
+  } catch (e) {
+    console.warn("Failed to record staff creation audit log:", e);
+  }
+
   return parseDbStaffMember(result[0]);
 };
 
-export const deleteStaffHandler = async (id: string) => {
+export const deleteStaffHandler = async (id: string, staffName: string = "System") => {
   await initializeDatabase();
+
+  // Get staff name for audit logging
+  const [staff] = await client.unsafe("SELECT name FROM staff_members WHERE id = $1", [id]);
+
   await client.unsafe("DELETE FROM staff_members WHERE id = $1", [id]);
+
+  // Audit log for staff deletion
+  if (staff) {
+    try {
+      await client.unsafe(
+        `INSERT INTO audit_logs (id, staff_name, action, details, timestamp) VALUES ($1, $2, $3, $4, NOW())`,
+        [
+          `LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+          staffName,
+          "Staff Deleted",
+          `Deleted staff member: ${staff.name}`,
+        ],
+      );
+    } catch (e) {
+      console.warn("Failed to record staff deletion audit log:", e);
+    }
+  }
 };
 
 export const updateStaffHandler = async (
   id: string,
-  data: { name?: string; role?: "Admin" | "Staff"; password?: string },
+  data: { name?: string; role?: "Admin" | "Staff"; password?: string; staffName?: string },
 ) => {
   await initializeDatabase();
 
@@ -191,6 +242,32 @@ export const updateStaffHandler = async (
     "UPDATE staff_members SET name = $1, role = $2, password_hash = $3 WHERE id = $4 RETURNING id, name, role, created_at",
     [name, role, passwordHash, id],
   );
+
+  // Audit log for staff update
+  const changes: string[] = [];
+  if (data.name && data.name !== current.name)
+    changes.push(`name: ${current.name} -> ${data.name}`);
+  if (data.role && data.role !== current.role)
+    changes.push(`role: ${current.role} -> ${data.role}`);
+  if (data.password) changes.push("password updated");
+
+  if (changes.length > 0) {
+    const staffName = data.staffName || "System";
+    try {
+      await client.unsafe(
+        `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())`,
+        [
+          `LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+          staffName,
+          "Staff Updated",
+          `Updated staff ${current.name}: ${changes.join(", ")}`,
+          id,
+        ],
+      );
+    } catch (e) {
+      console.warn("Failed to record staff update audit log:", e);
+    }
+  }
 
   return parseDbStaffMember(result[0]);
 };
@@ -211,6 +288,7 @@ export const updateStoreConfigHandler = async (config: {
   ppnRate?: number;
   currency?: string;
   monthlyTarget?: number;
+  staffName?: string;
 }) => {
   await initializeDatabase();
 
@@ -229,6 +307,39 @@ export const updateStoreConfigHandler = async (config: {
     "UPDATE store_config SET store_name = $1, address = $2, ppn_rate = $3, currency = $4, monthly_target = $5, updated_at = NOW() WHERE id = 1 RETURNING *",
     [storeName, address, ppnRate, currency, monthlyTarget],
   );
+
+  // Audit log for store config update
+  const changes: string[] = [];
+  if (config.storeName && config.storeName !== current[0].store_name)
+    changes.push(`storeName: ${current[0].store_name} -> ${config.storeName}`);
+  if (config.address && config.address !== current[0].address)
+    changes.push(`address: ${current[0].address} -> ${config.address}`);
+  if (config.ppnRate !== undefined && String(config.ppnRate) !== String(current[0].ppn_rate))
+    changes.push(`ppnRate: ${current[0].ppn_rate} -> ${config.ppnRate}`);
+  if (config.currency && config.currency !== current[0].currency)
+    changes.push(`currency: ${current[0].currency} -> ${config.currency}`);
+  if (
+    config.monthlyTarget !== undefined &&
+    String(config.monthlyTarget) !== String(current[0].monthly_target)
+  )
+    changes.push(`monthlyTarget: ${current[0].monthly_target} -> ${config.monthlyTarget}`);
+
+  if (changes.length > 0) {
+    const staffName = config.staffName || "System";
+    try {
+      await client.unsafe(
+        `INSERT INTO audit_logs (id, staff_name, action, details, timestamp) VALUES ($1, $2, $3, $4, NOW())`,
+        [
+          `LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+          staffName,
+          "Settings Update",
+          `Updated store config: ${changes.join(", ")}`,
+        ],
+      );
+    } catch (e) {
+      console.warn("Failed to record store config audit log:", e);
+    }
+  }
 
   return parseDbStoreConfig(result[0]);
 };

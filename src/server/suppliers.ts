@@ -1,5 +1,5 @@
 import { client, db } from "../db";
-import { suppliers } from "../db/schema";
+import { suppliers, auditLogs } from "../db/schema";
 import { eq, sql } from "drizzle-orm";
 
 const parseDbSupplier = (row: Record<string, unknown>) => ({
@@ -53,7 +53,10 @@ export const getSupplierById = async (id: string) => {
   return parseDbSupplier(result[0]);
 };
 
-export const createSupplier = async (data: { name: string; phone?: string; address?: string }) => {
+export const createSupplier = async (
+  data: { name: string; phone?: string; address?: string },
+  staffName: string = "System",
+) => {
   const result = await db
     .insert(suppliers)
     .values({
@@ -63,7 +66,17 @@ export const createSupplier = async (data: { name: string; phone?: string; addre
     })
     .returning();
 
-  return parseDbSupplier(result[0]);
+  const supplier = parseDbSupplier(result[0]);
+
+  await db.insert(auditLogs).values({
+    id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    staffName,
+    action: "Supplier Created",
+    details: `Created supplier: ${data.name}${data.phone ? `, phone: ${data.phone}` : ""}${data.address ? `, address: ${data.address}` : ""}`,
+    relatedId: supplier.id,
+  });
+
+  return supplier;
 };
 
 export const updateSupplier = async (
@@ -73,22 +86,59 @@ export const updateSupplier = async (
     phone?: string;
     address?: string;
   },
+  staffName: string = "System",
 ) => {
-  const updates: Record<string, unknown> = {};
+  // Get old supplier for audit logging
+  const [oldSupplier] = await db.select().from(suppliers).where(eq(suppliers.id, id));
+  if (!oldSupplier) return null;
 
-  if (data.name !== undefined) updates.name = data.name;
-  if (data.phone !== undefined) updates.phone = data.phone;
-  if (data.address !== undefined) updates.address = data.address;
+  const updates: Record<string, unknown> = {};
+  const changes: string[] = [];
+
+  if (data.name !== undefined && data.name !== oldSupplier.name) {
+    updates.name = data.name;
+    changes.push(`name: ${oldSupplier.name} -> ${data.name}`);
+  }
+  if (data.phone !== undefined && data.phone !== oldSupplier.phone) {
+    updates.phone = data.phone;
+    changes.push(`phone: ${oldSupplier.phone || "-"} -> ${data.phone || "-"}`);
+  }
+  if (data.address !== undefined && data.address !== oldSupplier.address) {
+    updates.address = data.address;
+    changes.push(`address: ${oldSupplier.address || "-"} -> ${data.address || "-"}`);
+  }
 
   if (Object.keys(updates).length === 0) {
-    const result = await db.select().from(suppliers).where(eq(suppliers.id, id));
-    return result.length > 0 ? parseDbSupplier(result[0]) : null;
+    return parseDbSupplier(oldSupplier);
   }
 
   const result = await db.update(suppliers).set(updates).where(eq(suppliers.id, id)).returning();
+
+  if (changes.length > 0) {
+    await db.insert(auditLogs).values({
+      id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      staffName,
+      action: "Supplier Updated",
+      details: `Updated supplier ${oldSupplier.name}: ${changes.join(", ")}`,
+      relatedId: id,
+    });
+  }
+
   return result.length > 0 ? parseDbSupplier(result[0]) : null;
 };
 
-export const deleteSupplier = async (id: string) => {
+export const deleteSupplier = async (id: string, staffName: string = "System") => {
+  // Get supplier name for audit logging
+  const [supplier] = await db.select().from(suppliers).where(eq(suppliers.id, id));
+  if (!supplier) return;
+
   await db.update(suppliers).set({ deleted: true }).where(eq(suppliers.id, id));
+
+  await db.insert(auditLogs).values({
+    id: `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    staffName,
+    action: "Supplier Deleted",
+    details: `Deleted supplier: ${supplier.name}`,
+    relatedId: id,
+  });
 };
