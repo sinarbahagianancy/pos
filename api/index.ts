@@ -62,12 +62,7 @@ const client = postgres(connectionString, {
   prepare: false,
   max: 1, // Serverless: limit pool to 1 connection per function instance
   idle_timeout: 5,
-  connect_timeout: 5, // Reduced from 10s to 5s for faster timeout
-  // Connection options for Neon
-  connection: {
-    pool_timeout: 5,
-    statement_timeout: 10000,
-  },
+  connect_timeout: 5,
 });
 
 // Inline schema definitions for API route
@@ -2002,7 +1997,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // POST /api/sales - Create new sale
     if (method === "POST" && url === "/api/sales") {
-      const saleStart = Date.now();
       const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const {
         id,
@@ -2031,14 +2025,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ? JSON.stringify([{ amount: saleAmountPaid, timestamp: new Date().toISOString() }])
           : "[]";
 
-      // Use a transaction to ensure atomicity
-      let tx: any;
-      try {
-        tx = await client.begin();
-      } catch {
-        return res.status(500).json({ error: "Failed to start database transaction" });
-      }
-
+      // Use non-transactional approach for reliability
       try {
         const t0 = Date.now();
         
@@ -2052,15 +2039,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const productIds = Array.from(productQuantities.keys());
         if (productIds.length === 0) throw new Error("No products");
         
-        const productsCheck = await tx.unsafe(
-          `SELECT id, stock, model FROM products WHERE id = ANY($1) FOR UPDATE`,
+        const productsCheck = await client.unsafe(
+          `SELECT id, stock, model FROM products WHERE id = ANY($1)`,
           [productIds],
         );
         
         for (const [productId, quantity] of productQuantities) {
           const product = productsCheck.find((p: any) => p.id === productId);
           if (!product || Number(product.stock) < quantity) {
-            await tx.rollback().catch(() => {});
             return res.status(400).json({
               error: `Insufficient stock for ${product?.model || productId}: need ${quantity}, have ${product?.stock ?? 0}`,
             });
@@ -2069,17 +2055,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         // Batch check: get all SNs at once
         const realSNs = items.filter(i => !i.sn.startsWith("NOSN-")).map(i => i.sn);
-        let snCheck: any[] = [];
         if (realSNs.length > 0) {
-          snCheck = await tx.unsafe(
-            `SELECT sn, status FROM serial_numbers WHERE sn = ANY($1) FOR UPDATE`,
+          const snCheck = await client.unsafe(
+            `SELECT sn, status FROM serial_numbers WHERE sn = ANY($1)`,
             [realSNs],
           );
           for (const item of items) {
             if (item.sn.startsWith("NOSN-")) continue;
             const snRow = snCheck.find((s: any) => s.sn === item.sn);
             if (!snRow || snRow.status !== "In Stock") {
-              await tx.rollback().catch(() => {});
               return res.status(400).json({
                 error: `Serial number ${item.sn} is not available (status: ${snRow?.status || "not found"})`,
               });
@@ -2087,11 +2071,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         }
         const t1 = Date.now();
-        if (t1 - t0 > 100) console.log(`[SALE-DEBUG] pre-flight checks: ${t1-t0}ms`);
+        if (t1 - t0 > 100) console.log(`[SALE-DEBUG] pre-flight: ${t1-t0}ms`);
 
-        // --- Insert sale ---
-        await tx.unsafe(
-          "INSERT INTO sales (id, customer_id, customer_name, subtotal, tax, tax_enabled, total, payment_method, staff_name, notes, due_date, is_paid, amount_paid, installments) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
+        // Insert sale
+        await client.unsafe(
+          `INSERT INTO sales (id, customer_id, customer_name, subtotal, tax, tax_enabled, total, payment_method, staff_name, notes, due_date, is_paid, amount_paid, installments) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
           [
             id,
             customerId,
@@ -2118,36 +2102,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const saleItemPlaceholders = saleItemValues.map((_, i) => 
           `($${i*8+1}, $${i*8+2}, $${i*8+3}, $${i*8+4}, $${i*8+5}, $${i*8+6}, $${i*8+7}, $${i*8+8})`
         ).join(", ");
-        await tx.unsafe(
+        await client.unsafe(
           `INSERT INTO sale_items (sale_id, product_id, brand, model, sn, price, cogs, warranty_expiry) VALUES ${saleItemPlaceholders}`,
           saleItemValues.flat(),
         );
 
-        // Batch update serial_numbers
+        // Batch update SNs
         if (realSNs.length > 0) {
           const snPlaceholders = realSNs.map((_, i) => `$${i+1}`).join(", ");
-          await tx.unsafe(
+          await client.unsafe(
             `UPDATE serial_numbers SET status = 'Sold' WHERE sn IN (${snPlaceholders})`,
             realSNs,
           );
         }
 
-        // Batch update products stock
-        const stockUpdates = Array.from(productQuantities).map(([productId, qty], i) => 
-          `$${i+1} = stock - ${qty}`
-        ).join(", ");
-        await tx.unsafe(
-          `UPDATE products SET ${stockUpdates} WHERE id = ANY($1)`,
-          [productIds],
-        );
+        // Batch update stock
+        for (const [productId, qty] of productQuantities) {
+          await client.unsafe(
+            `UPDATE products SET stock = stock - $1 WHERE id = $2`,
+            [qty, productId],
+          );
+        }
 
         const t2 = Date.now();
-        if (t2 - t1 > 100) console.log(`[SALE-DEBUG] main writes: ${t2-t1}ms`);
+        if (t2 - t1 > 100) console.log(`[SALE-DEBUG] writes: ${t2-t1}ms`);
 
         // Batch audit logs
         const auditValues = [
           [`LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`, staffName, "Sale Created", 
-           `Sale ${id} - ${items.length} item(s), Total: Rp ${new Intl.NumberFormat("id-ID").format(total)}, Customer: ${customerName}`, id]
+           `Sale ${id} - ${items.length} items, Total: Rp ${new Intl.NumberFormat("id-ID").format(total)}, Customer: ${customerName}`, id]
         ];
         items.forEach(item => {
           const snLabel = item.sn.startsWith("NOSN-") ? "tanpa SN" : `SN: ${item.sn}`;
@@ -2161,7 +2144,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const auditPlaceholders = auditValues.map((_, i) => 
           `($${i*5+1}, $${i*5+2}, $${i*5+3}, $${i*5+4}, $${i*5+5}, NOW())`
         ).join(", ");
-        await tx.unsafe(
+        await client.unsafe(
           `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ${auditPlaceholders}`,
           auditValues.flat(),
         );
@@ -2169,25 +2152,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Loyalty points
         if (isPaid !== false) {
           const pointsEarned = Math.floor(total / 1000);
-          await tx.unsafe(
-            "UPDATE customers SET loyalty_points = loyalty_points + $1, updated_at = NOW() WHERE id = $2",
+          await client.unsafe(
+            `UPDATE customers SET loyalty_points = loyalty_points + $1, updated_at = NOW() WHERE id = $2`,
             [pointsEarned, customerId],
           );
         }
 
-        await tx.commit();
         const t3 = Date.now();
-        if (t3 - t0 > 200) console.log(`[SALE-DEBUG] total sale: ${t3-t0}ms`);
+        if (t3 - t0 > 200) console.log(`[SALE-DEBUG] total: ${t3-t0}ms`);
 
         // Return the created sale
-        const result = await client.unsafe("SELECT * FROM sales WHERE id = $1", [id]);
+        const result = await client.unsafe(`SELECT * FROM sales WHERE id = $1`, [id]);
         return res.status(201).json(parseDbSale(result[0]));
       } catch (err) {
-        try {
-          await tx.rollback();
-        } catch {
-          /* rollback may fail if already rolled back */
-        }
         console.error("Sale error:", err);
         return res.status(500).json({ error: "Failed to create sale" });
       }
