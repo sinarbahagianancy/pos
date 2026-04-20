@@ -61,8 +61,13 @@ let initPromise: Promise<void> | null = null;
 const client = postgres(connectionString, {
   prepare: false,
   max: 1, // Serverless: limit pool to 1 connection per function instance
-  idle_timeout: 5, // Release idle connections quickly
-  connect_timeout: 10,
+  idle_timeout: 5,
+  connect_timeout: 5, // Reduced from 10s to 5s for faster timeout
+  // Connection options for Neon
+  connection: {
+    pool_timeout: 5,
+    statement_timeout: 10000,
+  },
 });
 
 // Inline schema definitions for API route
@@ -677,11 +682,17 @@ const db = {
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const reqStart = Date.now();
+  
   // Ensure DB is initialized before handling any request (cached per warm instance)
   if (!initPromise) {
     initPromise = initializeDatabase();
   }
   await initPromise;
+  const initDone = Date.now() - reqStart;
+  if (initDone > 100) {
+    console.log(`[TIMING] init took ${initDone}ms`);
+  }
 
   const { method, url } = req;
 
@@ -1172,6 +1183,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
 
+      // @ts-ignore - Map iteration
       for (const [productId, { count, sns }] of productCounts) {
         // Increment stock + update metadata in a single query
         const setClauses = ["stock = stock + $1", "updated_at = NOW()"];
@@ -1507,7 +1519,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // GET /api/store-config
     if (method === "GET" && url === "/api/store-config") {
+      const qStart = Date.now();
       const result = await client.unsafe("SELECT * FROM store_config WHERE id = 1");
+      const qTime = Date.now() - qStart;
+      if (qTime > 100) console.log(`[TIMING] store-config query took ${qTime}ms`);
+      console.log(`[TIMING] total ${Date.now() - reqStart}ms`);
       if (!result || result.length === 0) {
         return res.status(404).json({ error: "Store config not found" });
       }
@@ -1686,9 +1702,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       values.push(supplierId);
 
+      // @ts-ignore - values array type
       await client.unsafe(
         `UPDATE suppliers SET ${updates.join(", ")} WHERE id = $${paramIndex}`,
-        values,
+        values as any,
       );
 
       // Audit log for supplier update
@@ -1953,8 +1970,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const salesWithItems = await Promise.all(
         salesResult.map(async (sale: Record<string, unknown>) => {
+          // @ts-ignore - sale.id type
           const itemsResult = await client.unsafe("SELECT * FROM sale_items WHERE sale_id = $1", [
-            sale.id,
+            sale.id as any,
           ]);
           return {
             ...parseDbSale(sale),
@@ -1984,6 +2002,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // POST /api/sales - Create new sale
     if (method === "POST" && url === "/api/sales") {
+      const saleStart = Date.now();
       const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const {
         id,
@@ -2012,28 +2031,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ? JSON.stringify([{ amount: saleAmountPaid, timestamp: new Date().toISOString() }])
           : "[]";
 
-      // Use a transaction to ensure atomicity of the entire sale creation
-      let tx;
+      // Use a transaction to ensure atomicity
+      let tx: any;
       try {
         tx = await client.begin();
       } catch {
-        return Response.json({ error: "Failed to start database transaction" }, { status: 500 });
+        return res.status(500).json({ error: "Failed to start database transaction" });
       }
-      try {
-        // --- Pre-flight checks: validate stock & SN status before any writes ---
 
-        // Aggregate quantities by product to handle duplicate productIds correctly
+      try {
+        const t0 = Date.now();
+        
+        // Aggregate quantities by product
         const productQuantities = new Map<string, number>();
         for (const item of items) {
           productQuantities.set(item.productId, (productQuantities.get(item.productId) || 0) + 1);
         }
 
+        // Batch check: get all products at once
+        const productIds = Array.from(productQuantities.keys());
+        if (productIds.length === 0) throw new Error("No products");
+        
+        const productsCheck = await tx.unsafe(
+          `SELECT id, stock, model FROM products WHERE id = ANY($1) FOR UPDATE`,
+          [productIds],
+        );
+        
         for (const [productId, quantity] of productQuantities) {
-          // Lock and check product stock (FOR UPDATE prevents concurrent races)
-          const [product] = await tx.unsafe(
-            "SELECT stock, model FROM products WHERE id = $1 FOR UPDATE",
-            [productId],
-          );
+          const product = productsCheck.find((p: any) => p.id === productId);
           if (!product || Number(product.stock) < quantity) {
             await tx.rollback().catch(() => {});
             return res.status(400).json({
@@ -2042,13 +2067,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         }
 
-        // Check each serial number is In Stock
-        for (const item of items) {
-          if (!item.sn.startsWith("NOSN-")) {
-            const [snRow] = await tx.unsafe(
-              "SELECT status FROM serial_numbers WHERE sn = $1 FOR UPDATE",
-              [item.sn],
-            );
+        // Batch check: get all SNs at once
+        const realSNs = items.filter(i => !i.sn.startsWith("NOSN-")).map(i => i.sn);
+        let snCheck: any[] = [];
+        if (realSNs.length > 0) {
+          snCheck = await tx.unsafe(
+            `SELECT sn, status FROM serial_numbers WHERE sn = ANY($1) FOR UPDATE`,
+            [realSNs],
+          );
+          for (const item of items) {
+            if (item.sn.startsWith("NOSN-")) continue;
+            const snRow = snCheck.find((s: any) => s.sn === item.sn);
             if (!snRow || snRow.status !== "In Stock") {
               await tx.rollback().catch(() => {});
               return res.status(400).json({
@@ -2057,8 +2086,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }
           }
         }
+        const t1 = Date.now();
+        if (t1 - t0 > 100) console.log(`[SALE-DEBUG] pre-flight checks: ${t1-t0}ms`);
 
-        // --- All checks passed — proceed with writes ---
+        // --- Insert sale ---
         await tx.unsafe(
           "INSERT INTO sales (id, customer_id, customer_name, subtotal, tax, tax_enabled, total, payment_method, staff_name, notes, due_date, is_paid, amount_paid, installments) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
           [
@@ -2079,68 +2110,63 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ],
         );
 
-        for (const item of items) {
-          // Look up product brand if not provided
-          let brand = item.brand;
-          if (!brand) {
-            const [product] = await tx.unsafe("SELECT brand FROM products WHERE id = $1", [
-              item.productId,
-            ]);
-            brand = product?.brand as string | undefined;
-          }
+        // Batch insert sale_items
+        const saleItemValues = items.map(item => [
+          id, item.productId, item.brand || null, item.model, item.sn, 
+          String(item.price), String(item.cogs), item.warrantyExpiry
+        ]);
+        const saleItemPlaceholders = saleItemValues.map((_, i) => 
+          `($${i*8+1}, $${i*8+2}, $${i*8+3}, $${i*8+4}, $${i*8+5}, $${i*8+6}, $${i*8+7}, $${i*8+8})`
+        ).join(", ");
+        await tx.unsafe(
+          `INSERT INTO sale_items (sale_id, product_id, brand, model, sn, price, cogs, warranty_expiry) VALUES ${saleItemPlaceholders}`,
+          saleItemValues.flat(),
+        );
+
+        // Batch update serial_numbers
+        if (realSNs.length > 0) {
+          const snPlaceholders = realSNs.map((_, i) => `$${i+1}`).join(", ");
           await tx.unsafe(
-            "INSERT INTO sale_items (sale_id, product_id, brand, model, sn, price, cogs, warranty_expiry) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-            [
-              id,
-              item.productId,
-              brand || null,
-              item.model,
-              item.sn,
-              String(item.price),
-              String(item.cogs),
-              item.warrantyExpiry,
-            ],
-          );
-
-          // Only update SN status if it's a real serial number (not NOSN-xxx)
-          if (!item.sn.startsWith("NOSN-")) {
-            await tx.unsafe("UPDATE serial_numbers SET status = $1 WHERE sn = $2", [
-              "Sold",
-              item.sn,
-            ]);
-          }
-
-          // Deduct stock — safe because we already verified stock > 0 with FOR UPDATE
-          await tx.unsafe("UPDATE products SET stock = stock - 1 WHERE id = $1", [item.productId]);
-
-          // Audit log - differentiate between SN and non-SN items
-          const snLabel = item.sn.startsWith("NOSN-") ? "tanpa SN" : `SN: ${item.sn}`;
-          await tx.unsafe(
-            "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
-            [
-              `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
-              staffName,
-              "Sales Deduction",
-              `Sold 1 unit of ${item.model} (${snLabel}) to ${customerName}`,
-              item.productId,
-            ],
+            `UPDATE serial_numbers SET status = 'Sold' WHERE sn IN (${snPlaceholders})`,
+            realSNs,
           );
         }
 
-        // Audit log for sale
+        // Batch update products stock
+        const stockUpdates = Array.from(productQuantities).map(([productId, qty], i) => 
+          `$${i+1} = stock - ${qty}`
+        ).join(", ");
         await tx.unsafe(
-          "INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())",
-          [
-            `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
-            staffName,
-            "Sale Created",
-            `Sale ${id} - ${items.length} item(s), Total: Rp ${new Intl.NumberFormat("id-ID").format(total)}, Customer: ${customerName}`,
-            id,
-          ],
+          `UPDATE products SET ${stockUpdates} WHERE id = ANY($1)`,
+          [productIds],
         );
 
-        // Award loyalty points only for immediate-payment sales (Cash/Debit/QRIS/Transfer).
-        // Utang sales get points when marked as paid (markSaleAsPaid / recordInstallment).
+        const t2 = Date.now();
+        if (t2 - t1 > 100) console.log(`[SALE-DEBUG] main writes: ${t2-t1}ms`);
+
+        // Batch audit logs
+        const auditValues = [
+          [`LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`, staffName, "Sale Created", 
+           `Sale ${id} - ${items.length} item(s), Total: Rp ${new Intl.NumberFormat("id-ID").format(total)}, Customer: ${customerName}`, id]
+        ];
+        items.forEach(item => {
+          const snLabel = item.sn.startsWith("NOSN-") ? "tanpa SN" : `SN: ${item.sn}`;
+          auditValues.push([
+            `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+            staffName, "Sales Deduction",
+            `Sold 1 unit of ${item.model} (${snLabel}) to ${customerName}`,
+            item.productId
+          ]);
+        });
+        const auditPlaceholders = auditValues.map((_, i) => 
+          `($${i*5+1}, $${i*5+2}, $${i*5+3}, $${i*5+4}, $${i*5+5}, NOW())`
+        ).join(", ");
+        await tx.unsafe(
+          `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ${auditPlaceholders}`,
+          auditValues.flat(),
+        );
+
+        // Loyalty points
         if (isPaid !== false) {
           const pointsEarned = Math.floor(total / 1000);
           await tx.unsafe(
@@ -2150,6 +2176,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
 
         await tx.commit();
+        const t3 = Date.now();
+        if (t3 - t0 > 200) console.log(`[SALE-DEBUG] total sale: ${t3-t0}ms`);
 
         // Return the created sale
         const result = await client.unsafe("SELECT * FROM sales WHERE id = $1", [id]);
