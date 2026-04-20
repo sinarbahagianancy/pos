@@ -399,9 +399,26 @@ const parseDbStoreConfig = (row: Record<string, unknown>): StoreConfig => ({
 });
 
 // Initialize database - add password_hash column and default admins
-let initialized = false;
+// DB-level sentinel key so migrations run only once across all Vercel instances
+const MIGRATION_KEY = "v1-init";
+
 const initializeDatabase = async () => {
-  if (initialized) return;
+  // Create sentinel table (fast, idempotent)
+  await client.unsafe(`
+    CREATE TABLE IF NOT EXISTS migrations_log (
+      key text PRIMARY KEY,
+      ran_at timestamp DEFAULT NOW()
+    )
+  `);
+  // Insert sentinel — if it already exists (ON CONFLICT), nothing is returned → skip migrations
+  const sentinel = await client.unsafe(
+    `INSERT INTO migrations_log (key) VALUES ($1) ON CONFLICT (key) DO NOTHING RETURNING key`,
+    [MIGRATION_KEY],
+  );
+  if (!sentinel || sentinel.length === 0) {
+    // Migrations already ran on a previous cold start — nothing to do
+    return;
+  }
 
   try {
     // Add password_hash column if not exists
@@ -600,7 +617,6 @@ const initializeDatabase = async () => {
     `)
       .catch(() => {});
 
-    initialized = true;
     console.log("Database initialized");
   } catch (error) {
     console.error("Failed to initialize database:", error);
@@ -832,7 +848,17 @@ const db = {
   },
 };
 
+// Cache the initialization promise so it runs at most once per warm instance.
+// The DB-level sentinel ensures it also runs at most once across all instances.
+let initPromise: Promise<void> | null = null;
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Ensure DB is initialized before handling any request
+  if (!initPromise) {
+    initPromise = initializeDatabase();
+  }
+  await initPromise;
+
   const { method, url } = req;
 
   // Helper to parse pagination query params
@@ -1455,7 +1481,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // POST /api/auth/login
     if (method === "POST" && url === "/api/auth/login") {
-      await initializeDatabase();
       const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const { name, password } = input;
 
@@ -1525,7 +1550,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // GET /api/staff
     if (method === "GET" && url === "/api/staff") {
-      await initializeDatabase();
       const result = await client.unsafe(
         "SELECT id, name, role, created_at FROM staff_members ORDER BY name",
       );
@@ -1534,7 +1558,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // POST /api/staff
     if (method === "POST" && url === "/api/staff") {
-      await initializeDatabase();
       const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const { name, password, role = "Staff" } = input;
 
@@ -1608,7 +1631,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // PUT /api/staff/:id
     if (method === "PUT" && url?.startsWith("/api/staff/")) {
       const staffId = url.replace("/api/staff/", "");
-      await initializeDatabase();
       const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const { name, role, password } = input;
 
@@ -1661,7 +1683,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // GET /api/store-config
     if (method === "GET" && url === "/api/store-config") {
-      await initializeDatabase();
       const result = await client.unsafe("SELECT * FROM store_config WHERE id = 1");
       if (!result || result.length === 0) {
         return res.status(404).json({ error: "Store config not found" });
@@ -1671,7 +1692,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // PUT /api/store-config
     if (method === "PUT" && url === "/api/store-config") {
-      await initializeDatabase();
       const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const { storeName, address, ppnRate, currency, monthlyTarget } = input;
 
@@ -1722,7 +1742,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // GET /api/suppliers with pagination
     if (method === "GET" && (url === "/api/suppliers" || url?.startsWith("/api/suppliers?"))) {
-      await initializeDatabase();
       const { page, limit } = getPageLimit(req);
       const offset = (page - 1) * limit;
       const result = await client.unsafe(
@@ -1751,7 +1770,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // POST /api/suppliers
     if (method === "POST" && url === "/api/suppliers") {
-      await initializeDatabase();
       const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const { name, phone, address } = input as { name: string; phone?: string; address?: string };
 
@@ -1801,7 +1819,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // PUT /api/suppliers/:id
     if (method === "PUT" && url?.startsWith("/api/suppliers/")) {
-      await initializeDatabase();
       const supplierId = url.replace("/api/suppliers/", "");
       const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const { name, phone, address } = input as {
@@ -1881,7 +1898,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // DELETE /api/suppliers/:id
     if (method === "DELETE" && url?.startsWith("/api/suppliers/")) {
-      await initializeDatabase();
       const supplierId = url.replace("/api/suppliers/", "");
 
       // Get supplier name for audit logging
@@ -1916,7 +1932,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // GET /api/customers with pagination
     if (method === "GET" && (url === "/api/customers" || url?.startsWith("/api/customers?"))) {
-      await initializeDatabase();
       const { page, limit } = getPageLimit(req);
       const offset = (page - 1) * limit;
       const result = await client.unsafe(
@@ -1939,7 +1954,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // GET /api/customers/:id
     if (method === "GET" && url?.startsWith("/api/customers/")) {
       const customerId = url.replace("/api/customers/", "");
-      await initializeDatabase();
       const result = await client.unsafe("SELECT * FROM customers WHERE id = $1", [customerId]);
       if (!result || result.length === 0) {
         return res.status(404).json({ error: "Customer not found" });
@@ -1949,7 +1963,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // POST /api/customers
     if (method === "POST" && url === "/api/customers") {
-      await initializeDatabase();
       const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const { id, name, phone, email, address, npwp, loyaltyPoints = 0 } = input;
 
@@ -1984,7 +1997,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // PUT /api/customers/:id
     if (method === "PUT" && url?.startsWith("/api/customers/")) {
       const customerId = url.replace("/api/customers/", "");
-      await initializeDatabase();
       const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const { name, phone, email, address, npwp, loyaltyPoints, staffName = "System" } = input;
 
@@ -2071,7 +2083,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // DELETE /api/customers/:id
     if (method === "DELETE" && url?.startsWith("/api/customers/")) {
       const customerId = url.replace("/api/customers/", "");
-      await initializeDatabase();
       const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const { staffName = "System" } = input || {};
 
@@ -2107,7 +2118,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // GET /api/sales with pagination
     if (method === "GET" && (url === "/api/sales" || url?.startsWith("/api/sales?"))) {
-      await initializeDatabase();
       const { page, limit } = getPageLimit(req);
       const offset = (page - 1) * limit;
       const salesResult = await client.unsafe(
@@ -2141,7 +2151,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // GET /api/sales/customer/:customerId
     if (method === "GET" && url?.startsWith("/api/sales/customer/")) {
       const customerId = url.replace("/api/sales/customer/", "");
-      await initializeDatabase();
       const result = await client.unsafe(
         "SELECT * FROM sales WHERE customer_id = $1 ORDER BY timestamp DESC",
         [customerId],
@@ -2151,7 +2160,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // POST /api/sales - Create new sale
     if (method === "POST" && url === "/api/sales") {
-      await initializeDatabase();
       const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const {
         id,
@@ -2335,7 +2343,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // PUT /api/sales/:id/mark-paid
     if (method === "PUT" && url?.startsWith("/api/sales/") && url.endsWith("/mark-paid")) {
-      await initializeDatabase();
       const saleId = url.replace("/api/sales/", "").replace("/mark-paid", "");
       const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const { staffName } = input;
@@ -2404,7 +2411,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // PUT /api/sales/:id/installment - Record an installment payment
     if (method === "PUT" && url?.startsWith("/api/sales/") && url.endsWith("/installment")) {
-      await initializeDatabase();
       const saleId = url.replace("/api/sales/", "").replace("/installment", "");
       const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const { amount, staffName } = input;
@@ -2492,7 +2498,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // GET /api/sale-items
     if (method === "GET" && url === "/api/sale-items") {
-      await initializeDatabase();
       const result = await client.unsafe("SELECT * FROM sale_items ORDER BY id DESC");
       return res.status(200).json(result.map(parseDbSaleItem));
     }
@@ -2500,7 +2505,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // GET /api/sale-items/:saleId
     if (method === "GET" && url?.startsWith("/api/sale-items/")) {
       const saleId = url.replace("/api/sale-items/", "");
-      await initializeDatabase();
       const result = await client.unsafe("SELECT * FROM sale_items WHERE sale_id = $1", [saleId]);
       return res.status(200).json(result.map(parseDbSaleItem));
     }
@@ -2512,7 +2516,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       method === "GET" &&
       (url === "/api/warranty-claims" || url?.startsWith("/api/warranty-claims?"))
     ) {
-      await initializeDatabase();
       const { page, limit } = getPageLimit(req);
       const offset = (page - 1) * limit;
       const result = await client.unsafe(
@@ -2532,7 +2535,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // POST /api/warranty-claims
     if (method === "POST" && url === "/api/warranty-claims") {
-      await initializeDatabase();
       const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const { id, sn, productModel, issue, status = "Pending" } = input;
 
@@ -2567,7 +2569,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // PUT /api/warranty-claims/:id
     if (method === "PUT" && url?.startsWith("/api/warranty-claims/")) {
       const claimId = url.replace("/api/warranty-claims/", "");
-      await initializeDatabase();
       const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const { status } = input;
 
@@ -2612,7 +2613,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // GET /api/audit-logs with pagination
     if (method === "GET" && (url === "/api/audit-logs" || url?.startsWith("/api/audit-logs?"))) {
-      await initializeDatabase();
       const { page, limit } = getPageLimit(req);
       const offset = (page - 1) * limit;
       const result = await client.unsafe(
