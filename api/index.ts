@@ -3,12 +3,60 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { eq } from "drizzle-orm";
 
-// ⚠️ DEPLOYMENT NOTE: Runtime migrations have been removed from this handler.
-// All schema changes are now in supabase/drizzle/ SQL migration files.
-// Migrations MUST be applied to the production DB BEFORE deploying this code.
-// See: 0003_runtime_migrations.sql and 0004_data_migrations.sql
-
 const connectionString = process.env.DATABASE_URL || "";
+
+// DB-level migration sentinel key so migrations run only once across all Vercel instances
+const MIGRATION_KEY = "v1-init";
+
+const initializeDatabase = async () => {
+  // Fast DB-level check: create sentinel table then try to insert
+  await client.unsafe(`
+    CREATE TABLE IF NOT EXISTS migrations_log (
+      key text PRIMARY KEY,
+      ran_at timestamp DEFAULT NOW()
+    )
+  `);
+  const result = await client.unsafe(
+    `INSERT INTO migrations_log (key) VALUES ($1) ON CONFLICT (key) DO NOTHING RETURNING key`,
+    [MIGRATION_KEY],
+  );
+  // If nothing was inserted, migrations already ran — skip
+  if (!result || result.length === 0) return;
+
+  console.log("Running database migrations...");
+
+  // Run migrations that need to happen at runtime (fallback if SQL migrations weren't applied)
+  try {
+    // Create default store config if not exists
+    await client.unsafe(`
+      INSERT INTO store_config (id, store_name, address, ppn_rate, currency, monthly_target)
+      VALUES (1, 'Sinar Bahagia Surabaya', 'Jl. Kramat Gantung No. 63, Genteng, Surabaya, Jawa Timur 60174, Indonesia', 11.00, 'IDR', 500000000)
+      ON CONFLICT (id) DO NOTHING
+    `).catch(() => {});
+
+    // Create default admin accounts if they don't exist
+    const defaultAdmins = [
+      { name: "Nancy", password: "nancy123", role: "Admin" },
+      { name: "Mami", password: "mami123", role: "Admin" },
+      { name: "Vita", password: "vita123", role: "Admin" },
+    ];
+    for (const admin of defaultAdmins) {
+      const hash = btoa(admin.password);
+      await client.unsafe(
+        `INSERT INTO staff_members (name, role, password_hash) VALUES ($1, $2, $3) ON CONFLICT (name) DO UPDATE SET role = EXCLUDED.role`,
+        [admin.name, admin.role, hash],
+      ).catch(() => {});
+    }
+
+    console.log("Database initialized");
+  } catch (error) {
+    console.error("Failed to initialize database:", error);
+  }
+};
+
+// Cache the initialization promise so it runs at most once per warm instance.
+// The DB-level sentinel ensures it also runs at most once across all instances.
+let initPromise: Promise<void> | null = null;
 
 const client = postgres(connectionString, {
   prepare: false,
@@ -629,6 +677,12 @@ const db = {
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Ensure DB is initialized before handling any request (cached per warm instance)
+  if (!initPromise) {
+    initPromise = initializeDatabase();
+  }
+  await initPromise;
+
   const { method, url } = req;
 
   // Helper to parse pagination query params
