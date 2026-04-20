@@ -257,34 +257,78 @@ export const getAllSalesHandler = async (
 ): Promise<PaginatedSalesResult> => {
   const offset = (page - 1) * limit;
 
-  const salesResult = await client.unsafe(
-    "SELECT * FROM sales ORDER BY timestamp DESC LIMIT $1 OFFSET $2",
+  // Get paginated sale IDs first (lightweight)
+  const saleIds = await client.unsafe(
+    "SELECT id FROM sales ORDER BY timestamp DESC LIMIT $1 OFFSET $2",
     [limit, offset],
   );
   const countResult = await client.unsafe("SELECT COUNT(*) as count FROM sales");
   const total = Number(countResult[0]?.count) || 0;
 
-  const salesWithItems = await Promise.all(
-    salesResult.map(async (sale: Record<string, unknown>) => {
-      const itemsResult = await client.unsafe("SELECT * FROM sale_items WHERE sale_id = $1", [
-        sale.id,
-      ]);
-      const items = itemsResult.map((item: Record<string, unknown>) => ({
-        productId: item.product_id as string,
-        brand: item.brand as string | undefined,
-        model: item.model as string,
-        sn: item.sn as string,
-        price: typeof item.price === "string" ? parseFloat(item.price) : (item.price as number),
-        cogs: typeof item.cogs === "string" ? parseFloat(item.cogs) : (item.cogs as number),
-        warrantyExpiry: item.warranty_expiry as string,
-      }));
+  if (saleIds.length === 0) {
+    return { sales: [], total: 0, page, limit, totalPages: 0 };
+  }
 
-      return {
-        ...parseDbSale(sale),
-        items,
-      };
-    }),
+  // Fetch all sales + their items in ONE query using JOIN
+  const idList = saleIds.map((r: Record<string, unknown>) => r.id as string);
+  const placeholders = idList.map((_: string, i: number) => `$${i + 1}`).join(", ");
+  const joinedRows = await client.unsafe(
+    `SELECT s.*, si.id as si_id, si.product_id as si_product_id, si.brand as si_brand,
+            si.model as si_model, si.sn as si_sn, si.price as si_price,
+            si.cogs as si_cogs, si.warranty_expiry as si_warranty_expiry
+     FROM sales s
+     LEFT JOIN sale_items si ON s.id = si.sale_id
+     WHERE s.id IN (${placeholders})
+     ORDER BY s.timestamp DESC`,
+    idList,
   );
+
+  // Group joined rows back into sales with items
+  const salesMap = new Map<string, Record<string, unknown>>();
+  const itemsMap = new Map<string, Record<string, unknown>[]>();
+
+  for (const row of joinedRows) {
+    const saleId = row.id as string;
+    if (!salesMap.has(saleId)) {
+      salesMap.set(saleId, row);
+      itemsMap.set(saleId, []);
+    }
+    if (row.si_id) {
+      itemsMap.get(saleId)!.push({
+        id: row.si_id,
+        sale_id: saleId,
+        product_id: row.si_product_id,
+        brand: row.si_brand,
+        model: row.si_model,
+        sn: row.si_sn,
+        price: row.si_price,
+        cogs: row.si_cogs,
+        warranty_expiry: row.si_warranty_expiry,
+      });
+    }
+  }
+
+  // Build response in original order
+  const salesWithItems = idList.map((saleId: string) => {
+    const sale = salesMap.get(saleId)!;
+    const items = (itemsMap.get(saleId) || []).map((item) => {
+      const r = item as Record<string, unknown>;
+      return {
+        productId: r.product_id as string,
+        brand: r.brand as string | undefined,
+        model: r.model as string,
+        sn: r.sn as string,
+        price: typeof r.price === "string" ? parseFloat(r.price) : (r.price as number),
+        cogs: typeof r.cogs === "string" ? parseFloat(r.cogs) : (r.cogs as number),
+        warrantyExpiry: r.warranty_expiry as string,
+      };
+    });
+
+    return {
+      ...parseDbSale(sale),
+      items,
+    };
+  });
 
   return {
     sales: salesWithItems,

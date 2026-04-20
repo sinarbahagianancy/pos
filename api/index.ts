@@ -1,171 +1,19 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { eq } from "drizzle-orm";
+
+// ⚠️ DEPLOYMENT NOTE: Runtime migrations have been removed from this handler.
+// All schema changes are in supabase/drizzle/ SQL migration files.
+// Migrations MUST be applied to the production DB BEFORE deploying this code.
+// See: 0003_runtime_migrations.sql and 0004_data_migrations.sql
 
 const connectionString = process.env.DATABASE_URL || "";
-
-// DB-level migration sentinel key so migrations run only once across all Vercel instances
-const MIGRATION_KEY = "v1-init";
-
-const initializeDatabase = async () => {
-  // Fast DB-level check: create sentinel table then try to insert
-  await client.unsafe(`
-    CREATE TABLE IF NOT EXISTS migrations_log (
-      key text PRIMARY KEY,
-      ran_at timestamp DEFAULT NOW()
-    )
-  `);
-  const result = await client.unsafe(
-    `INSERT INTO migrations_log (key) VALUES ($1) ON CONFLICT (key) DO NOTHING RETURNING key`,
-    [MIGRATION_KEY],
-  );
-  // If nothing was inserted, migrations already ran — skip
-  if (!result || result.length === 0) return;
-
-  console.log("Running database migrations...");
-
-  // Run migrations that need to happen at runtime (fallback if SQL migrations weren't applied)
-  try {
-    // Create default store config if not exists
-    await client.unsafe(`
-      INSERT INTO store_config (id, store_name, address, ppn_rate, currency, monthly_target)
-      VALUES (1, 'Sinar Bahagia Surabaya', 'Jl. Kramat Gantung No. 63, Genteng, Surabaya, Jawa Timur 60174, Indonesia', 11.00, 'IDR', 500000000)
-      ON CONFLICT (id) DO NOTHING
-    `).catch(() => {});
-
-    // Create default admin accounts if they don't exist
-    const defaultAdmins = [
-      { name: "Nancy", password: "nancy123", role: "Admin" },
-      { name: "Mami", password: "mami123", role: "Admin" },
-      { name: "Vita", password: "vita123", role: "Admin" },
-    ];
-    for (const admin of defaultAdmins) {
-      const hash = btoa(admin.password);
-      await client.unsafe(
-        `INSERT INTO staff_members (name, role, password_hash) VALUES ($1, $2, $3) ON CONFLICT (name) DO UPDATE SET role = EXCLUDED.role`,
-        [admin.name, admin.role, hash],
-      ).catch(() => {});
-    }
-
-    console.log("Database initialized");
-  } catch (error) {
-    console.error("Failed to initialize database:", error);
-  }
-};
-
-// Cache the initialization promise so it runs at most once per warm instance.
-// The DB-level sentinel ensures it also runs at most once across all instances.
-let initPromise: Promise<void> | null = null;
 
 const client = postgres(connectionString, {
   prepare: false,
   max: 1, // Serverless: limit pool to 1 connection per function instance
-  idle_timeout: 5,
-  connect_timeout: 5,
+  idle_timeout: 30, // Keep connection alive longer to reduce cold-start reconnects
+  connect_timeout: 10, // Give pooler a bit more time for TLS handshake
 });
-
-// Inline schema definitions for API route
-const productsTable = {
-  tableName: "products",
-  columns: {
-    id: { name: "id" },
-    brand: { name: "brand" },
-    model: { name: "model" },
-    category: { name: "category" },
-    mount: { name: "mount" },
-    condition: { name: "condition" },
-    price: { name: "price" },
-    cogs: { name: "cogs" },
-    warrantyMonths: { name: "warranty_months" },
-    warrantyType: { name: "warranty_type" },
-    stock: { name: "stock" },
-    createdAt: { name: "created_at" },
-    updatedAt: { name: "updated_at" },
-    invoiceNumber: { name: "invoice_number" },
-  },
-};
-
-const serialNumbersTable = {
-  tableName: "serial_numbers",
-  columns: {
-    sn: { name: "sn" },
-    productId: { name: "product_id" },
-    status: { name: "status" },
-    createdAt: { name: "created_at" },
-  },
-};
-
-const auditLogsTable = {
-  tableName: "audit_logs",
-  columns: {
-    id: { name: "id" },
-    staffName: { name: "staff_name" },
-    action: { name: "action" },
-    details: { name: "details" },
-    relatedId: { name: "related_id" },
-    timestamp: { name: "timestamp" },
-  },
-};
-
-const customersTable = {
-  tableName: "customers",
-  columns: {
-    id: { name: "id" },
-    name: { name: "name" },
-    phone: { name: "phone" },
-    email: { name: "email" },
-    address: { name: "address" },
-    npwp: { name: "npwp" },
-    loyaltyPoints: { name: "loyalty_points" },
-    createdAt: { name: "created_at" },
-    updatedAt: { name: "updated_at" },
-  },
-};
-
-const salesTable = {
-  tableName: "sales",
-  columns: {
-    id: { name: "id" },
-    customerId: { name: "customer_id" },
-    customerName: { name: "customer_name" },
-    subtotal: { name: "subtotal" },
-    tax: { name: "tax" },
-    total: { name: "total" },
-    paymentMethod: { name: "payment_method" },
-    staffName: { name: "staff_name" },
-    timestamp: { name: "timestamp" },
-    amountPaid: { name: "amount_paid" },
-    installments: { name: "installments" },
-  },
-};
-
-const warrantyClaimsTable = {
-  tableName: "warranty_claims",
-  columns: {
-    id: { name: "id" },
-    sn: { name: "sn" },
-    productModel: { name: "product_model" },
-    issue: { name: "issue" },
-    status: { name: "status" },
-    createdAt: { name: "created_at" },
-  },
-};
-
-const saleItemsTable = {
-  tableName: "sale_items",
-  columns: {
-    id: { name: "id" },
-    saleId: { name: "sale_id" },
-    productId: { name: "product_id" },
-    brand: { name: "brand" },
-    model: { name: "model" },
-    sn: { name: "sn" },
-    price: { name: "price" },
-    cogs: { name: "cogs" },
-    warrantyExpiry: { name: "warranty_expiry" },
-  },
-};
 
 type ProductCategory = "Body" | "Lens" | "Accessory";
 type ConditionType = "New" | "Used";
@@ -677,18 +525,6 @@ const db = {
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const reqStart = Date.now();
-  
-  // Ensure DB is initialized before handling any request (cached per warm instance)
-  if (!initPromise) {
-    initPromise = initializeDatabase();
-  }
-  await initPromise;
-  const initDone = Date.now() - reqStart;
-  if (initDone > 100) {
-    console.log(`[TIMING] init took ${initDone}ms`);
-  }
-
   const { method, url } = req;
 
   // Helper to parse pagination query params
@@ -823,11 +659,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (method === "PUT" && url?.startsWith("/api/products/")) {
       const productId = url.replace("/api/products/", "");
       const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
-      console.log("[DEBUG PUT] Input:", JSON.stringify(input));
       const { staffName = "System", ...productInput } = input;
-      console.log("[DEBUG PUT] productInput:", JSON.stringify(productInput));
       const validated = validateUpdateProductInput(productInput);
-      console.log("[DEBUG PUT] validated:", JSON.stringify(validated));
 
       // Get old product for audit logging
       const [oldProduct] = await db.select("products", ["*"], { column: "id", value: productId });
@@ -1144,9 +977,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json(parseDbProduct(result[0]));
     }
 
-    // GET /api/serial-numbers
-    if (method === "GET" && url === "/api/serial-numbers") {
-      const result = await client.unsafe("SELECT * FROM serial_numbers");
+    // GET /api/serial-numbers (supports ?status= filter)
+    if (method === "GET" && (url === "/api/serial-numbers" || url?.startsWith("/api/serial-numbers?"))) {
+      const queryStatus = (req.query as Record<string, string>)?.status;
+      let result;
+      if (queryStatus) {
+        result = await client.unsafe(
+          "SELECT * FROM serial_numbers WHERE status = $1",
+          [queryStatus],
+        );
+      } else {
+        result = await client.unsafe("SELECT * FROM serial_numbers");
+      }
       return res.status(200).json(result.map(parseDbSerialNumber));
     }
 
@@ -1179,8 +1021,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // @ts-ignore - Map iteration
+      const productIds = Array.from(productCounts.keys());
+
+      // Batch-fetch ALL product data upfront (eliminates N+1)
+      const productRows = await client.unsafe(
+        `SELECT id, brand, model, invoice_number FROM products WHERE id = ANY($1)`,
+        [productIds],
+      );
+      const productsById = new Map<string, Record<string, unknown>>();
+      for (const row of productRows) {
+        productsById.set(row.id as string, row);
+      }
+
+      // Build all updates in-memory, then execute in parallel
+      const supplierInfo = supplier || "Unknown";
+      const dateInfo = date || new Date().toISOString().split("T")[0];
+      const reasonInfo = reason || "Not specified";
+      const invoiceInfo = invoiceNumber || "-";
+      const auditRows: (string | number)[][] = [];
+
+      const updatePromises = [];
+      // @ts-ignore - Map iteration
       for (const [productId, { count, sns }] of productCounts) {
-        // Increment stock + update metadata in a single query
+        const product = productsById.get(productId);
+        if (!product) continue;
+
         const setClauses = ["stock = stock + $1", "updated_at = NOW()"];
         const params: (string | number | Date | null)[] = [count];
         let paramIdx = 2;
@@ -1194,43 +1059,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           params.push(new Date(date));
         }
         if (invoiceNumber) {
-          // Append new restock entry to existing history
-          const [existingProduct] = await client.unsafe(
-            "SELECT invoice_number FROM products WHERE id = $1",
-            [productId],
-          );
-          const existing = parseApiRestockHistory(existingProduct?.invoice_number);
+          const existing = parseApiRestockHistory(product.invoice_number);
           existing.push({ sn: sns, inv: invoiceNumber, timestamp: new Date().toISOString() });
           setClauses.push(`invoice_number = $${paramIdx++}`);
           params.push(JSON.stringify(existing));
         }
         params.push(productId);
 
-        await client.unsafe(
-          `UPDATE products SET ${setClauses.join(", ")} WHERE id = $${paramIdx}`,
-          params,
+        updatePromises.push(
+          client.unsafe(
+            `UPDATE products SET ${setClauses.join(", ")} WHERE id = $${paramIdx}`,
+            params,
+          ),
         );
 
-        // Create audit log per product
-        const [product] = await client.unsafe("SELECT brand, model FROM products WHERE id = $1", [
+        // Batch audit log rows
+        const snList = sns.join(", ");
+        auditRows.push([
+          `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          "System",
+          `Added ${count} serial number(s) to ${product.brand || ""} ${product.model || ""} from supplier ${supplierInfo} on ${dateInfo}, invoice: ${invoiceInfo}, reason: ${reasonInfo}. SN: ${snList}`,
           productId,
         ]);
-        const snList = sns.join(", ");
-        const supplierInfo = supplier || "Unknown";
-        const dateInfo = date || new Date().toISOString().split("T")[0];
-        const reasonInfo = reason || "Not specified";
-        const invoiceInfo = invoiceNumber || "-";
+      }
 
+      // Execute all product updates in parallel
+      await Promise.all(updatePromises);
+
+      // Batch insert all audit logs in one query
+      if (auditRows.length > 0) {
+        // Each row has 4 values: [id, staff_name, details, related_id]
+        // action is hardcoded as 'Stock Addition' literal
+        const placeholders = auditRows
+          .map(
+            (_, i) =>
+              `($${i * 4 + 1}, $${i * 4 + 2}, 'Stock Addition', $${i * 4 + 3}, $${i * 4 + 4}, NOW())`,
+          )
+          .join(", ");
         await client.unsafe(
-          `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) 
-           VALUES ($1, $2, $3, $4, $5, NOW())`,
-          [
-            `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-            "System",
-            "Stock Addition",
-            `Added ${count} serial number(s) to ${product?.brand || ""} ${product?.model || ""} from supplier ${supplierInfo} on ${dateInfo}, invoice: ${invoiceInfo}, reason: ${reasonInfo}. SN: ${snList}`,
-            productId,
-          ],
+          `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ${placeholders}`,
+          auditRows.flat(),
         );
       }
 
@@ -1514,11 +1382,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // GET /api/store-config
     if (method === "GET" && url === "/api/store-config") {
-      const qStart = Date.now();
       const result = await client.unsafe("SELECT * FROM store_config WHERE id = 1");
-      const qTime = Date.now() - qStart;
-      if (qTime > 100) console.log(`[TIMING] store-config query took ${qTime}ms`);
-      console.log(`[TIMING] total ${Date.now() - reqStart}ms`);
       if (!result || result.length === 0) {
         return res.status(404).json({ error: "Store config not found" });
       }
@@ -1956,25 +1820,66 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (method === "GET" && (url === "/api/sales" || url?.startsWith("/api/sales?"))) {
       const { page, limit } = getPageLimit(req);
       const offset = (page - 1) * limit;
-      const salesResult = await client.unsafe(
-        `SELECT * FROM sales ORDER BY timestamp DESC LIMIT $1 OFFSET $2`,
+
+      // Use a single JOIN query instead of N+1 queries
+      // 1) Get paginated sale IDs first (lightweight)
+      const saleIds = await client.unsafe(
+        `SELECT id FROM sales ORDER BY timestamp DESC LIMIT $1 OFFSET $2`,
         [limit, offset],
       );
       const countResult = await client.unsafe("SELECT COUNT(*) as count FROM sales");
       const total = Number(countResult[0]?.count) || 0;
 
-      const salesWithItems = await Promise.all(
-        salesResult.map(async (sale: Record<string, unknown>) => {
-          // @ts-ignore - sale.id type
-          const itemsResult = await client.unsafe("SELECT * FROM sale_items WHERE sale_id = $1", [
-            sale.id as any,
-          ]);
-          return {
-            ...parseDbSale(sale),
-            items: itemsResult.map((item: Record<string, unknown>) => parseDbSaleItem(item)),
-          };
-        }),
+      if (saleIds.length === 0) {
+        return res.status(200).json({ sales: [], total: 0, page, limit, totalPages: 0 });
+      }
+
+      // 2) Fetch all sales + their items in ONE query using JOIN
+      const idList = saleIds.map((r: Record<string, unknown>) => r.id as string);
+      const placeholders = idList.map((_: string, i: number) => `$${i + 1}`).join(", ");
+      const joinedRows = await client.unsafe(
+        `SELECT s.*, si.id as si_id, si.product_id as si_product_id, si.brand as si_brand,
+                si.model as si_model, si.sn as si_sn, si.price as si_price,
+                si.cogs as si_cogs, si.warranty_expiry as si_warranty_expiry
+         FROM sales s
+         LEFT JOIN sale_items si ON s.id = si.sale_id
+         WHERE s.id IN (${placeholders})
+         ORDER BY s.timestamp DESC`,
+        idList,
       );
+
+      // 3) Group joined rows back into sales with items
+      const salesMap = new Map<string, Record<string, unknown>>();
+      const itemsMap = new Map<string, Record<string, unknown>[]>();
+
+      for (const row of joinedRows) {
+        const saleId = row.id as string;
+        if (!salesMap.has(saleId)) {
+          salesMap.set(saleId, row);
+          itemsMap.set(saleId, []);
+        }
+        // Only add item if LEFT JOIN produced one (si_id is not null)
+        if (row.si_id) {
+          itemsMap.get(saleId)!.push({
+            id: row.si_id,
+            sale_id: saleId,
+            product_id: row.si_product_id,
+            brand: row.si_brand,
+            model: row.si_model,
+            sn: row.si_sn,
+            price: row.si_price,
+            cogs: row.si_cogs,
+            warranty_expiry: row.si_warranty_expiry,
+          });
+        }
+      }
+
+      // 4) Build response in original order
+      const salesWithItems = idList.map((saleId: string) => {
+        const sale = salesMap.get(saleId)!;
+        const items = (itemsMap.get(saleId) || []).map((item) => parseDbSaleItem(item));
+        return { ...parseDbSale(sale), items };
+      });
 
       return res.status(200).json({
         sales: salesWithItems,
@@ -2025,148 +1930,159 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ? JSON.stringify([{ amount: saleAmountPaid, timestamp: new Date().toISOString() }])
           : "[]";
 
-      // Use non-transactional approach for reliability
       try {
-        const t0 = Date.now();
-        
-        // Aggregate quantities by product
-        const productQuantities = new Map<string, number>();
-        for (const item of items) {
-          productQuantities.set(item.productId, (productQuantities.get(item.productId) || 0) + 1);
-        }
-
-        // Batch check: get all products at once
-        const productIds = Array.from(productQuantities.keys());
-        if (productIds.length === 0) throw new Error("No products");
-        
-        const productsCheck = await client.unsafe(
-          `SELECT id, stock, model FROM products WHERE id = ANY($1)`,
-          [productIds],
-        );
-        
-        for (const [productId, quantity] of productQuantities) {
-          const product = productsCheck.find((p: any) => p.id === productId);
-          if (!product || Number(product.stock) < quantity) {
-            return res.status(400).json({
-              error: `Insufficient stock for ${product?.model || productId}: need ${quantity}, have ${product?.stock ?? 0}`,
-            });
-          }
-        }
-
-        // Batch check: get all SNs at once
-        const realSNs = items.filter(i => !i.sn.startsWith("NOSN-")).map(i => i.sn);
-        if (realSNs.length > 0) {
-          const snCheck = await client.unsafe(
-            `SELECT sn, status FROM serial_numbers WHERE sn = ANY($1)`,
-            [realSNs],
-          );
+        const result = await client.begin(async (tx) => {
+          // Aggregate quantities by product
+          const productQuantities = new Map<string, number>();
           for (const item of items) {
-            if (item.sn.startsWith("NOSN-")) continue;
-            const snRow = snCheck.find((s: any) => s.sn === item.sn);
-            if (!snRow || snRow.status !== "In Stock") {
-              return res.status(400).json({
-                error: `Serial number ${item.sn} is not available (status: ${snRow?.status || "not found"})`,
-              });
+            productQuantities.set(item.productId, (productQuantities.get(item.productId) || 0) + 1);
+          }
+
+          // Batch check: get all products at once
+          const productIds = Array.from(productQuantities.keys());
+          if (productIds.length === 0) throw new Error("No products");
+
+          const productsCheck = await tx.unsafe(
+            `SELECT id, stock, model FROM products WHERE id = ANY($1)`,
+            [productIds],
+          );
+
+          for (const [productId, quantity] of productQuantities) {
+            const product = productsCheck.find((p: any) => p.id === productId);
+            if (!product || Number(product.stock) < quantity) {
+              throw new Error(
+                `Insufficient stock for ${product?.model || productId}: need ${quantity}, have ${product?.stock ?? 0}`,
+              );
             }
           }
-        }
-        const t1 = Date.now();
-        if (t1 - t0 > 100) console.log(`[SALE-DEBUG] pre-flight: ${t1-t0}ms`);
 
-        // Insert sale
-        await client.unsafe(
-          `INSERT INTO sales (id, customer_id, customer_name, subtotal, tax, tax_enabled, total, payment_method, staff_name, notes, due_date, is_paid, amount_paid, installments) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-          [
+          // Batch check: get all SNs at once
+          const realSNs = items.filter((i) => !i.sn.startsWith("NOSN-")).map((i) => i.sn);
+          if (realSNs.length > 0) {
+            const snCheck = await tx.unsafe(
+              `SELECT sn, status FROM serial_numbers WHERE sn = ANY($1)`,
+              [realSNs],
+            );
+            for (const item of items) {
+              if (item.sn.startsWith("NOSN-")) continue;
+              const snRow = snCheck.find((s: any) => s.sn === item.sn);
+              if (!snRow || snRow.status !== "In Stock") {
+                throw new Error(
+                  `Serial number ${item.sn} is not available (status: ${snRow?.status || "not found"})`,
+                );
+              }
+            }
+          }
+          // Insert sale
+          await tx.unsafe(
+            `INSERT INTO sales (id, customer_id, customer_name, subtotal, tax, tax_enabled, total, payment_method, staff_name, notes, due_date, is_paid, amount_paid, installments) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+            [
+              id,
+              customerId,
+              customerName,
+              String(subtotal),
+              String(tax),
+              taxEnabled ?? true,
+              String(total),
+              paymentMethod,
+              staffName,
+              notes || null,
+              dueDate || null,
+              isPaid ?? false,
+              String(saleAmountPaid),
+              installmentsJson,
+            ],
+          );
+
+          // Batch insert sale_items
+          const saleItemValues = items.map((item) => [
             id,
-            customerId,
-            customerName,
-            String(subtotal),
-            String(tax),
-            taxEnabled ?? true,
-            String(total),
-            paymentMethod,
-            staffName,
-            notes || null,
-            dueDate || null,
-            isPaid ?? false,
-            String(saleAmountPaid),
-            installmentsJson,
-          ],
-        );
-
-        // Batch insert sale_items
-        const saleItemValues = items.map(item => [
-          id, item.productId, item.brand || null, item.model, item.sn, 
-          String(item.price), String(item.cogs), item.warrantyExpiry
-        ]);
-        const saleItemPlaceholders = saleItemValues.map((_, i) => 
-          `($${i*8+1}, $${i*8+2}, $${i*8+3}, $${i*8+4}, $${i*8+5}, $${i*8+6}, $${i*8+7}, $${i*8+8})`
-        ).join(", ");
-        await client.unsafe(
-          `INSERT INTO sale_items (sale_id, product_id, brand, model, sn, price, cogs, warranty_expiry) VALUES ${saleItemPlaceholders}`,
-          saleItemValues.flat(),
-        );
-
-        // Batch update SNs
-        if (realSNs.length > 0) {
-          const snPlaceholders = realSNs.map((_, i) => `$${i+1}`).join(", ");
-          await client.unsafe(
-            `UPDATE serial_numbers SET status = 'Sold' WHERE sn IN (${snPlaceholders})`,
-            realSNs,
-          );
-        }
-
-        // Batch update stock
-        for (const [productId, qty] of productQuantities) {
-          await client.unsafe(
-            `UPDATE products SET stock = stock - $1 WHERE id = $2`,
-            [qty, productId],
-          );
-        }
-
-        const t2 = Date.now();
-        if (t2 - t1 > 100) console.log(`[SALE-DEBUG] writes: ${t2-t1}ms`);
-
-        // Batch audit logs
-        const auditValues = [
-          [`LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`, staffName, "Sale Created", 
-           `Sale ${id} - ${items.length} items, Total: Rp ${new Intl.NumberFormat("id-ID").format(total)}, Customer: ${customerName}`, id]
-        ];
-        items.forEach(item => {
-          const snLabel = item.sn.startsWith("NOSN-") ? "tanpa SN" : `SN: ${item.sn}`;
-          auditValues.push([
-            `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
-            staffName, "Sales Deduction",
-            `Sold 1 unit of ${item.model} (${snLabel}) to ${customerName}`,
-            item.productId
+            item.productId,
+            item.brand || null,
+            item.model,
+            item.sn,
+            String(item.price),
+            String(item.cogs),
+            item.warrantyExpiry,
           ]);
-        });
-        const auditPlaceholders = auditValues.map((_, i) => 
-          `($${i*5+1}, $${i*5+2}, $${i*5+3}, $${i*5+4}, $${i*5+5}, NOW())`
-        ).join(", ");
-        await client.unsafe(
-          `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ${auditPlaceholders}`,
-          auditValues.flat(),
-        );
-
-        // Loyalty points
-        if (isPaid !== false) {
-          const pointsEarned = Math.floor(total / 1000);
-          await client.unsafe(
-            `UPDATE customers SET loyalty_points = loyalty_points + $1, updated_at = NOW() WHERE id = $2`,
-            [pointsEarned, customerId],
+          const saleItemPlaceholders = saleItemValues
+            .map(
+              (_, i) =>
+                `($${i * 8 + 1}, $${i * 8 + 2}, $${i * 8 + 3}, $${i * 8 + 4}, $${i * 8 + 5}, $${i * 8 + 6}, $${i * 8 + 7}, $${i * 8 + 8})`,
+            )
+            .join(", ");
+          await tx.unsafe(
+            `INSERT INTO sale_items (sale_id, product_id, brand, model, sn, price, cogs, warranty_expiry) VALUES ${saleItemPlaceholders}`,
+            saleItemValues.flat(),
           );
-        }
 
-        const t3 = Date.now();
-        if (t3 - t0 > 200) console.log(`[SALE-DEBUG] total: ${t3-t0}ms`);
+          // Batch update SNs
+          if (realSNs.length > 0) {
+            const snPlaceholders = realSNs.map((_, i) => `$${i + 1}`).join(", ");
+            await tx.unsafe(
+              `UPDATE serial_numbers SET status = 'Sold' WHERE sn IN (${snPlaceholders})`,
+              realSNs,
+            );
+          }
 
-        // Return the created sale
-        const result = await client.unsafe(`SELECT * FROM sales WHERE id = $1`, [id]);
-        return res.status(201).json(parseDbSale(result[0]));
+          // Batch update stock
+          for (const [productId, qty] of productQuantities) {
+            await tx.unsafe(`UPDATE products SET stock = stock - $1 WHERE id = $2`, [
+              qty,
+              productId,
+            ]);
+          }
+
+          // Batch audit logs
+          const auditValues = [
+            [
+              `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+              staffName,
+              "Sale Created",
+              `Sale ${id} - ${items.length} items, Total: Rp ${new Intl.NumberFormat("id-ID").format(total)}, Customer: ${customerName}`,
+              id,
+            ],
+          ];
+          items.forEach((item) => {
+            const snLabel = item.sn.startsWith("NOSN-") ? "tanpa SN" : `SN: ${item.sn}`;
+            auditValues.push([
+              `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+              staffName,
+              "Sales Deduction",
+              `Sold 1 unit of ${item.model} (${snLabel}) to ${customerName}`,
+              item.productId,
+            ]);
+          });
+          const auditPlaceholders = auditValues
+            .map(
+              (_, i) =>
+                `($${i * 5 + 1}, $${i * 5 + 2}, $${i * 5 + 3}, $${i * 5 + 4}, $${i * 5 + 5}, NOW())`,
+            )
+            .join(", ");
+          await tx.unsafe(
+            `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ${auditPlaceholders}`,
+            auditValues.flat(),
+          );
+
+          // Loyalty points
+          if (isPaid !== false) {
+            const pointsEarned = Math.floor(total / 1000);
+            await tx.unsafe(
+              `UPDATE customers SET loyalty_points = loyalty_points + $1, updated_at = NOW() WHERE id = $2`,
+              [pointsEarned, customerId],
+            );
+          }
+
+          // Return the created sale
+          const saleResult = await tx.unsafe(`SELECT * FROM sales WHERE id = $1`, [id]);
+          return parseDbSale(saleResult[0]);
+        });
+        return res.status(201).json(result);
       } catch (err) {
         console.error("Sale error:", err);
-        return res.status(500).json({ error: "Failed to create sale" });
+        const message = err instanceof Error ? err.message : "Failed to create sale";
+        const status = message.includes("Insufficient stock") || message.includes("not available") ? 400 : 500;
+        return res.status(status).json({ error: message });
       }
     }
 
