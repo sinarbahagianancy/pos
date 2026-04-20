@@ -3,6 +3,11 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { eq } from "drizzle-orm";
 
+// ⚠️ DEPLOYMENT NOTE: Runtime migrations have been removed from this handler.
+// All schema changes are now in supabase/drizzle/ SQL migration files.
+// Migrations MUST be applied to the production DB BEFORE deploying this code.
+// See: 0003_runtime_migrations.sql and 0004_data_migrations.sql
+
 const connectionString = process.env.DATABASE_URL || "";
 
 const client = postgres(connectionString, {
@@ -398,231 +403,6 @@ const parseDbStoreConfig = (row: Record<string, unknown>): StoreConfig => ({
   updatedAt: row.updated_at as string,
 });
 
-// Initialize database - add password_hash column and default admins
-// DB-level sentinel key so migrations run only once across all Vercel instances
-const MIGRATION_KEY = "v1-init";
-
-const initializeDatabase = async () => {
-  // Create sentinel table (fast, idempotent)
-  await client.unsafe(`
-    CREATE TABLE IF NOT EXISTS migrations_log (
-      key text PRIMARY KEY,
-      ran_at timestamp DEFAULT NOW()
-    )
-  `);
-  // Insert sentinel — if it already exists (ON CONFLICT), nothing is returned → skip migrations
-  const sentinel = await client.unsafe(
-    `INSERT INTO migrations_log (key) VALUES ($1) ON CONFLICT (key) DO NOTHING RETURNING key`,
-    [MIGRATION_KEY],
-  );
-  if (!sentinel || sentinel.length === 0) {
-    // Migrations already ran on a previous cold start — nothing to do
-    return;
-  }
-
-  try {
-    // Add password_hash column if not exists
-    await client
-      .unsafe(`ALTER TABLE staff_members ADD COLUMN IF NOT EXISTS password_hash TEXT`)
-      .catch(() => {});
-
-    // Create suppliers table if not exists
-    await client
-      .unsafe(`
-      CREATE TABLE IF NOT EXISTS suppliers (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        name text NOT NULL UNIQUE,
-        phone text,
-        address text,
-        deleted boolean DEFAULT false,
-        created_at timestamp DEFAULT NOW()
-      )
-    `)
-      .catch(() => {});
-
-    // Add new columns to products if not exists
-    await client
-      .unsafe(
-        `ALTER TABLE products ADD COLUMN IF NOT EXISTS has_serial_number boolean DEFAULT true`,
-      )
-      .catch(() => {});
-    await client
-      .unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS supplier text`)
-      .catch(() => {});
-    await client
-      .unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS date_restocked timestamp`)
-      .catch(() => {});
-    await client
-      .unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS tax_enabled boolean DEFAULT true`)
-      .catch(() => {});
-    await client.unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS notes text`).catch(() => {});
-    await client
-      .unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS invoice_number text`)
-      .catch(() => {});
-    await client
-      .unsafe(`ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS brand text`)
-      .catch(() => {});
-
-    // Add new columns to sales if not exists
-    await client
-      .unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS tax_enabled boolean DEFAULT true`)
-      .catch(() => {});
-    await client.unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS notes text`).catch(() => {});
-    await client
-      .unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS due_date timestamp with time zone`)
-      .catch(() => {});
-    await client
-      .unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS is_paid boolean DEFAULT false`)
-      .catch(() => {});
-    await client
-      .unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS paid_at timestamp with time zone`)
-      .catch(() => {});
-    await client
-      .unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS amount_paid numeric(15,2) DEFAULT 0`)
-      .catch(() => {});
-    await client
-      .unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS installments text DEFAULT '[]'`)
-      .catch(() => {});
-
-    // Add Utang to payment_method enum
-    await client
-      .unsafe(`ALTER TYPE payment_method ADD VALUE IF NOT EXISTS 'Utang'`)
-      .catch(() => {});
-
-    // Add Toko and No Warranty to warranty_type enum
-    await client.unsafe(`ALTER TYPE warranty_type ADD VALUE IF NOT EXISTS 'Toko'`).catch(() => {});
-    await client
-      .unsafe(`ALTER TYPE warranty_type ADD VALUE IF NOT EXISTS 'No Warranty'`)
-      .catch(() => {});
-
-    // Migrate existing 'Store Warranty' data to 'Toko'
-    await client
-      .unsafe(`UPDATE products SET warranty_type = 'Toko' WHERE warranty_type = 'Store Warranty'`)
-      .catch((e) => {
-        console.error("Failed to migrate Store Warranty → Toko:", e);
-      });
-
-    // Migrate invoice_number to new structured format [{sn:[], inv:"...", timestamp:"..."}]
-    // Step 1: Wrap legacy plain strings into JSON array
-    await client
-      .unsafe(`
-        UPDATE products
-        SET invoice_number = json_build_array(invoice_number)::text
-        WHERE invoice_number IS NOT NULL
-          AND invoice_number != ''
-          AND invoice_number NOT LIKE '[%'
-      `)
-      .catch((e) => {
-        console.error("Failed to migrate invoice_number to array:", e);
-      });
-    // Step 2: Convert array-of-strings format to array-of-objects format
-    await client
-      .unsafe(`
-        UPDATE products
-        SET invoice_number = (
-          SELECT json_agg(json_build_object('sn', '[]'::json, 'inv', elem, 'timestamp', NOW()::text))::text
-          FROM json_array_elements_text(invoice_number::json) elem
-        )
-        WHERE invoice_number IS NOT NULL
-          AND invoice_number LIKE '[%'
-          AND invoice_number NOT LIKE '%"inv"%'
-      `)
-      .catch((e) => {
-        console.error("Failed to migrate invoice_number to structured format:", e);
-      });
-
-    // Add Login and Logout to audit_action enum
-    await client.unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Login'`).catch(() => {});
-    await client.unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Logout'`).catch(() => {});
-    await client
-      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Product Deleted'`)
-      .catch(() => {});
-    await client
-      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Product Restored'`)
-      .catch(() => {});
-    await client
-      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Product Hidden'`)
-      .catch(() => {});
-    await client
-      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Customer Created'`)
-      .catch(() => {});
-    await client
-      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Customer Updated'`)
-      .catch(() => {});
-    await client
-      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Customer Deleted'`)
-      .catch(() => {});
-    await client
-      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Supplier Created'`)
-      .catch(() => {});
-    await client
-      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Supplier Updated'`)
-      .catch(() => {});
-    await client
-      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Supplier Deleted'`)
-      .catch(() => {});
-    await client
-      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Staff Created'`)
-      .catch(() => {});
-    await client
-      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Staff Updated'`)
-      .catch(() => {});
-    await client
-      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Staff Deleted'`)
-      .catch(() => {});
-    await client
-      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Warranty Created'`)
-      .catch(() => {});
-    await client
-      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Warranty Updated'`)
-      .catch(() => {});
-    await client
-      .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Sale Created'`)
-      .catch(() => {});
-
-    // Add created_at to warranty_claims if not exists (missing from original migration)
-    await client
-      .unsafe(
-        `ALTER TABLE warranty_claims ADD COLUMN IF NOT EXISTS created_at timestamp with time zone DEFAULT now()`,
-      )
-      .catch(() => {});
-
-    // Create default admin accounts if they don't exist
-    const defaultAdmins = [
-      { name: "Nancy", password: "nancy123", role: "Admin" },
-      { name: "Mami", password: "mami123", role: "Admin" },
-      { name: "Vita", password: "vita123", role: "Admin" },
-    ];
-
-    for (const admin of defaultAdmins) {
-      const hash = btoa(admin.password); // Simple base64 encoding for demo
-      await client
-        .unsafe(
-          `
-        INSERT INTO staff_members (name, role, password_hash) 
-        VALUES ($1, $2, $3)
-        ON CONFLICT (name) DO UPDATE SET role = EXCLUDED.role
-      `,
-          [admin.name, admin.role, hash],
-        )
-        .catch(() => {});
-    }
-
-    // Create default store config if not exists
-    await client
-      .unsafe(`
-      INSERT INTO store_config (id, store_name, address, ppn_rate, currency)
-      VALUES (1, 'Sinar Bahagia Surabaya', 'Jl. Kramat Gantung No. 63, Genteng, Surabaya, Jawa Timur 60174, Indonesia', 11.00, 'IDR')
-      ON CONFLICT (id) DO NOTHING
-    `)
-      .catch(() => {});
-
-    console.log("Database initialized");
-  } catch (error) {
-    console.error("Failed to initialize database:", error);
-  }
-};
-
 // Validation functions
 const ProductCategories: ProductCategory[] = ["Body", "Lens", "Accessory"];
 const ConditionTypes: ConditionType[] = ["New", "Used"];
@@ -848,17 +628,7 @@ const db = {
   },
 };
 
-// Cache the initialization promise so it runs at most once per warm instance.
-// The DB-level sentinel ensures it also runs at most once across all instances.
-let initPromise: Promise<void> | null = null;
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Ensure DB is initialized before handling any request
-  if (!initPromise) {
-    initPromise = initializeDatabase();
-  }
-  await initPromise;
-
   const { method, url } = req;
 
   // Helper to parse pagination query params

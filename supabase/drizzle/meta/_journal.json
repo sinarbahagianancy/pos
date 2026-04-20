@@ -8,6 +8,34 @@
       "when": 1771598827843,
       "tag": "0000_uneven_ikaris",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1771598900000,
+      "tag": "0001_add_product_update",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1771599000000,
+      "tag": "0002_add_deleted_customers",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1776654000000,
+      "tag": "0003_runtime_migrations",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1776654100000,
+      "tag": "0004_data_migrations",
+      "breakpoints": true
     }
   ]
 }

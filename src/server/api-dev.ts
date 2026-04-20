@@ -1,103 +1,19 @@
 export default function apiServerPlugin() {
-  let schemaMigrated = false;
+  let migrationWarningShown = false;
 
   return {
     name: "api-server",
     configureServer(server) {
-      // One-time schema migration for missing columns not in original migration
-      const migrateSchema = async () => {
-        if (schemaMigrated) return;
-        try {
-          const { default: postgres } = await import("postgres");
-          const connectionString = process.env.DATABASE_URL;
-          if (!connectionString) return;
-          const pg = postgres(connectionString, { prepare: false });
-          await pg.unsafe(
-            `ALTER TABLE products ADD COLUMN IF NOT EXISTS deleted boolean DEFAULT false`,
-          );
-          await pg.unsafe(
-            `ALTER TABLE products ADD COLUMN IF NOT EXISTS tax_enabled boolean DEFAULT true`,
-          );
-          await pg.unsafe(`ALTER TABLE products ADD COLUMN IF NOT EXISTS invoice_number text`);
-          await pg.unsafe(
-            `ALTER TABLE sales ADD COLUMN IF NOT EXISTS tax_enabled boolean DEFAULT true`,
-          );
-          await pg.unsafe(`ALTER TABLE sales ADD COLUMN IF NOT EXISTS notes text`);
-          await pg.unsafe(
-            `ALTER TABLE sales ADD COLUMN IF NOT EXISTS amount_paid numeric(15,2) DEFAULT 0`,
-          );
-          await pg.unsafe(
-            `ALTER TABLE sales ADD COLUMN IF NOT EXISTS installments text DEFAULT '[]'`,
-          );
-          await pg.unsafe(
-            `ALTER TABLE warranty_claims ADD COLUMN IF NOT EXISTS created_at timestamp with time zone DEFAULT now()`,
-          );
-          await pg.unsafe(
-            `ALTER TABLE sales ADD COLUMN IF NOT EXISTS due_date timestamp with time zone`,
-          );
-          await pg.unsafe(
-            `ALTER TABLE sales ADD COLUMN IF NOT EXISTS is_paid boolean DEFAULT false`,
-          );
-          await pg.unsafe(`ALTER TABLE sale_items ADD COLUMN IF NOT EXISTS brand text`);
-          await pg.unsafe(
-            `ALTER TABLE sales ADD COLUMN IF NOT EXISTS paid_at timestamp with time zone`,
-          );
-          await pg.unsafe(`ALTER TYPE payment_method ADD VALUE IF NOT EXISTS 'Utang'`);
-          await pg.unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Login'`);
-          await pg.unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Logout'`);
-          await pg
-            .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Product Deleted'`)
-            .catch(() => {});
-          await pg
-            .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Product Restored'`)
-            .catch(() => {});
-          await pg
-            .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Product Hidden'`)
-            .catch(() => {});
-          await pg
-            .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Customer Created'`)
-            .catch(() => {});
-          await pg
-            .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Customer Updated'`)
-            .catch(() => {});
-          await pg
-            .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Customer Deleted'`)
-            .catch(() => {});
-          await pg
-            .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Supplier Created'`)
-            .catch(() => {});
-          await pg
-            .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Supplier Updated'`)
-            .catch(() => {});
-          await pg
-            .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Supplier Deleted'`)
-            .catch(() => {});
-          await pg
-            .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Staff Created'`)
-            .catch(() => {});
-          await pg
-            .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Staff Updated'`)
-            .catch(() => {});
-          await pg
-            .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Staff Deleted'`)
-            .catch(() => {});
-          await pg
-            .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Warranty Created'`)
-            .catch(() => {});
-          await pg
-            .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Warranty Updated'`)
-            .catch(() => {});
-          await pg
-            .unsafe(`ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'Sale Created'`)
-            .catch(() => {});
-          await pg.end();
-          schemaMigrated = true;
-        } catch (e) {
-          console.warn("Schema migration warning:", e);
-        }
-      };
-      migrateSchema();
-
+      // Remind developers to apply migrations before using the dev server.
+      // Runtime migrations were removed — all schema changes are now in
+      // supabase/drizzle/0003_runtime_migrations.sql and 0004_data_migrations.sql
+      if (!migrationWarningShown) {
+        console.log(
+          "[api-server] ⚠️  Make sure all DB migrations are applied before using the dev server.\n" +
+            "   Apply any pending SQL files in supabase/drizzle/ against your local DB if you haven't yet.",
+        );
+        migrationWarningShown = true;
+      }
       server.middlewares.use(async (req, res, next) => {
         if (req.url?.startsWith("/api/")) {
           const urlParts = req.url.split("?");
