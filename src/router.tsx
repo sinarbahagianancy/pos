@@ -460,6 +460,7 @@ const InventoryComponent = () => {
       queryClient.invalidateQueries({ queryKey: ["products"] });
     } catch (error) {
       console.error("Failed to delete product:", error);
+      throw error;
     }
   };
 
@@ -469,6 +470,7 @@ const InventoryComponent = () => {
       queryClient.invalidateQueries({ queryKey: ["products"] });
     } catch (error) {
       console.error("Failed to restore product:", error);
+      throw error;
     }
   };
 
