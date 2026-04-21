@@ -157,6 +157,7 @@ const InventoryView: React.FC<InventoryProps> = ({
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [confirmAdd, setConfirmAdd] = useState(false);
@@ -2479,7 +2480,10 @@ const InventoryView: React.FC<InventoryProps> = ({
                     setDeleteError(null);
                     try {
                       await onDeleteProduct(deletingProduct.id);
+                      const name = `${deletingProduct.brand} ${deletingProduct.model}`;
                       setDeletingProduct(null);
+                      setToast({ message: `${name} berhasil dihapus.`, type: "success" });
+                      setTimeout(() => setToast(null), 4000);
                     } catch (error: any) {
                       setDeleteError(error.message || "Gagal menghapus produk");
                     } finally {
@@ -2805,6 +2809,38 @@ const InventoryView: React.FC<InventoryProps> = ({
                 Tutup
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-[300] animate-in slide-in-from-bottom-4 duration-300">
+          <div
+            className={`flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl border ${
+              toast.type === "success"
+                ? "bg-green-50 border-green-200 text-green-800"
+                : "bg-red-50 border-red-200 text-red-800"
+            }`}
+          >
+            {toast.type === "success" ? (
+              <svg className="w-5 h-5 text-green-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5 text-red-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            )}
+            <span className="text-sm font-bold">{toast.message}</span>
+            <button
+              onClick={() => setToast(null)}
+              className={`ml-2 ${toast.type === "success" ? "text-green-400 hover:text-green-600" : "text-red-400 hover:text-red-600"}`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
         </div>
       )}

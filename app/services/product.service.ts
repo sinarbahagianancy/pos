@@ -194,9 +194,10 @@ export const deleteProduct = async (id: string, staffName: string = "System"): P
     const text = await response.text();
     if (text) {
       try {
-        const error = JSON.parse(text);
-        throw new Error(error.error || "Failed to delete product");
-      } catch {
+        const parsed = JSON.parse(text);
+        throw new Error(parsed.error || "Failed to delete product");
+      } catch (e) {
+        if (e instanceof Error && e.message !== text) throw e;
         throw new Error(text || "Failed to delete product");
       }
     }
@@ -217,9 +218,10 @@ export const restoreProduct = async (
     const text = await response.text();
     if (text) {
       try {
-        const error = JSON.parse(text);
-        throw new Error(error.error || "Failed to restore product");
-      } catch {
+        const parsed = JSON.parse(text);
+        throw new Error(parsed.error || "Failed to restore product");
+      } catch (e) {
+        if (e instanceof Error && e.message !== text) throw e;
         throw new Error(text || "Failed to restore product");
       }
     }
