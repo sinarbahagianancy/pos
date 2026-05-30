@@ -54,7 +54,7 @@ const POSView: React.FC<POSProps> = ({
   const [printPdfUrl, setPrintPdfUrl] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [isQuotation, setIsQuotation] = useState(false);
-  const [invoiceLayout, setInvoiceLayout] = useState<InvoiceLayout>("a5");
+  const [invoiceLayout, setInvoiceLayout] = useState<InvoiceLayout>("a4-portrait");
   const [confirmCheckout, setConfirmCheckout] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processResult, setProcessResult] = useState<{ success: boolean; message: string } | null>(
@@ -294,7 +294,7 @@ const POSView: React.FC<POSProps> = ({
   const generateInvoicePdf = async (
     sale: Sale,
     quotation: boolean,
-    layout: InvoiceLayout = "a5",
+    layout: InvoiceLayout = "a4-portrait",
   ) => {
     // Revoke previous blob URL to prevent memory leak
     if (printPdfUrl) URL.revokeObjectURL(printPdfUrl);
@@ -1161,8 +1161,8 @@ const POSView: React.FC<POSProps> = ({
 
 interface PrintModalProps {
   pdfUrl: string;
-  invoiceLayout: "a5" | "a4";
-  onLayoutChange: (layout: "a5" | "a4") => void;
+  invoiceLayout: InvoiceLayout;
+  onLayoutChange: (layout: InvoiceLayout) => void;
   onClose: () => void;
 }
 
@@ -1197,24 +1197,34 @@ const PrintModal: React.FC<PrintModalProps> = ({
           <div className="flex items-center gap-2">
             <div className="flex bg-slate-100 rounded-lg p-0.5">
               <button
-                onClick={() => onLayoutChange("a5")}
+                onClick={() => onLayoutChange("a5-landscape")}
                 className={`px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${
-                  invoiceLayout === "a5"
+                  invoiceLayout === "a5-landscape"
                     ? "bg-white text-slate-900 shadow-sm"
                     : "text-slate-400 hover:text-slate-600"
                 }`}
               >
-                A5
+                A5 Landscape
               </button>
               <button
-                onClick={() => onLayoutChange("a4")}
+                onClick={() => onLayoutChange("a4-portrait")}
                 className={`px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${
-                  invoiceLayout === "a4"
+                  invoiceLayout === "a4-portrait"
                     ? "bg-white text-indigo-600 shadow-sm"
                     : "text-slate-400 hover:text-slate-600"
                 }`}
               >
-                A4 (Bawah)
+                A4 Portrait
+              </button>
+              <button
+                onClick={() => onLayoutChange("a4-landscape")}
+                className={`px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${
+                  invoiceLayout === "a4-landscape"
+                    ? "bg-white text-indigo-600 shadow-sm"
+                    : "text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                A4 Landscape
               </button>
             </div>
             <button

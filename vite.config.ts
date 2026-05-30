@@ -17,6 +17,9 @@ export default defineConfig(({ mode }) => {
   }
 
   return {
+    staged: {
+      "*": "vp check --fix",
+    },
     plugins: basePlugins,
     server: {
       port: 3000,

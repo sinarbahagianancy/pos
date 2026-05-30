@@ -24,19 +24,20 @@ function getClient() {
 }
 
 // Wrapper that retries queries on connection errors (common during cold starts)
-async function query<T = Record<string, unknown>[]>(
-  sql: string,
-  params?: unknown[],
-): Promise<T> {
+async function query<T = Record<string, unknown>[]>(sql: string, params?: unknown[]): Promise<T> {
   const c = getClient();
   try {
-    return await c.unsafe(sql, params as any[]) as T;
+    return (await c.unsafe(sql, params as any[])) as T;
   } catch (err: any) {
     // Connection errors during cold start: reset client and retry once
-    if (err?.code === "ECONNRESET" || err?.code === "ECONNREFUSED" || err?.message?.includes("Connection")) {
+    if (
+      err?.code === "ECONNRESET" ||
+      err?.code === "ECONNREFUSED" ||
+      err?.message?.includes("Connection")
+    ) {
       _client = null; // Force fresh connection on next getClient()
       const fresh = getClient();
-      return await fresh.unsafe(sql, params as any[]) as T;
+      return (await fresh.unsafe(sql, params as any[])) as T;
     }
     throw err;
   }
@@ -575,9 +576,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       `SELECT * FROM ${table} WHERE ${whereClause} ORDER BY ${orderBy} LIMIT $1 OFFSET $2`,
       [limit, offset],
     );
-    const countResult = await query(
-      `SELECT COUNT(*) as count FROM ${table} WHERE ${whereClause}`,
-    );
+    const countResult = await query(`SELECT COUNT(*) as count FROM ${table} WHERE ${whereClause}`);
     const total = Number(countResult[0]?.count) || 0;
     return {
       data: result,
@@ -920,9 +919,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } catch (err) {
         // Column might not exist, try to add it first
         try {
-          await query(
-            "ALTER TABLE products ADD COLUMN IF NOT EXISTS hidden INTEGER DEFAULT 0",
-          );
+          await query("ALTER TABLE products ADD COLUMN IF NOT EXISTS hidden INTEGER DEFAULT 0");
           await db.update(
             "products",
             { hidden: hidden ? 1 : 0 },
@@ -963,10 +960,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { staffName: restoreStaffName = "System" } = input || {};
 
       // Get product info for audit logging
-      const [restoreProductInfo] = await query(
-        "SELECT brand, model FROM products WHERE id = $1",
-        [productId],
-      );
+      const [restoreProductInfo] = await query("SELECT brand, model FROM products WHERE id = $1", [
+        productId,
+      ]);
 
       try {
         await db.update("products", { deleted: false }, { column: "id", value: productId });
@@ -1005,14 +1001,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // GET /api/serial-numbers (supports ?status= filter)
-    if (method === "GET" && (url === "/api/serial-numbers" || url?.startsWith("/api/serial-numbers?"))) {
+    if (
+      method === "GET" &&
+      (url === "/api/serial-numbers" || url?.startsWith("/api/serial-numbers?"))
+    ) {
       const queryStatus = (req.query as Record<string, string>)?.status;
       let result;
       if (queryStatus) {
-        result = await query(
-          "SELECT * FROM serial_numbers WHERE status = $1",
-          [queryStatus],
-        );
+        result = await query("SELECT * FROM serial_numbers WHERE status = $1", [queryStatus]);
       } else {
         result = await query("SELECT * FROM serial_numbers");
       }
@@ -1094,10 +1090,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         params.push(productId);
 
         updatePromises.push(
-          query(
-            `UPDATE products SET ${setClauses.join(", ")} WHERE id = $${paramIdx}`,
-            params,
-          ),
+          query(`UPDATE products SET ${setClauses.join(", ")} WHERE id = $${paramIdx}`, params),
         );
 
         // Batch audit log rows
@@ -1165,10 +1158,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           );
         } else if (!wasInStock && nowInStock) {
           // SN returned to inventory — increment stock
-          await query(
-            "UPDATE products SET stock = stock + 1, updated_at = NOW() WHERE id = $1",
-            [existingSN.product_id],
-          );
+          await query("UPDATE products SET stock = stock + 1, updated_at = NOW() WHERE id = $1", [
+            existingSN.product_id,
+          ]);
         }
       }
 
@@ -1328,9 +1320,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const staffId = url.replace("/api/staff/", "");
 
       // Get staff name for audit logging
-      const [staffInfo] = await query("SELECT name FROM staff_members WHERE id = $1", [
-        staffId,
-      ]);
+      const [staffInfo] = await query("SELECT name FROM staff_members WHERE id = $1", [staffId]);
 
       await query("DELETE FROM staff_members WHERE id = $1", [staffId]);
 
@@ -1555,9 +1545,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       };
 
       // Get old supplier for audit logging
-      const [oldSupplier] = await query("SELECT * FROM suppliers WHERE id = $1", [
-        supplierId,
-      ]);
+      const [oldSupplier] = await query("SELECT * FROM suppliers WHERE id = $1", [supplierId]);
 
       const updates: string[] = [];
       const values: unknown[] = [];
@@ -1628,9 +1616,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const supplierId = url.replace("/api/suppliers/", "");
 
       // Get supplier name for audit logging
-      const [delSupplier] = await query("SELECT name FROM suppliers WHERE id = $1", [
-        supplierId,
-      ]);
+      const [delSupplier] = await query("SELECT name FROM suppliers WHERE id = $1", [supplierId]);
 
       await query("UPDATE suppliers SET deleted = true WHERE id = $1", [supplierId]);
 
@@ -1728,9 +1714,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { name, phone, email, address, npwp, loyaltyPoints, staffName = "System" } = input;
 
       // Get old customer for audit logging
-      const [oldCustomer] = await query("SELECT * FROM customers WHERE id = $1", [
-        customerId,
-      ]);
+      const [oldCustomer] = await query("SELECT * FROM customers WHERE id = $1", [customerId]);
       if (!oldCustomer) {
         return res.status(404).json({ error: "Customer not found" });
       }
@@ -1814,9 +1798,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { staffName = "System" } = input || {};
 
       // Get customer name for audit logging
-      const [customer] = await query("SELECT name FROM customers WHERE id = $1", [
-        customerId,
-      ]);
+      const [customer] = await query("SELECT name FROM customers WHERE id = $1", [customerId]);
       if (!customer) {
         return res.status(404).json({ error: "Customer not found" });
       }
@@ -2108,7 +2090,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } catch (err) {
         console.error("Sale error:", err);
         const message = err instanceof Error ? err.message : "Failed to create sale";
-        const status = message.includes("Insufficient stock") || message.includes("not available") ? 400 : 500;
+        const status =
+          message.includes("Insufficient stock") || message.includes("not available") ? 400 : 500;
         return res.status(status).json({ error: message });
       }
     }
@@ -2349,9 +2332,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // Get old claim for audit logging
-      const [oldClaim] = await query("SELECT * FROM warranty_claims WHERE id = $1", [
-        claimId,
-      ]);
+      const [oldClaim] = await query("SELECT * FROM warranty_claims WHERE id = $1", [claimId]);
 
       const result = await query(
         "UPDATE warranty_claims SET status = $1 WHERE id = $2 RETURNING *",

@@ -1,4 +1,5 @@
 # Performance & Architecture Improvement Strategy
+
 ## sinar-bahagia-pos (React + TanStack Router + Vercel + Supabase)
 
 ---
@@ -24,12 +25,15 @@ React (TanStack Router) --> /api/* (Vercel Serverless) --> Supabase Postgres (cl
 ### Status: `/api/sales` FIXED. Other endpoints still affected.
 
 ### 1a. GET /api/sales -- FIXED
+
 - **Before**: 1 query for sales + 1 query per sale for items = 501 queries at limit=500
 - **After**: 3 queries total (sale IDs, COUNT, JOIN for sales+items)
 - **Expected improvement**: 10s+ --> <500ms
 
 ### 1b. POST /api/serial-numbers/bulk -- N+1 per product (lines 1015-1068)
+
 **Current**: For each product in the bulk insert, runs 3-4 queries sequentially:
+
 ```typescript
 for (const [productId, { count, sns }] of productCounts) {
   // Query 1: SELECT invoice_number FROM products WHERE id = $1  (line 1031)
@@ -38,23 +42,28 @@ for (const [productId, { count, sns }] of productCounts) {
   // Query 4: INSERT INTO audit_logs ...                          (line 1057)
 }
 ```
+
 If bulk-inserting SNs for 10 products, that's 30-40 queries.
 
 **Fix strategy**:
+
 1. Batch-fetch ALL product invoice_numbers, brands, models upfront with `WHERE id = ANY($1)`
 2. Compute all updates in-memory
 3. Use a single batched UPDATE with CASE WHEN or multiple individual UPDATEs in parallel via `Promise.all`
 4. Batch all audit log inserts into one multi-row INSERT
 
 ### 1c. POST /api/sales (create) -- Minor N+1 (lines 1993-1999)
+
 ```typescript
 for (const [productId, qty] of productQuantities) {
   await client.unsafe(`UPDATE products SET stock = stock - $1 WHERE id = $2`, [qty, productId]);
 }
 ```
+
 **Impact**: Low (typical sale has 1-3 items). But could be optimized with a single CASE WHEN update.
 
 ### 1d. Dev server handler -- Still has N+1
+
 `src/server/customers.ts` `getAllSalesHandler` -- now FIXED to match prod.
 
 ---
@@ -62,26 +71,33 @@ for (const [productId, qty] of productQuantities) {
 ## Issue #2: Unbounded Queries (HIGH)
 
 ### 2a. GET /api/serial-numbers (line 982)
+
 ```typescript
 const result = await client.unsafe("SELECT * FROM serial_numbers");
 ```
+
 **Problem**: Returns ALL serial numbers with no pagination. As SN table grows, this will blow up.
 **Fix**: Add pagination. Also consider filtering (by status, product, date range).
 
 ### 2b. GET /api/sale-items (line 2207)
+
 ```typescript
 const result = await client.unsafe("SELECT * FROM sale_items ORDER BY id DESC");
 ```
+
 **Problem**: Returns ALL sale items ever. Completely unbounded.
 **Fix**: Add pagination. In practice, this endpoint may not even be needed if the JOIN approach on sales already returns items.
 
-### 2c. COUNT(*) queries on large tables
+### 2c. COUNT(\*) queries on large tables
+
 Multiple endpoints run `SELECT COUNT(*) as count FROM <table>` with no WHERE clause:
+
 - `/api/sales` (line 1792) -- OK for now but will slow as sales grow
 - `/api/customers` (line 72 in customers.ts)
 - `/api/warranty-claims` (line 2331)
 
-**Fix strategy**: 
+**Fix strategy**:
+
 - For exact counts on large tables, consider caching or estimated counts
 - PostgreSQL's `pg_stat_user_tables.n_live_tup` gives fast estimated row counts
 - Or use `COUNT(*)` with the same WHERE filter as the data query
@@ -91,11 +107,13 @@ Multiple endpoints run `SELECT COUNT(*) as count FROM <table>` with no WHERE cla
 ## Issue #3: No Transactions on Write Operations (MEDIUM-HIGH)
 
 ### POST /api/sales (line 1898)
+
 Comment says: `// Use non-transactional approach for reliability`
 
 **Problem**: If the serverless function crashes mid-operation (after inserting sale but before updating stock), the database is left in an inconsistent state. You could have a sale record with no stock deduction.
 
 **Current flow** (not atomic):
+
 1. INSERT sale
 2. INSERT sale_items (batched)
 3. UPDATE serial_numbers (batched)
@@ -127,6 +145,7 @@ const client = postgres(connectionString, {
 **Additional optimization**: Use Supabase's Transaction pooler (port 6543) instead of the Session pooler (port 5432). The Transaction pooler is designed for serverless -- it handles connection multiplexing on Supabase's side.
 
 **Verify**: Check `DATABASE_URL` in Vercel env vars. It should use port 6543:
+
 ```
 postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres
 ```
@@ -161,12 +180,14 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp DESC
 `api/index.ts` is 2352 lines with every route in a single `if/else if` chain.
 
 **Problems**:
+
 - Hard to navigate and maintain
 - No per-route middleware (auth checks are inconsistent)
 - Duplicated validation logic between `api/index.ts` and `src/server/*.ts`
 - Dev server (`api-dev.ts`) and prod (`api/index.ts`) have drifted -- they're separate implementations of the same routes
 
 **Fix strategy** (can be done incrementally):
+
 1. Extract route handlers into separate files: `api/routes/sales.ts`, `api/routes/products.ts`, etc.
 2. Create a simple router utility that maps `(method, path)` to handler functions
 3. Share validation/parsing logic between dev and prod
@@ -177,11 +198,13 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp DESC
 ## Issue #7: No Response Caching (LOW)
 
 Currently, every request hits the database. For read-heavy endpoints like:
+
 - `/api/products` (product catalog changes rarely)
 - `/api/store-config` (almost never changes)
 - `/api/staff` (changes rarely)
 
 **Options**:
+
 1. **HTTP Cache-Control headers**: `Cache-Control: public, max-age=60` for product listings
 2. **Vercel Edge Caching**: Add `s-maxage` and `stale-while-revalidate` headers
 3. **In-memory cache**: Use a simple Map with TTL inside the serverless function (lives for the duration of the warm instance)
@@ -193,6 +216,7 @@ Currently, every request hits the database. For read-heavy endpoints like:
 ## Issue #8: Numeric String Parsing (LOW)
 
 Every `parseDb*` function has this pattern:
+
 ```typescript
 price: typeof row.price === "string" ? parseFloat(row.price) : (row.price as number),
 ```
@@ -200,6 +224,7 @@ price: typeof row.price === "string" ? parseFloat(row.price) : (row.price as num
 This is because `postgres.js` returns `numeric` columns as strings by default.
 
 **Fix**: Configure postgres.js to parse numerics automatically:
+
 ```typescript
 const client = postgres(connectionString, {
   types: {
@@ -219,33 +244,35 @@ This would eliminate dozens of `typeof ... === "string" ? parseFloat(...)` check
 
 ## Implementation Priority
 
-| Priority | Issue | Effort | Impact | Status |
-|----------|-------|--------|--------|--------|
-| P0 | #1a GET /api/sales N+1 | Done | 10s --> <500ms | DONE |
-| P0 | #1b POST /api/serial-numbers/bulk N+1 | Medium | Bulk restock: 30s --> 2s | DONE |
-| P0 | #3 Restore transactions on POST /api/sales | Low | Data consistency | DONE |
-| P1 | #2a GET /api/serial-numbers status filter | Low | Reduces payload size | DONE |
-| P1 | #2b GET /api/sale-items unbounded | Low | Dead code, skipped | CANCELLED |
-| P1 | #5 Add missing DB indexes | Low | 2-10x faster queries | DONE (migration file created) |
-| P1 | #4 Verify transaction pooler URL | Trivial | Better connection reuse | PENDING |
-| P2 | #8 Numeric type auto-parsing | Low | Code cleanliness | PENDING |
-| P2 | #7 Response caching headers | Low | Reduced DB load | PENDING |
-| P3 | #6 Refactor monolithic handler | High | Maintainability | PENDING |
+| Priority | Issue                                      | Effort  | Impact                   | Status                        |
+| -------- | ------------------------------------------ | ------- | ------------------------ | ----------------------------- |
+| P0       | #1a GET /api/sales N+1                     | Done    | 10s --> <500ms           | DONE                          |
+| P0       | #1b POST /api/serial-numbers/bulk N+1      | Medium  | Bulk restock: 30s --> 2s | DONE                          |
+| P0       | #3 Restore transactions on POST /api/sales | Low     | Data consistency         | DONE                          |
+| P1       | #2a GET /api/serial-numbers status filter  | Low     | Reduces payload size     | DONE                          |
+| P1       | #2b GET /api/sale-items unbounded          | Low     | Dead code, skipped       | CANCELLED                     |
+| P1       | #5 Add missing DB indexes                  | Low     | 2-10x faster queries     | DONE (migration file created) |
+| P1       | #4 Verify transaction pooler URL           | Trivial | Better connection reuse  | PENDING                       |
+| P2       | #8 Numeric type auto-parsing               | Low     | Code cleanliness         | PENDING                       |
+| P2       | #7 Response caching headers                | Low     | Reduced DB load          | PENDING                       |
+| P3       | #6 Refactor monolithic handler             | High    | Maintainability          | PENDING                       |
 
 ---
 
 ## Architecture Note: Why Separate API Endpoints?
 
-The user asked: *"Why can't the React app just use Drizzle to connect to the DB directly?"*
+The user asked: _"Why can't the React app just use Drizzle to connect to the DB directly?"_
 
 Answer: It's a **security boundary**. React runs in the browser. If you embedded the DB connection string in React code, it would be visible in DevTools > Network/Sources. Anyone could read/write your database.
 
 The API layer exists to:
+
 1. **Hide credentials** -- DB connection string stays server-side
 2. **Enforce business logic** -- validation, stock checks, loyalty points
 3. **Control access** -- you decide which queries are allowed
 
 The alternative architecture would be Supabase's **Row Level Security (RLS)** + `@supabase/supabase-js` client directly from React. This works but:
+
 - You lose the ability to run custom business logic (stock validation, loyalty points, audit logs)
 - RLS policies get complex fast for multi-table operations
 - You can't do transactions from the client

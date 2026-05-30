@@ -1,228 +1,280 @@
 import React from "react";
-import { Document, Page, Text, View, StyleSheet, Image } from "@react-pdf/renderer";
+import { Document, Page, Text, View, StyleSheet, Image, Svg, Path } from "@react-pdf/renderer";
+import { terbilang } from "../utils/terbilang";
+
+// ============================================================
+// Styles
+// ============================================================
 
 const styles = StyleSheet.create({
-  pageA5: {
-    padding: 20,
+  // Page
+  pageA5Landscape: {
+    padding: 12,
     fontFamily: "Helvetica",
-    fontSize: 10,
-    color: "#0f172a",
-    lineHeight: 1.5,
+    fontSize: 8,
+    color: "#000000",
+    lineHeight: 1.3,
   },
-  pageA4: {
-    flexDirection: "row",
+  pageA4Portrait: {
     fontFamily: "Helvetica",
-    fontSize: 10,
-    color: "#0f172a",
-    lineHeight: 1.5,
+    fontSize: 8,
+    color: "#000000",
+    lineHeight: 1.3,
+    padding: 0,
   },
-  spacer: {
+  pageA4Landscape: {
+    padding: 16,
+    fontFamily: "Helvetica",
+    fontSize: 9,
+    color: "#000000",
+    lineHeight: 1.3,
+  },
+
+  // A4 Portrait layout (blank top half, invoice on bottom)
+  a4PortraitPage: {
+    flexDirection: "column",
+  },
+  a4PortraitTopHalf: {
     flex: 1,
+    borderBottomWidth: 1,
+    borderBottomColor: "#94a3b8",
+    borderBottomStyle: "dashed",
   },
-  invoiceContainer: {
-    width: 420,
-    height: 595,
-    padding: 20,
+  a4PortraitBottomHalf: {
+    flex: 1,
+    padding: 12,
   },
+
+  // ============================================================
+  // Header
+  // ============================================================
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#f1f5f9",
-    marginBottom: 16,
+    borderBottomColor: "#000000",
+    paddingBottom: 6,
+    marginBottom: 6,
   },
-  logoSection: {
+  headerLeft: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
+    alignItems: "flex-start",
+  },
+  logoColumn: {
+    marginRight: 16,
   },
   logo: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    objectFit: "contain",
-  },
-  storeInfo: {
-    marginLeft: 10,
-  },
-  storeName: {
-    fontSize: 14,
-    fontWeight: 900,
-    textTransform: "uppercase",
-    letterSpacing: -0.5,
+    width: 100,
+    height: 100,
   },
   storeTagline: {
-    fontSize: 7,
-    color: "#64748b",
-    fontWeight: 700,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    marginTop: 1,
+    fontSize: 6,
+    fontWeight: "bold",
+    marginTop: 4,
+    width: 100,
   },
-  storeAddress: {
-    fontSize: 7,
-    color: "#94a3b8",
-    marginTop: 1,
+  storeSubTagline: {
+    fontSize: 5,
+    fontWeight: "bold",
+    marginTop: 2,
+    width: 100,
   },
-  invoiceInfo: {
+  titleColumn: {
+    paddingTop: 8,
+  },
+  invoiceTitle: {
+    fontSize: 14,
+    fontWeight: "bold",
+    whiteSpace: "nowrap",
+  },
+  socialRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 8,
+    flexWrap: "nowrap",
+  },
+  socialIcon: {
+    width: 10,
+    height: 10,
+    backgroundColor: "#e5e7eb",
+    borderRadius: 2,
+    marginRight: 3,
+  },
+  socialHandle: {
+    fontSize: 5,
+    marginRight: 8,
+  },
+  headerRight: {
     alignItems: "flex-end",
   },
-  invoiceLabel: {
-    fontSize: 7,
-    fontWeight: 800,
-    color: "#94a3b8",
-    textTransform: "uppercase",
-    letterSpacing: 1,
+  addressLine: {
+    fontSize: 6,
+    textAlign: "right",
+    lineHeight: 1.2,
   },
-  invoiceId: {
-    fontSize: 12,
-    fontWeight: 900,
+  phoneLine: {
+    fontSize: 6,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
     marginTop: 2,
   },
-  invoiceDate: {
-    fontSize: 8,
-    color: "#64748b",
-    fontWeight: 700,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    marginTop: 2,
+  phoneIcon: {
+    width: 6,
+    height: 6,
+    marginRight: 2,
   },
-  customerSection: {
+  phoneText: {
+    fontSize: 6,
+  },
+
+  // ============================================================
+  // Customer + Invoice Details Row
+  // ============================================================
+  customerInvoiceRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    padding: 12,
-    backgroundColor: "#f8fafc",
-    borderRadius: 8,
-    marginBottom: 12,
+    alignItems: "flex-start",
+    marginBottom: 8,
   },
-  customerLeft: {
+  customerSection: {
     flex: 1,
   },
-  customerRight: {
-    flex: 1,
-    alignItems: "flex-end",
+  invoiceDetailsBox: {
+    borderWidth: 1,
+    borderColor: "#000000",
+    padding: 6,
+    minWidth: 180,
   },
-  sectionLabel: {
-    fontSize: 6,
-    fontWeight: 800,
-    color: "#94a3b8",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    marginBottom: 3,
+  invoiceDetailRow: {
+    flexDirection: "row",
+    marginBottom: 2,
+  },
+  invoiceDetailLabel: {
+    width: 75,
+    fontSize: 7,
+    fontWeight: "bold",
+    whiteSpace: "nowrap",
+  },
+  invoiceDetailSeparator: {
+    width: 10,
+    fontSize: 7,
+  },
+  invoiceDetailValue: {
+    flex: 1,
+    fontSize: 7,
+    fontWeight: "bold",
+  },
+  customerLabel: {
+    fontSize: 7,
+    fontWeight: "bold",
+    marginBottom: 2,
   },
   customerName: {
-    fontSize: 11,
-    fontWeight: 800,
+    fontSize: 9,
+    fontWeight: "bold",
     textTransform: "uppercase",
-    letterSpacing: -0.2,
   },
-  customerDetail: {
-    fontSize: 8,
-    color: "#475569",
+  customerNik: {
+    fontSize: 7,
     marginTop: 1,
   },
-  customerNpwp: {
-    fontSize: 9,
-    fontWeight: 800,
-    fontFamily: "Courier",
+  customerAddress: {
+    fontSize: 7,
+    marginTop: 1,
   },
-  noNpwp: {
-    fontSize: 8,
-    fontStyle: "italic",
-    color: "#94a3b8",
-  },
-  paymentBadge: {
-    marginTop: 12,
-    padding: "3 8",
-    backgroundColor: "white",
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 4,
-  },
-  paymentText: {
-    fontSize: 8,
-    fontWeight: 800,
-    textTransform: "uppercase",
-    color: "#4f46e5",
-  },
+
+  // ============================================================
+  // Items Table
+  // ============================================================
   table: {
-    marginBottom: 12,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: "#000000",
   },
   tableHeader: {
     flexDirection: "row",
-    paddingBottom: 8,
-    borderBottomWidth: 2,
-    borderBottomColor: "#1e293b",
+    borderBottomWidth: 1,
+    borderBottomColor: "#000000",
+    backgroundColor: "#f3f4f6",
   },
   tableHeaderText: {
     fontSize: 6,
-    fontWeight: 800,
-    color: "#94a3b8",
+    fontWeight: "bold",
+    padding: 4,
     textTransform: "uppercase",
-    letterSpacing: 1,
   },
-  col1: { width: "65%" },
-  col3: { width: "35%", textAlign: "right" },
   tableRow: {
     flexDirection: "row",
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f1f5f9",
+    borderBottomWidth: 0.5,
+    borderBottomColor: "#d1d5db",
   },
-  tableRowText: {
-    fontSize: 9,
-  },
-  itemModel: {
-    fontWeight: 800,
-    textTransform: "uppercase",
-    letterSpacing: -0.2,
-  },
-  itemSn: {
-    fontSize: 7,
-    fontFamily: "Courier",
-    color: "#6366f1",
-    marginTop: 2,
-    textTransform: "uppercase",
-  },
-  warrantyBox: {
-    alignItems: "center",
-  },
-  warrantyLabel: {
-    fontSize: 5,
-    padding: "2 4",
-    backgroundColor: "#f8fafc",
-    borderRadius: 3,
-    fontWeight: 800,
-    textTransform: "uppercase",
-  },
-  warrantyDate: {
-    fontSize: 7,
-    fontWeight: 700,
-    marginTop: 2,
-  },
-  totalsSection: {
+  tableRowLast: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    paddingTop: 12,
-    marginTop: 8,
   },
-  footerSection: {
+  tableCell: {
+    padding: 4,
+    fontSize: 7,
+  },
+  // Column widths: Seria 15%, Nama Barang 35%, Qty 8%, @Harga 18%, Diskon 10%, Total Harga 14%
+  colSeria: { width: "15%" },
+  colNamaBarang: { width: "35%" },
+  colQty: { width: "8%", textAlign: "center" },
+  colHarga: { width: "18%", textAlign: "right" },
+  colDiskon: { width: "10%", textAlign: "center" },
+  colTotalHarga: { width: "14%", textAlign: "right" },
+
+  // ============================================================
+  // Terbilang
+  // ============================================================
+  terbilangSection: {
+    flexDirection: "row",
+    borderBottomWidth: 1,
+    borderBottomColor: "#000000",
+    paddingBottom: 6,
+    marginBottom: 6,
+  },
+  terbilangLabel: {
+    fontSize: 7,
+    fontWeight: "bold",
+    marginRight: 4,
+  },
+  terbilangValue: {
+    fontSize: 7,
+    fontWeight: "bold",
+    fontStyle: "italic",
+  },
+
+  // ============================================================
+  // Middle Section: Keterangan + Totals
+  // ============================================================
+  middleSection: {
+    flexDirection: "row",
+    marginBottom: 8,
+    gap: 8,
+  },
+  keteranganBox: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#000000",
+    padding: 6,
+    minHeight: 60,
+  },
+  keteranganLabel: {
+    fontSize: 7,
+    fontWeight: "bold",
+    marginBottom: 4,
+  },
+  keteranganContent: {
+    fontSize: 7,
     flex: 1,
   },
-  disclaimer: {
-    fontSize: 7,
-    color: "#64748b",
-    fontWeight: 700,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    marginTop: 12,
-    fontStyle: "italic",
-    maxWidth: 180,
-  },
-  totals: {
-    width: 120,
+  totalsBox: {
+    width: 160,
+    borderWidth: 1,
+    borderColor: "#000000",
+    padding: 6,
   },
   totalRow: {
     flexDirection: "row",
@@ -230,36 +282,109 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
   totalLabel: {
-    fontSize: 8,
-    fontWeight: 800,
-    color: "#64748b",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
+    fontSize: 7,
   },
   totalValue: {
-    fontSize: 8,
-    fontWeight: 700,
+    fontSize: 7,
+    textAlign: "right",
   },
   grandTotalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingTop: 8,
-    marginTop: 5,
-    borderTopWidth: 2,
-    borderTopColor: "#0f172a",
+    borderTopWidth: 1,
+    borderTopColor: "#000000",
+    paddingTop: 4,
+    marginTop: 4,
   },
   grandTotalLabel: {
-    fontSize: 12,
-    fontWeight: 800,
-    textTransform: "uppercase",
+    fontSize: 8,
+    fontWeight: "bold",
   },
   grandTotalValue: {
-    fontSize: 12,
-    fontWeight: 900,
-    letterSpacing: -0.5,
+    fontSize: 8,
+    fontWeight: "bold",
     textAlign: "right",
   },
+
+  // ============================================================
+  // Bottom Section: Pembayaran | Tanda Terima | Perhatian
+  // ============================================================
+  bottomSection: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  // Pembayaran (Payment)
+  pembayaranColumn: {
+    width: "30%",
+  },
+  pembayaranLabel: {
+    fontSize: 7,
+    fontWeight: "bold",
+    marginBottom: 2,
+  },
+  pembayaranValue: {
+    fontSize: 7,
+    marginBottom: 6,
+  },
+  bankRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 2,
+  },
+  bankLogo: {
+    width: 12,
+    height: 8,
+    backgroundColor: "#e5e7eb",
+    borderRadius: 1,
+    marginRight: 4,
+  },
+  bankInfo: {
+    fontSize: 6,
+  },
+  bankHolder: {
+    fontSize: 6,
+    marginTop: 1,
+  },
+
+  // Tanda Terima (Signature)
+  tandaTerimaColumn: {
+    width: "35%",
+  },
+  tandaTerimaLabel: {
+    fontSize: 7,
+    fontWeight: "bold",
+    marginBottom: 4,
+  },
+  tandaTerimaSpace: {
+    height: 50,
+    borderBottomWidth: 0.5,
+    borderBottomColor: "#9ca3af",
+  },
+
+  // Perhatian (Warning)
+  perhatianColumn: {
+    width: "35%",
+  },
+  perhatianBox: {
+    borderWidth: 1,
+    borderColor: "#000000",
+    padding: 6,
+    height: 70,
+  },
+  perhatianTitle: {
+    fontSize: 7,
+    fontWeight: "bold",
+    marginBottom: 4,
+  },
+  perhatianText: {
+    fontSize: 6,
+    lineHeight: 1.3,
+  },
 });
+
+// ============================================================
+// Interfaces
+// ============================================================
 
 interface InvoiceItem {
   merk?: string;
@@ -270,174 +395,281 @@ interface InvoiceItem {
 }
 
 interface InvoiceData {
+  // Store info
   storeName: string;
   address: string;
+  storePhone?: string;
+  storeTagline?: string;
+  storeSubTagline?: string;
+
+  // Social media
+  socialYoutube?: string;
+  socialInstagram?: string;
+  socialTiktok?: string;
+
+  // Invoice info
   invoiceNumber: string;
   date: string;
+  poNumber?: string;
+
+  // Customer info
   customerName: string;
-  customerPhone?: string;
   customerAddress?: string;
   customerNpwp?: string;
+
+  // Items
   items: InvoiceItem[];
+
+  // Totals
   subtotal: number;
   tax: number;
   taxRate?: number;
   taxEnabled?: boolean;
+  discount?: number;
   total: number;
+
+  // Staff (not displayed)
   staffName: string;
+
+  // Payment
   paymentMethod: string;
+
+  // Notes
   notes?: string;
+
+  // Quotation
   isQuotation?: boolean;
 }
 
-const formatCurrency = (amount: number): string => {
+export type InvoiceLayout = "a5-landscape" | "a4-portrait" | "a4-landscape";
+
+// ============================================================
+// Helpers
+// ============================================================
+
+const formatNumber = (amount: number): string => {
   return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
     minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
   }).format(amount);
 };
 
-export type InvoiceLayout = "a5" | "a4";
+const formatPhone = (phone: string): string => {
+  // Remove non-digits
+  const digits = phone.replace(/\D/g, "");
+  // Format: XXXX. XX. XXX. XXX
+  if (digits.length >= 12) {
+    return `${digits.slice(0, 4)}. ${digits.slice(4, 6)}. ${digits.slice(6, 9)}. ${digits.slice(9, 12)}`;
+  }
+  return phone;
+};
+
+// ============================================================
+// Lucide Icons (SVG)
+// ============================================================
+
+const MapPinIcon = ({ size = 6, color = "#000000" }: { size?: number; color?: string }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2">
+    <Path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+    <Path d="M12 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" />
+  </Svg>
+);
+
+const PhoneIcon = ({ size = 6, color = "#000000" }: { size?: number; color?: string }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2">
+    <Path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+  </Svg>
+);
+
+// ============================================================
+// Component
+// ============================================================
 
 export const InvoiceDocument: React.FC<{ data: InvoiceData; layout?: InvoiceLayout }> = ({
   data,
-  layout = "a5",
+  layout = "a5-landscape",
 }) => {
   const isQuotation = data.isQuotation || false;
-  const isA4 = layout === "a4";
 
-  // Fake PPN: when taxEnabled is false, the DB records tax=0 but the PDF
-  // should still show 11% PPN. Back-calculate from total so:
-  //   displaySubtotal + displayTax (11%) = total
-  // Compute tax first to guarantee the 11% ratio holds exactly,
-  // then derive subtotal as the remainder so they always sum to total.
-  // This is purely visual — the DB is unchanged.
+  // Fake PPN logic
   const fakePpnEnabled = data.taxEnabled === false;
   const displayTax = fakePpnEnabled ? Math.round((data.total * 0.11) / 1.11) : data.tax;
   const displaySubtotal = fakePpnEnabled ? data.total - displayTax : data.subtotal;
-  const displayTaxRate = fakePpnEnabled ? 11 : data.taxRate || 11;
+  const displayTaxRate = fakePpnEnabled ? 11 : data.taxRate || 0;
+  const displayDiscount = data.discount || 0;
 
   const pageContent = (
     <>
-      {/* Header */}
+      {/* ==================== HEADER ==================== */}
       <View style={styles.header}>
-        <View style={styles.logoSection}>
-          <Image src="/logo.png" style={styles.logo} />
-          <View style={styles.storeInfo}>
-            <Text style={styles.storeName}>{data.storeName}</Text>
-            <Text style={styles.storeTagline}>Cutting Edge Photography</Text>
-            <Text style={styles.storeAddress}>{data.address}</Text>
+        <View style={styles.headerLeft}>
+          {/* Logo + Taglines Column */}
+          <View style={styles.logoColumn}>
+            <Image src="/logo.png" style={styles.logo} />
+            {data.storeTagline && <Text style={styles.storeTagline}>{data.storeTagline}</Text>}
+            {data.storeSubTagline && (
+              <Text style={styles.storeSubTagline}>{data.storeSubTagline}</Text>
+            )}
+          </View>
+
+          {/* Title + Social Column */}
+          <View style={styles.titleColumn}>
+            <Text style={styles.invoiceTitle}>
+              {isQuotation ? "Quotation" : "Faktur Penjualan"}
+            </Text>
+            <View style={styles.socialRow}>
+              <View style={styles.socialIcon} />
+              <View style={styles.socialIcon} />
+              <View style={styles.socialIcon} />
+              {data.socialYoutube && <Text style={styles.socialHandle}>{data.socialYoutube}</Text>}
+              {data.socialInstagram && (
+                <Text style={styles.socialHandle}>{data.socialInstagram}</Text>
+              )}
+              {data.socialTiktok && <Text style={styles.socialHandle}>{data.socialTiktok}</Text>}
+            </View>
           </View>
         </View>
-        <View style={styles.invoiceInfo}>
-          <Text style={[styles.invoiceLabel, isQuotation ? { color: "#f97316" } : {}]}>
-            {isQuotation ? "Quotation" : "Faktur Penjualan"}
-          </Text>
-          <Text style={styles.invoiceId}>{data.invoiceNumber}</Text>
-          <Text style={styles.invoiceDate}>{data.date}</Text>
-          {isQuotation && (
-            <View
-              style={{
-                backgroundColor: "#fef2f2",
-                padding: "4 8",
-                borderRadius: 4,
-                marginTop: 6,
-              }}
-            >
-              <Text style={{ color: "#dc2626", fontSize: 7, fontWeight: 800 }}>
-                BUKAN BUKTI PEMBAYARAN
-              </Text>
+
+        {/* Address Column */}
+        <View style={styles.headerRight}>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <MapPinIcon size={6} />
+            <Text style={styles.addressLine}> {data.address}</Text>
+          </View>
+          {data.storePhone && (
+            <View style={styles.phoneLine}>
+              <PhoneIcon size={6} />
+              <Text style={styles.phoneText}> {formatPhone(data.storePhone)}</Text>
             </View>
           )}
         </View>
       </View>
 
-      {/* Customer Section - Hidden for quotations */}
-      {!isQuotation && (
-        <View style={styles.customerSection}>
-          <View style={styles.customerLeft}>
-            <Text style={styles.sectionLabel}>Bill To / Penerima</Text>
+      {/* ==================== CUSTOMER + INVOICE DETAILS ==================== */}
+      <View style={styles.customerInvoiceRow}>
+        {/* Kepada (Customer) - Left */}
+        {!isQuotation && (
+          <View style={styles.customerSection}>
+            <Text style={styles.customerLabel}>Kepada :</Text>
             <Text style={styles.customerName}>{data.customerName}</Text>
-            <Text style={styles.customerDetail}>{data.customerAddress || "-"}</Text>
-            <Text style={styles.customerDetail}>Telp: {data.customerPhone || "-"}</Text>
-          </View>
-          <View style={styles.customerRight}>
-            <Text style={styles.sectionLabel}>Tax Registration</Text>
-            {data.customerNpwp ? (
-              <Text style={styles.customerNpwp}>{data.customerNpwp}</Text>
-            ) : (
-              <Text style={styles.noNpwp}>No NPWP Provided</Text>
+            <Text style={styles.customerNik}>NIK: {data.customerNpwp || ""}</Text>
+            {data.customerAddress && (
+              <Text style={styles.customerAddress}>{data.customerAddress}</Text>
             )}
-            <View style={styles.paymentBadge}>
-              <Text style={styles.paymentText}>
-                {data.paymentMethod === "Credit" ? "UTANG (BON)" : data.paymentMethod}
-              </Text>
-            </View>
+          </View>
+        )}
+
+        {/* Invoice Details Box - Right */}
+        <View style={styles.invoiceDetailsBox}>
+          <View style={styles.invoiceDetailRow}>
+            <Text style={styles.invoiceDetailLabel}>No. Invoice</Text>
+            <Text style={styles.invoiceDetailSeparator}>:</Text>
+            <Text style={styles.invoiceDetailValue}>{data.invoiceNumber}</Text>
+          </View>
+          <View style={styles.invoiceDetailRow}>
+            <Text style={styles.invoiceDetailLabel}>Tanggal</Text>
+            <Text style={styles.invoiceDetailSeparator}>:</Text>
+            <Text style={styles.invoiceDetailValue}>{data.date}</Text>
+          </View>
+          <View style={styles.invoiceDetailRow}>
+            <Text style={styles.invoiceDetailLabel}>No. PO</Text>
+            <Text style={styles.invoiceDetailSeparator}>:</Text>
+            <Text style={styles.invoiceDetailValue}>{data.poNumber || ""}</Text>
           </View>
         </View>
-      )}
+      </View>
 
-      {/* Table */}
+      {/* ==================== ITEMS TABLE ==================== */}
       <View style={styles.table}>
+        {/* Header */}
         <View style={styles.tableHeader}>
-          <Text style={[styles.tableHeaderText, styles.col1]}>
-            {isQuotation ? "Description" : "Description / Serial Number"}
-          </Text>
-          <Text style={[styles.tableHeaderText, styles.col3]}>Total</Text>
+          <Text style={[styles.tableHeaderText, styles.colSeria]}>Seria</Text>
+          <Text style={[styles.tableHeaderText, styles.colNamaBarang]}>Nama Barang</Text>
+          <Text style={[styles.tableHeaderText, styles.colQty]}>Qty</Text>
+          <Text style={[styles.tableHeaderText, styles.colHarga]}>@Harga</Text>
+          <Text style={[styles.tableHeaderText, styles.colDiskon]}>Diskon</Text>
+          <Text style={[styles.tableHeaderText, styles.colTotalHarga]}>Total Harga</Text>
         </View>
-        {data.items.map((item, index) => (
-          <View key={index} style={styles.tableRow}>
-            <View style={styles.col1}>
-              <Text style={styles.itemModel}>
+        {/* Rows */}
+        {data.items.map((item, index) => {
+          const isLast = index === data.items.length - 1;
+          return (
+            <View key={index} style={isLast ? styles.tableRowLast : styles.tableRow}>
+              <Text style={[styles.tableCell, styles.colSeria]}>{item.sn}</Text>
+              <Text style={[styles.tableCell, styles.colNamaBarang]}>
                 {item.merk ? `${item.merk} ` : ""}
                 {item.model}
               </Text>
-              {!isQuotation && item.sn && <Text style={styles.itemSn}>S/N: {item.sn}</Text>}
-            </View>
-            <View style={styles.col3}>
-              <Text
-                style={[styles.tableRowText, { textAlign: "right", fontWeight: 800, fontSize: 11 }]}
-              >
-                {formatCurrency(item.price)}
+              <Text style={[styles.tableCell, styles.colQty]}>1</Text>
+              <Text style={[styles.tableCell, styles.colHarga]}>{formatNumber(item.price)}</Text>
+              <Text style={[styles.tableCell, styles.colDiskon]}>0</Text>
+              <Text style={[styles.tableCell, styles.colTotalHarga]}>
+                {formatNumber(item.price)}
               </Text>
             </View>
-          </View>
-        ))}
+          );
+        })}
       </View>
 
-      {/* Totals Section */}
-      <View style={styles.totalsSection}>
-        <View style={styles.footerSection}>
-          <Text style={styles.disclaimer}>
-            Barang yang sudah dibeli tidak dapat ditukar atau dikembalikan.
-          </Text>
-          {data.notes && (
-            <Text
-              style={{
-                fontSize: 7,
-                color: "#475569",
-                fontWeight: 700,
-                marginTop: 6,
-                fontStyle: "italic",
-              }}
-            >
-              Catatan: {data.notes}
-            </Text>
-          )}
+      {/* ==================== TERBILANG ==================== */}
+      <View style={styles.terbilangSection}>
+        <Text style={styles.terbilangLabel}>Terbilang :</Text>
+        <Text style={styles.terbilangValue}>{terbilang(data.total)}</Text>
+      </View>
+
+      {/* ==================== MIDDLE: KETERANGAN + TOTALS ==================== */}
+      <View style={styles.middleSection}>
+        <View style={styles.keteranganBox}>
+          <Text style={styles.keteranganLabel}>Keterangan :</Text>
+          <Text style={styles.keteranganContent}>{data.notes || ""}</Text>
         </View>
-        <View style={styles.totals}>
+        <View style={styles.totalsBox}>
           <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>Subtotal</Text>
-            <Text style={styles.totalValue}>{formatCurrency(displaySubtotal)}</Text>
+            <Text style={styles.totalLabel}>Sub Total</Text>
+            <Text style={styles.totalValue}>{formatNumber(displaySubtotal)}</Text>
           </View>
           <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>Tax ({displayTaxRate}% PPN)</Text>
-            <Text style={styles.totalValue}>{formatCurrency(displayTax)}</Text>
+            <Text style={styles.totalLabel}>Diskon</Text>
+            <Text style={styles.totalValue}>{formatNumber(displayDiscount)}</Text>
+          </View>
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>PPN ({displayTaxRate}%)</Text>
+            <Text style={styles.totalValue}>{formatNumber(displayTax)}</Text>
           </View>
           <View style={styles.grandTotalRow}>
-            {/* <Text style={styles.grandTotalLabel}>Grand Total</Text> */}
-            <Text style={styles.grandTotalValue}>{formatCurrency(data.total)}</Text>
+            <Text style={styles.grandTotalLabel}>Total</Text>
+            <Text style={styles.grandTotalValue}>{formatNumber(data.total)}</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* ==================== BOTTOM: PEMBAYARAN | TANDA TERIMA | PERHATIAN ==================== */}
+      <View style={styles.bottomSection}>
+        {/* Pembayaran */}
+        <View style={styles.pembayaranColumn}>
+          <Text style={styles.pembayaranLabel}>Pembayaran :</Text>
+          <Text style={styles.pembayaranValue}>{data.paymentMethod}</Text>
+          <View style={styles.bankRow}>
+            <View style={styles.bankLogo} />
+            <Text style={styles.bankInfo}>BCA : 010-175-0085</Text>
+          </View>
+          <Text style={styles.bankHolder}>DJOKO SUBARDJO DJOHAN</Text>
+        </View>
+
+        {/* Tanda Terima */}
+        <View style={styles.tandaTerimaColumn}>
+          <Text style={styles.tandaTerimaLabel}>Tanda Terima</Text>
+          <View style={styles.tandaTerimaSpace} />
+        </View>
+
+        {/* Perhatian */}
+        <View style={styles.perhatianColumn}>
+          <View style={styles.perhatianBox}>
+            <Text style={styles.perhatianTitle}>PERHATIAN</Text>
+            <Text style={styles.perhatianText}>
+              Barang-barang yang sudah di beli tidak dapat ditukar / dikembalikan kecuali ada
+              perjanjian
+            </Text>
           </View>
         </View>
       </View>
@@ -446,13 +678,21 @@ export const InvoiceDocument: React.FC<{ data: InvoiceData; layout?: InvoiceLayo
 
   return (
     <Document>
-      {isA4 ? (
-        <Page size={[842, 595]} style={styles.pageA4}>
-          <View style={styles.spacer} />
-          <View style={styles.invoiceContainer}>{pageContent}</View>
+      {layout === "a5-landscape" && (
+        <Page size={[595, 420]} style={styles.pageA5Landscape}>
+          {pageContent}
         </Page>
-      ) : (
-        <Page size="A5" style={styles.pageA5}>
+      )}
+
+      {layout === "a4-portrait" && (
+        <Page size="A4" style={[styles.pageA4Portrait, styles.a4PortraitPage]}>
+          <View style={styles.a4PortraitTopHalf} />
+          <View style={styles.a4PortraitBottomHalf}>{pageContent}</View>
+        </Page>
+      )}
+
+      {layout === "a4-landscape" && (
+        <Page size={[842, 595]} style={styles.pageA4Landscape}>
           {pageContent}
         </Page>
       )}

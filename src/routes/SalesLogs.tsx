@@ -38,7 +38,7 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
   const [customerMap, setCustomerMap] = useState<Record<string, Customer>>({});
   const [printPdfUrl, setPrintPdfUrl] = useState<string | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
-  const [invoiceLayout, setInvoiceLayout] = useState<InvoiceLayout>("a5");
+  const [invoiceLayout, setInvoiceLayout] = useState<InvoiceLayout>("a4-portrait");
   const [installmentPopover, setInstallmentPopover] = useState<{
     saleId: string;
     customerName: string;
@@ -147,11 +147,23 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
     const customer = customerMap[sale.customerId];
     const invoiceData = {
       storeName: storeConfig.storeName || "Sinar Bahagia",
-      address: storeConfig.address || "Jl. Kramat Gantung No. 63, Surabaya",
+      address:
+        storeConfig.address ||
+        "JL. KRAMAT GANTUNG NO.63 SURABAYA 60174 (TIDAK BUKA CABANG) TOKO WARNA KUNING KIRI KANAN JALAN",
+      storePhone: "085731555667",
+      storeTagline: "TERPERCAYA SEJAK 1960",
+      storeSubTagline: "CUTTING EDGE PHOTOGRAPHY",
+      socialYoutube: "@SINARBAHAGIAOFFICIAL",
+      socialInstagram: "@SINARBAHAGIAOFFICIAL",
+      socialTiktok: "@TOKOSINARBAHAGIA",
       invoiceNumber: sale.id,
-      date: formatDate(sale.timestamp),
+      date: new Intl.DateTimeFormat("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      }).format(new Date(sale.timestamp)),
+      poNumber: "",
       customerName: sale.customerName,
-      customerPhone: customer?.phone,
       customerAddress: customer?.address,
       customerNpwp: customer?.npwp,
       items: sale.items.map((item) => ({
@@ -165,6 +177,7 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
       tax: sale.tax,
       taxRate: storeConfig.ppnRate,
       taxEnabled: sale.taxEnabled,
+      discount: 0,
       total: sale.total,
       staffName: sale.staffName,
       paymentMethod: sale.paymentMethod,
@@ -463,29 +476,42 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
                 <div className="flex bg-slate-100 rounded-lg p-0.5">
                   <button
                     onClick={() => {
-                      setInvoiceLayout("a5");
-                      if (selectedSale) handlePrint(selectedSale, "a5");
+                      setInvoiceLayout("a5-landscape");
+                      if (selectedSale) handlePrint(selectedSale, "a5-landscape");
                     }}
                     className={`px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${
-                      invoiceLayout === "a5"
+                      invoiceLayout === "a5-landscape"
                         ? "bg-white text-slate-900 shadow-sm"
                         : "text-slate-400 hover:text-slate-600"
                     }`}
                   >
-                    A5
+                    A5 Landscape
                   </button>
                   <button
                     onClick={() => {
-                      setInvoiceLayout("a4");
-                      if (selectedSale) handlePrint(selectedSale, "a4");
+                      setInvoiceLayout("a4-portrait");
+                      if (selectedSale) handlePrint(selectedSale, "a4-portrait");
                     }}
                     className={`px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${
-                      invoiceLayout === "a4"
+                      invoiceLayout === "a4-portrait"
                         ? "bg-white text-indigo-600 shadow-sm"
                         : "text-slate-400 hover:text-slate-600"
                     }`}
                   >
-                    A4 (Bawah)
+                    A4 Portrait
+                  </button>
+                  <button
+                    onClick={() => {
+                      setInvoiceLayout("a4-landscape");
+                      if (selectedSale) handlePrint(selectedSale, "a4-landscape");
+                    }}
+                    className={`px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${
+                      invoiceLayout === "a4-landscape"
+                        ? "bg-white text-indigo-600 shadow-sm"
+                        : "text-slate-400 hover:text-slate-600"
+                    }`}
+                  >
+                    A4 Landscape
                   </button>
                 </div>
                 <button
