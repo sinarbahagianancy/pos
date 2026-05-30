@@ -9,11 +9,11 @@ import { terbilang } from "../utils/terbilang";
 const styles = StyleSheet.create({
   // Page
   pageA5Landscape: {
-    padding: 12,
+    padding: 6,
     fontFamily: "Helvetica",
     fontSize: 8,
     color: "#000000",
-    lineHeight: 1.3,
+    lineHeight: 1.2,
   },
   pageA4Portrait: {
     fontFamily: "Helvetica",
@@ -49,61 +49,76 @@ const styles = StyleSheet.create({
   // Header
   // ============================================================
   header: {
+    borderBottomWidth: 1,
+    borderBottomColor: "#000000",
+    paddingBottom: 3,
+    marginBottom: 3,
+  },
+  headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    borderBottomWidth: 1,
-    borderBottomColor: "#000000",
-    paddingBottom: 6,
-    marginBottom: 6,
   },
-  headerLeft: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-  },
+  // Logo Column
   logoColumn: {
-    marginRight: 16,
+    width: 120,
   },
   logo: {
     width: 100,
-    height: 100,
   },
-  storeTagline: {
-    fontSize: 6,
-    fontWeight: "bold",
-    marginTop: 4,
-    width: 100,
-  },
-  storeSubTagline: {
-    fontSize: 5,
-    fontWeight: "bold",
-    marginTop: 2,
-    width: 100,
-  },
+  // Title Column
   titleColumn: {
-    paddingTop: 8,
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "flex-start",
   },
   invoiceTitle: {
     fontSize: 14,
     fontWeight: "bold",
-    whiteSpace: "nowrap",
+    textAlign: "center",
+    lineHeight: 1.1,
   },
-  socialRow: {
+  socialUnderTitle: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 8,
-    flexWrap: "nowrap",
+    marginTop: 2,
+    justifyContent: "center",
   },
+  // Address Column
+  addressColumn: {
+    width: 140,
+  },
+  addressLine: {
+    fontSize: 5,
+    textAlign: "right",
+    lineHeight: 1.1,
+  },
+  phoneLine: {
+    fontSize: 5,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    marginTop: 1,
+  },
+  phoneIcon: {
+    width: 5,
+    height: 5,
+    marginRight: 1,
+  },
+  phoneText: {
+    fontSize: 5,
+  },
+  // Social Icons
   socialIcon: {
-    width: 10,
-    height: 10,
+    width: 5,
+    height: 5,
     backgroundColor: "#e5e7eb",
-    borderRadius: 2,
-    marginRight: 3,
+    borderRadius: 1,
+    marginRight: 2,
   },
   socialHandle: {
-    fontSize: 5,
-    marginRight: 8,
+    fontSize: 4,
+    marginRight: 3,
   },
   headerRight: {
     alignItems: "flex-end",
@@ -136,7 +151,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    marginBottom: 8,
+    marginBottom: 4,
   },
   customerSection: {
     flex: 1,
@@ -145,17 +160,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#000000",
     padding: 6,
-    minWidth: 180,
+    width: 220,
   },
   invoiceDetailRow: {
     flexDirection: "row",
     marginBottom: 2,
   },
   invoiceDetailLabel: {
-    width: 75,
+    width: 65,
     fontSize: 7,
     fontWeight: "bold",
-    whiteSpace: "nowrap",
   },
   invoiceDetailSeparator: {
     width: 10,
@@ -189,9 +203,10 @@ const styles = StyleSheet.create({
   // Items Table
   // ============================================================
   table: {
-    marginBottom: 6,
+    marginBottom: 4,
     borderWidth: 1,
     borderColor: "#000000",
+    width: 572,
   },
   tableHeader: {
     flexDirection: "row",
@@ -213,17 +228,21 @@ const styles = StyleSheet.create({
   tableRowLast: {
     flexDirection: "row",
   },
-  tableCell: {
+  tableCellView: {
     padding: 4,
+    justifyContent: "center",
+  },
+  tableCell: {
     fontSize: 7,
   },
-  // Column widths: Seria 15%, Nama Barang 35%, Qty 8%, @Harga 18%, Diskon 10%, Total Harga 14%
-  colSeria: { width: "15%" },
-  colNamaBarang: { width: "35%" },
-  colQty: { width: "8%", textAlign: "center" },
-  colHarga: { width: "18%", textAlign: "right" },
-  colDiskon: { width: "10%", textAlign: "center" },
-  colTotalHarga: { width: "14%", textAlign: "right" },
+  // Column widths using fixed points for A5 landscape (595 - 24 padding = 571pt available)
+  // Seria 15%≈86, Nama Barang 35%≈200, Qty 8%≈46, @Harga 18%≈103, Diskon 10%≈57, Total Harga 14%≈80
+  colSeria: { width: 86 },
+  colNamaBarang: { width: 200 },
+  colQty: { width: 46 },
+  colHarga: { width: 103 },
+  colDiskon: { width: 57 },
+  colTotalHarga: { width: 80 },
 
   // ============================================================
   // Terbilang
@@ -232,8 +251,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     borderBottomWidth: 1,
     borderBottomColor: "#000000",
-    paddingBottom: 6,
-    marginBottom: 6,
+    paddingBottom: 4,
+    marginBottom: 4,
   },
   terbilangLabel: {
     fontSize: 7,
@@ -251,8 +270,8 @@ const styles = StyleSheet.create({
   // ============================================================
   middleSection: {
     flexDirection: "row",
-    marginBottom: 8,
-    gap: 8,
+    marginBottom: 4,
+    gap: 6,
   },
   keteranganBox: {
     flex: 1,
@@ -491,57 +510,39 @@ export const InvoiceDocument: React.FC<{ data: InvoiceData; layout?: InvoiceLayo
 }) => {
   const isQuotation = data.isQuotation || false;
 
-  // Fake PPN logic
-  const fakePpnEnabled = data.taxEnabled === false;
-  const displayTax = fakePpnEnabled ? Math.round((data.total * 0.11) / 1.11) : data.tax;
-  const displaySubtotal = fakePpnEnabled ? data.total - displayTax : data.subtotal;
-  const displayTaxRate = fakePpnEnabled ? 11 : data.taxRate || 0;
   const displayDiscount = data.discount || 0;
 
   const pageContent = (
     <>
       {/* ==================== HEADER ==================== */}
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          {/* Logo + Taglines Column */}
+        <View style={styles.headerRow}>
+          {/* Logo Column */}
           <View style={styles.logoColumn}>
             <Image src="/logo.png" style={styles.logo} />
-            {data.storeTagline && <Text style={styles.storeTagline}>{data.storeTagline}</Text>}
-            {data.storeSubTagline && (
-              <Text style={styles.storeSubTagline}>{data.storeSubTagline}</Text>
+          </View>
+
+          {/* Title Column - Faktur Penjualan (2 lines) */}
+          <View style={styles.titleColumn}>
+            <Text style={styles.invoiceTitle}>Faktur</Text>
+            <Text style={styles.invoiceTitle}>Penjualan</Text>
+          </View>
+
+          {/* Address Column */}
+          <View style={styles.addressColumn}>
+            <View
+              style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "flex-end" }}
+            >
+              <MapPinIcon size={5} />
+              <Text style={styles.addressLine}> {data.address}</Text>
+            </View>
+            {data.storePhone && (
+              <View style={styles.phoneLine}>
+                <PhoneIcon size={5} />
+                <Text style={styles.phoneText}> {formatPhone(data.storePhone)}</Text>
+              </View>
             )}
           </View>
-
-          {/* Title + Social Column */}
-          <View style={styles.titleColumn}>
-            <Text style={styles.invoiceTitle}>
-              {isQuotation ? "Quotation" : "Faktur Penjualan"}
-            </Text>
-            <View style={styles.socialRow}>
-              <View style={styles.socialIcon} />
-              <View style={styles.socialIcon} />
-              <View style={styles.socialIcon} />
-              {data.socialYoutube && <Text style={styles.socialHandle}>{data.socialYoutube}</Text>}
-              {data.socialInstagram && (
-                <Text style={styles.socialHandle}>{data.socialInstagram}</Text>
-              )}
-              {data.socialTiktok && <Text style={styles.socialHandle}>{data.socialTiktok}</Text>}
-            </View>
-          </View>
-        </View>
-
-        {/* Address Column */}
-        <View style={styles.headerRight}>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <MapPinIcon size={6} />
-            <Text style={styles.addressLine}> {data.address}</Text>
-          </View>
-          {data.storePhone && (
-            <View style={styles.phoneLine}>
-              <PhoneIcon size={6} />
-              <Text style={styles.phoneText}> {formatPhone(data.storePhone)}</Text>
-            </View>
-          )}
         </View>
       </View>
 
@@ -583,29 +584,57 @@ export const InvoiceDocument: React.FC<{ data: InvoiceData; layout?: InvoiceLayo
       <View style={styles.table}>
         {/* Header */}
         <View style={styles.tableHeader}>
-          <Text style={[styles.tableHeaderText, styles.colSeria]}>Seria</Text>
-          <Text style={[styles.tableHeaderText, styles.colNamaBarang]}>Nama Barang</Text>
-          <Text style={[styles.tableHeaderText, styles.colQty]}>Qty</Text>
-          <Text style={[styles.tableHeaderText, styles.colHarga]}>@Harga</Text>
-          <Text style={[styles.tableHeaderText, styles.colDiskon]}>Diskon</Text>
-          <Text style={[styles.tableHeaderText, styles.colTotalHarga]}>Total Harga</Text>
+          <View style={styles.colSeria}>
+            <Text style={styles.tableHeaderText}>Serial</Text>
+          </View>
+          <View style={styles.colNamaBarang}>
+            <Text style={styles.tableHeaderText}>Nama Barang</Text>
+          </View>
+          <View style={styles.colQty}>
+            <Text style={[styles.tableHeaderText, { textAlign: "center" }]}>Qty</Text>
+          </View>
+          <View style={styles.colHarga}>
+            <Text style={[styles.tableHeaderText, { textAlign: "right" }]}>@Harga</Text>
+          </View>
+          <View style={styles.colDiskon}>
+            <Text style={[styles.tableHeaderText, { textAlign: "center" }]}>Diskon</Text>
+          </View>
+          <View style={styles.colTotalHarga}>
+            <Text style={[styles.tableHeaderText, { textAlign: "right" }]}>Total Harga</Text>
+          </View>
         </View>
         {/* Rows */}
         {data.items.map((item, index) => {
           const isLast = index === data.items.length - 1;
           return (
             <View key={index} style={isLast ? styles.tableRowLast : styles.tableRow}>
-              <Text style={[styles.tableCell, styles.colSeria]}>{item.sn}</Text>
-              <Text style={[styles.tableCell, styles.colNamaBarang]}>
-                {item.merk ? `${item.merk} ` : ""}
-                {item.model}
-              </Text>
-              <Text style={[styles.tableCell, styles.colQty]}>1</Text>
-              <Text style={[styles.tableCell, styles.colHarga]}>{formatNumber(item.price)}</Text>
-              <Text style={[styles.tableCell, styles.colDiskon]}>0</Text>
-              <Text style={[styles.tableCell, styles.colTotalHarga]}>
-                {formatNumber(item.price)}
-              </Text>
+              <View style={[styles.tableCellView, styles.colSeria]}>
+                <Text style={[styles.tableCell, { maxWidth: 78 }]}>
+                  {item.sn?.startsWith("NOSN-") ? "" : item.sn}
+                </Text>
+              </View>
+              <View style={[styles.tableCellView, styles.colNamaBarang]}>
+                <Text style={[styles.tableCell, { maxWidth: 192 }]}>
+                  {item.merk ? `${item.merk} ` : ""}
+                  {item.model}
+                </Text>
+              </View>
+              <View style={[styles.tableCellView, styles.colQty]}>
+                <Text style={[styles.tableCell, { textAlign: "center" }]}>1</Text>
+              </View>
+              <View style={[styles.tableCellView, styles.colHarga]}>
+                <Text style={[styles.tableCell, { textAlign: "right" }]}>
+                  {formatNumber(item.price)}
+                </Text>
+              </View>
+              <View style={[styles.tableCellView, styles.colDiskon]}>
+                <Text style={[styles.tableCell, { textAlign: "center" }]}>0</Text>
+              </View>
+              <View style={[styles.tableCellView, styles.colTotalHarga]}>
+                <Text style={[styles.tableCell, { textAlign: "right" }]}>
+                  {formatNumber(item.price)}
+                </Text>
+              </View>
             </View>
           );
         })}
@@ -624,18 +653,22 @@ export const InvoiceDocument: React.FC<{ data: InvoiceData; layout?: InvoiceLayo
           <Text style={styles.keteranganContent}>{data.notes || ""}</Text>
         </View>
         <View style={styles.totalsBox}>
-          <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>Sub Total</Text>
-            <Text style={styles.totalValue}>{formatNumber(displaySubtotal)}</Text>
-          </View>
-          <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>Diskon</Text>
-            <Text style={styles.totalValue}>{formatNumber(displayDiscount)}</Text>
-          </View>
-          <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>PPN ({displayTaxRate}%)</Text>
-            <Text style={styles.totalValue}>{formatNumber(displayTax)}</Text>
-          </View>
+          {data.taxEnabled && (
+            <>
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>Sub Total</Text>
+                <Text style={styles.totalValue}>{formatNumber(data.subtotal)}</Text>
+              </View>
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>Diskon</Text>
+                <Text style={styles.totalValue}>{formatNumber(displayDiscount)}</Text>
+              </View>
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>PPN ({data.taxRate || 0}%)</Text>
+                <Text style={styles.totalValue}>{formatNumber(data.tax)}</Text>
+              </View>
+            </>
+          )}
           <View style={styles.grandTotalRow}>
             <Text style={styles.grandTotalLabel}>Total</Text>
             <Text style={styles.grandTotalValue}>{formatNumber(data.total)}</Text>

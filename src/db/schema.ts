@@ -187,6 +187,7 @@ export const saleItems = pgTable("sale_items", {
   price: numeric("price", { precision: 15, scale: 2 }).notNull(),
   cogs: numeric("cogs", { precision: 15, scale: 2 }).notNull(),
   warrantyExpiry: timestamp("warranty_expiry").notNull(),
+  quantity: integer("quantity").notNull().default(1),
 });
 
 export const warrantyClaims = pgTable("warranty_claims", {

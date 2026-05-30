@@ -102,6 +102,7 @@ export interface SaleItem {
   price: number;
   cogs: number;
   warrantyExpiry: string;
+  quantity: number;
 }
 
 export interface Sale {

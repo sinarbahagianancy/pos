@@ -386,7 +386,10 @@ export const createSaleHandler = async (data: {
     // Aggregate quantities by product to handle duplicate productIds correctly
     const productQuantities = new Map<string, number>();
     for (const item of data.items) {
-      productQuantities.set(item.productId, (productQuantities.get(item.productId) || 0) + 1);
+      productQuantities.set(
+        item.productId,
+        (productQuantities.get(item.productId) || 0) + (item.quantity || 1),
+      );
     }
 
     for (const [productId, quantity] of productQuantities) {
@@ -448,7 +451,7 @@ export const createSaleHandler = async (data: {
         brand = product?.brand as string | undefined;
       }
       await tx.unsafe(
-        "INSERT INTO sale_items (sale_id, product_id, brand, model, sn, price, cogs, warranty_expiry) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+        "INSERT INTO sale_items (sale_id, product_id, brand, model, sn, price, cogs, warranty_expiry, quantity) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
         [
           data.id,
           item.productId,
@@ -458,6 +461,7 @@ export const createSaleHandler = async (data: {
           String(item.price),
           String(item.cogs),
           item.warrantyExpiry,
+          item.quantity || 1,
         ],
       );
 
@@ -467,7 +471,10 @@ export const createSaleHandler = async (data: {
       }
 
       // Deduct stock — safe because we already verified stock > 0 with FOR UPDATE
-      await tx.unsafe("UPDATE products SET stock = stock - 1 WHERE id = $1", [item.productId]);
+      await tx.unsafe("UPDATE products SET stock = stock - $1 WHERE id = $2", [
+        item.quantity || 1,
+        item.productId,
+      ]);
 
       // Audit log - differentiate between SN and non-SN items
       const snLabel = item.sn.startsWith("NOSN-") ? "tanpa SN" : `SN: ${item.sn}`;

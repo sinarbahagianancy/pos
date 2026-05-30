@@ -62,13 +62,18 @@ const POSView: React.FC<POSProps> = ({
   );
   const [editingPriceIdx, setEditingPriceIdx] = useState<number | null>(null);
   const [editingPriceValue, setEditingPriceValue] = useState<string>("");
+  const [snPickerProduct, setSnPickerProduct] = useState<Product | null>(null);
+  const [snSwapIdx, setSnSwapIdx] = useState<number | null>(null);
 
-  // Close customer suggestions when clicking outside
+  // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
       if (!target.closest(".customer-search-container")) {
         setShowSuggestions(false);
+      }
+      if (!target.closest(".sn-swap-container")) {
+        setSnSwapIdx(null);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -159,30 +164,46 @@ const POSView: React.FC<POSProps> = ({
   }, [search, visibleProducts, availableSNs]);
 
   const addToCartByProduct = (product: Product) => {
-    const availableSN = availableSNs.find((sn) => sn.productId === product.id);
-    let snToUse: string;
-
-    if (availableSN) {
-      snToUse = availableSN.sn;
-    } else {
-      // Generate placeholder SN for products without serial numbers (e.g., from manual stock audit)
-      snToUse = `NOSN-${product.id.substring(0, 8)}-${Date.now()}`;
+    if (product.hasSerialNumber) {
+      // Open SN Picker modal for SN products
+      setSnPickerProduct(product);
+      return;
     }
 
-    const warrantyMonths = product.warrantyMonths ?? 0;
-
-    setCart([
-      ...cart,
-      {
-        productId: product.id,
-        brand: product.brand,
-        model: product.model,
-        sn: snToUse,
-        price: product.price,
-        cogs: product.cogs,
-        warrantyExpiry: calculateWarrantyExpiry(warrantyMonths),
-      },
-    ]);
+    // Non-SN product: merge if already in cart, otherwise add with quantity 1
+    const existingIdx = cart.findIndex(
+      (c) => c.productId === product.id && c.sn.startsWith("NOSN-"),
+    );
+    if (existingIdx !== -1) {
+      const existing = cart[existingIdx];
+      const effectiveStock = getEffectiveStock(product);
+      if (existing.quantity >= effectiveStock) {
+        setToast({ message: "Stok produk ini habis", type: "error" });
+        setTimeout(() => setToast(null), 3000);
+        return;
+      }
+      setCart(
+        cart.map((item, i) =>
+          i === existingIdx ? { ...item, quantity: item.quantity + 1 } : item,
+        ),
+      );
+    } else {
+      const snPlaceholder = `NOSN-${product.id.substring(0, 8)}-${Date.now()}`;
+      const warrantyMonths = product.warrantyMonths ?? 0;
+      setCart([
+        ...cart,
+        {
+          productId: product.id,
+          brand: product.brand,
+          model: product.model,
+          sn: snPlaceholder,
+          price: product.price,
+          cogs: product.cogs,
+          warrantyExpiry: calculateWarrantyExpiry(warrantyMonths),
+          quantity: 1,
+        },
+      ]);
+    }
     setSearch("");
   };
 
@@ -200,6 +221,7 @@ const POSView: React.FC<POSProps> = ({
         price: product.price,
         cogs: product.cogs,
         warrantyExpiry: calculateWarrantyExpiry(warrantyMonths),
+        quantity: 1,
       },
     ]);
     setSearch("");
@@ -280,16 +302,50 @@ const POSView: React.FC<POSProps> = ({
     setCart(cart.map((item, i) => (i === index ? { ...item, price: newPrice } : item)));
   };
 
-  const subtotal = cart.reduce((acc, item) => acc + item.price, 0);
+  const incrementQuantity = (index: number) => {
+    const item = cart[index];
+    const product = products.find((p) => p.id === item.productId);
+    if (!product) return;
+    const effectiveStock = getEffectiveStock(product);
+    if (item.quantity >= effectiveStock) return;
+    setCart(cart.map((c, i) => (i === index ? { ...c, quantity: c.quantity + 1 } : c)));
+  };
+
+  const decrementQuantity = (index: number) => {
+    const item = cart[index];
+    if (item.quantity <= 1) {
+      setCart(cart.filter((_, i) => i !== index));
+    } else {
+      setCart(cart.map((c, i) => (i === index ? { ...c, quantity: c.quantity - 1 } : c)));
+    }
+  };
+
+  const swapSn = (index: number, newSn: SerialNumber) => {
+    const product = products.find((p) => p.id === newSn.productId);
+    if (!product) return;
+    const warrantyMonths = product.warrantyMonths ?? 0;
+    setCart(
+      cart.map((item, i) =>
+        i === index
+          ? {
+              ...item,
+              sn: newSn.sn,
+              warrantyExpiry: calculateWarrantyExpiry(warrantyMonths),
+            }
+          : item,
+      ),
+    );
+    setSnSwapIdx(null);
+  };
+
+  const handleSnPickerSelect = (sn: SerialNumber) => {
+    addToCart(sn);
+    setSnPickerProduct(null);
+  };
+
+  const subtotal = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
   const tax = ppnEnabled ? subtotal * taxRate : 0;
   const total = subtotal + tax;
-
-  // Fake PPN: when PPN is off, the DB records tax=0 but the display should still
-  // show the PPN breakdown (as if the price includes 11% tax).
-  // Back-calculate from total so: displaySubtotal + displayTax = total
-  const fakePpnEnabled = !ppnEnabled;
-  const displayTax = fakePpnEnabled ? Math.round((total * taxRate) / (1 + taxRate)) : tax;
-  const displaySubtotal = fakePpnEnabled ? total - displayTax : subtotal;
 
   const generateInvoicePdf = async (
     sale: Sale,
@@ -655,78 +711,150 @@ const POSView: React.FC<POSProps> = ({
 
           <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
             {cart.length > 0 ? (
-              cart.map((item, idx) => (
-                <div
-                  key={idx}
-                  className="p-4 bg-white rounded-[24px] border border-slate-100 shadow-sm flex items-center justify-between group hover:border-indigo-100 transition-all"
-                >
-                  <div className="flex items-center space-x-4 min-w-0">
-                    <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center text-slate-300 font-black border border-slate-100 shrink-0 text-xs">
-                      {item.model.charAt(0)}
-                    </div>
-                    <div className="min-w-0">
-                      <h3 className="text-sm font-black text-slate-900 truncate tracking-tight uppercase">
-                        {item.model}
-                      </h3>
-                      <p className="text-[10px] text-slate-500 font-bold mt-1 uppercase tracking-tighter">
-                        S/N: <span className="font-mono text-indigo-600">{item.sn}</span>
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-6">
-                    {editingPriceIdx === idx ? (
-                      <div className="flex items-center space-x-1">
-                        <RupiahInput
-                          className="w-28 px-2 py-1 text-sm font-black text-slate-900 border border-indigo-300 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 outline-none tabular-nums"
-                          value={parseInt(editingPriceValue, 10) || 0}
-                          onChange={(val) => setEditingPriceValue(String(val))}
-                          autoFocus
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              const parsed = parseInt(editingPriceValue, 10);
-                              if (!isNaN(parsed) && parsed > 0) {
-                                updateCartPrice(idx, parsed);
-                              }
-                              setEditingPriceIdx(null);
-                            } else if (e.key === "Escape") {
-                              setEditingPriceIdx(null);
-                            }
-                          }}
-                        />
+              cart.map((item, idx) => {
+                const product = products.find((p) => p.id === item.productId);
+                const isNonSN = product ? !product.hasSerialNumber : false;
+                const effectiveStock = product ? getEffectiveStock(product) : 0;
+                const availableAltSNs = availableSNs.filter(
+                  (sn) => sn.productId === item.productId && sn.sn !== item.sn,
+                );
+                return (
+                  <div
+                    key={idx}
+                    className="p-4 bg-white rounded-[24px] border border-slate-100 shadow-sm flex items-center justify-between group hover:border-indigo-100 transition-all"
+                  >
+                    <div className="flex items-center space-x-4 min-w-0">
+                      <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center text-slate-300 font-black border border-slate-100 shrink-0 text-xs">
+                        {item.model.charAt(0)}
                       </div>
-                    ) : (
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-black text-slate-900 truncate tracking-tight uppercase">
+                          {item.model}
+                        </h3>
+                        {isNonSN ? (
+                          <p className="text-[10px] text-slate-500 font-bold mt-1 uppercase tracking-tighter">
+                            Stock:{" "}
+                            <span className="font-mono text-green-600">{effectiveStock}</span>
+                          </p>
+                        ) : (
+                          <div className="relative sn-swap-container">
+                            <p className="text-[10px] text-slate-500 font-bold mt-1 uppercase tracking-tighter">
+                              S/N:{" "}
+                              <button
+                                onClick={() => setSnSwapIdx(snSwapIdx === idx ? null : idx)}
+                                className="font-mono text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer transition-colors"
+                                title="Klik untuk ganti serial number"
+                              >
+                                {item.sn}
+                              </button>
+                            </p>
+                            {snSwapIdx === idx && (
+                              <div className="absolute z-50 top-full left-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden min-w-[220px]">
+                                {availableAltSNs.length > 0 ? (
+                                  <>
+                                    <div className="px-3 py-2 bg-slate-50 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                                      Ganti ke S/N lain
+                                    </div>
+                                    {availableAltSNs.map((altSn) => (
+                                      <button
+                                        key={altSn.sn}
+                                        onClick={() => swapSn(idx, altSn)}
+                                        className="w-full px-3 py-2 text-left text-sm font-mono text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors border-b border-slate-50 last:border-0"
+                                      >
+                                        {altSn.sn}
+                                      </button>
+                                    ))}
+                                  </>
+                                ) : (
+                                  <div className="px-3 py-3 text-[10px] text-slate-400 italic">
+                                    Tidak ada serial number lain tersedia
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-4">
+                      {isNonSN && (
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => decrementQuantity(idx)}
+                            className="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 font-black text-sm flex items-center justify-center transition-colors active:scale-90"
+                          >
+                            −
+                          </button>
+                          <span className="w-8 text-center font-black text-sm text-slate-900 tabular-nums">
+                            {item.quantity}
+                          </span>
+                          <button
+                            onClick={() => incrementQuantity(idx)}
+                            disabled={item.quantity >= effectiveStock}
+                            className={`w-8 h-8 rounded-lg font-black text-sm flex items-center justify-center transition-colors active:scale-90 ${
+                              item.quantity >= effectiveStock
+                                ? "bg-slate-50 text-slate-300 cursor-not-allowed"
+                                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                            }`}
+                          >
+                            +
+                          </button>
+                        </div>
+                      )}
+                      {editingPriceIdx === idx ? (
+                        <div className="flex items-center space-x-1">
+                          <RupiahInput
+                            className="w-28 px-2 py-1 text-sm font-black text-slate-900 border border-indigo-300 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 outline-none tabular-nums"
+                            value={parseInt(editingPriceValue, 10) || 0}
+                            onChange={(val) => setEditingPriceValue(String(val))}
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                const parsed = parseInt(editingPriceValue, 10);
+                                if (!isNaN(parsed) && parsed > 0) {
+                                  updateCartPrice(idx, parsed);
+                                }
+                                setEditingPriceIdx(null);
+                              } else if (e.key === "Escape") {
+                                setEditingPriceIdx(null);
+                              }
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setEditingPriceIdx(idx);
+                            setEditingPriceValue(String(item.price));
+                          }}
+                          className="font-black text-slate-900 text-sm tracking-tighter hover:text-indigo-600 transition-colors cursor-pointer tabular-nums"
+                          title="Klik untuk ubah harga"
+                        >
+                          {formatIDR(item.price * item.quantity)}
+                        </button>
+                      )}
                       <button
-                        onClick={() => {
-                          setEditingPriceIdx(idx);
-                          setEditingPriceValue(String(item.price));
-                        }}
-                        className="font-black text-slate-900 text-sm tracking-tighter hover:text-indigo-600 transition-colors cursor-pointer tabular-nums"
-                        title="Klik untuk ubah harga"
+                        onClick={() => removeFromCart(idx)}
+                        className="text-slate-300 hover:text-red-500 transition-all active:scale-90 p-2"
                       >
-                        {formatIDR(item.price)}
+                        <svg
+                          className="w-5 h-5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                          />
+                        </svg>
                       </button>
-                    )}
-                    <button
-                      onClick={() => removeFromCart(idx)}
-                      className="text-slate-300 hover:text-red-500 transition-all active:scale-90 p-2"
-                    >
-                      <svg
-                        className="w-5 h-5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth="2"
-                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                        />
-                      </svg>
-                    </button>
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-slate-300 space-y-6 opacity-30">
                 <svg className="w-20 h-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -921,14 +1049,18 @@ const POSView: React.FC<POSProps> = ({
                 Include PPN (11%)
               </label>
             </div>
-            <div className="flex justify-between text-xs text-slate-500 font-bold">
-              <span>Subtotal</span>
-              <span className="tabular-nums text-slate-300">{formatIDR(displaySubtotal)}</span>
-            </div>
-            <div className="flex justify-between text-xs text-slate-500 font-bold">
-              <span>Gov Tax ({(taxRate * 100).toFixed(0)}% PPN)</span>
-              <span className="tabular-nums text-slate-300">{formatIDR(displayTax)}</span>
-            </div>
+            {ppnEnabled && (
+              <>
+                <div className="flex justify-between text-xs text-slate-500 font-bold">
+                  <span>Subtotal</span>
+                  <span className="tabular-nums text-slate-300">{formatIDR(subtotal)}</span>
+                </div>
+                <div className="flex justify-between text-xs text-slate-500 font-bold">
+                  <span>Gov Tax ({(taxRate * 100).toFixed(0)}% PPN)</span>
+                  <span className="tabular-nums text-slate-300">{formatIDR(tax)}</span>
+                </div>
+              </>
+            )}
             <div className="flex justify-between items-end pt-6">
               <div>
                 <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2">
@@ -1128,6 +1260,79 @@ const POSView: React.FC<POSProps> = ({
             setIsQuotation(false);
           }}
         />
+      )}
+
+      {/* SN Picker Modal */}
+      {snPickerProduct && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          onClick={() => setSnPickerProduct(null)}
+        >
+          <div
+            className="bg-white rounded-3xl p-8 max-w-lg w-full mx-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">
+                  Pilih Serial Number
+                </h3>
+                <p className="text-sm text-slate-500 font-bold mt-1">
+                  {snPickerProduct.brand} {snPickerProduct.model}
+                </p>
+              </div>
+              <button
+                onClick={() => setSnPickerProduct(null)}
+                className="p-2 text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+            <div className="space-y-2 max-h-80 overflow-y-auto">
+              {availableSNs
+                .filter((sn) => sn.productId === snPickerProduct.id)
+                .map((sn) => (
+                  <button
+                    key={sn.sn}
+                    onClick={() => handleSnPickerSelect(sn)}
+                    className="w-full p-4 flex items-center justify-between text-left rounded-2xl border border-slate-100 hover:border-indigo-200 hover:bg-indigo-50 transition-all"
+                  >
+                    <div>
+                      <p className="font-mono font-black text-slate-900 text-sm">{sn.sn}</p>
+                      <p className="text-[10px] text-slate-400 font-bold mt-1">
+                        {snPickerProduct.condition} • Stok Tersedia
+                      </p>
+                    </div>
+                    <svg
+                      className="w-5 h-5 text-indigo-500"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M9 5l7 7-7 7"
+                      />
+                    </svg>
+                  </button>
+                ))}
+              {availableSNs.filter((sn) => sn.productId === snPickerProduct.id).length === 0 && (
+                <div className="p-8 text-center text-slate-400 italic">
+                  Tidak ada serial number tersedia
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {isPrinting && (

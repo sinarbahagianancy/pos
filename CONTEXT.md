@@ -37,6 +37,15 @@
 | **SN**    | Serial Number (unique identifier per unit) |
 | **COGS**  | Cost of Goods Sold                         |
 
+### Cart Terms
+
+| Term          | Definition                                                                                                                                               |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Cart Row**  | A single line item in the POS cart. For Non-SN products it carries a `quantity`; for SN products it represents one specific serial number.               |
+| **Quantity**  | The number of units for a Non-SN Cart Row. Adjusted via a stepper in the cart. Does not apply to SN rows (each SN is its own row).                       |
+| **SN Picker** | A modal shown when adding an SN product to the cart. Lists all available serial numbers for that product so the user can choose which one(s) to add.     |
+| **SN Swap**   | Ability to change the serial number of an SN Cart Row after it's already in the cart, by clicking the SN text and selecting from available alternatives. |
+
 ### Store Information
 
 - **Store Name**: Sinar Bahagia
