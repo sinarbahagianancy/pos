@@ -1,0 +1,11 @@
+# 0002 - Three separate tables for Surat Jalan, Surat Penarikan, Batch Input
+
+The three new document types (Surat Jalan, Surat Penarikan Barang, Batch Input Barang) live in three independent table pairs (`surat_jalan` + `surat_jalan_items`, `surat_penarikan` + `surat_penarikan_items`, `batch_inputs` + `batch_input_items`) rather than a single unified `documents` table with a `kind` discriminator.
+
+**Why not a unified `documents` table.** A single table would model all three as "rows of the same shape" — same id, same `created_at`, same `items[]`, same `staff_name`. That's attractive on paper, but the three documents diverge on fields: Surat Jalan has `customer_id`/`customer_name`/`po_number`; Surat Penarikan has `recipient` and `reason` (enum + free-form); Batch Input has `supplier` and `supplier_invoice`. A unified table would carry nullable columns for every possible field, and queries like "list all Penarikan for last month" would need to filter on `kind = 'penarikan' AND reason IS NOT NULL`. The schema starts to model a _union_ instead of three concrete concepts.
+
+**Why separate tables.** This mirrors the existing pattern in the codebase: `sales` and `quotations` are separate despite both being customer-facing documents, because their lifecycles differ (Sale is terminal, Quotation has Pending → Approved/Rejected/Canceled). Our three new documents each have their own identity scheme (auto-generated `SJ/dd/mm/yyyy-NNN` vs. `SPB/dd/mm/yyyy-NNN` vs. free-form supplier invoice) and their own per-document fields, so a separate table makes the schema read as it should: a Surat Jalan is a Surat Jalan, not a `documents` row that happens to be a Surat Jalan.
+
+**Trade-off accepted.** Some code duplication. The three tables share columns (`created_at`, `staff_name`, `notes`), and the list views share UI patterns. We mitigate duplication by extracting shared formatters and table components, not by collapsing the storage.
+
+**Reversibility.** Hard to reverse. A unified-table refactor would require migrating data from three tables into one, deciding on a primary-key scheme for the unified table (the three id formats don't share a syntax), and rewriting every endpoint, list view, and PDF generator.
