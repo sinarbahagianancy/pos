@@ -20,17 +20,18 @@ test.describe("Inventory Page", () => {
   });
 
   test("can search/filter products", async ({ page }) => {
-    const searchInput = page.getByPlaceholder("Ketik Merk / Model...");
+    const searchInput = page.getByPlaceholder("Cari produk...");
     await searchInput.fill("Sony");
     // Should still show Sony products
     await expect(page.getByText("A7IV")).toBeVisible();
   });
 
   test("search with no results shows empty state", async ({ page }) => {
-    const searchInput = page.getByPlaceholder("Ketik Merk / Model...");
+    const searchInput = page.getByPlaceholder("Cari produk...");
     await searchInput.fill("ZZZNONEXISTENT");
-    // Table should be empty or show no results
+    // Server returns zero matches; the empty-state row is rendered.
     await expect(page.getByText("A7IV")).not.toBeVisible();
+    await expect(page.getByText("Tidak ada produk yang cocok dengan pencarian.")).toBeVisible();
   });
 
   test("can open add product modal", async ({ page }) => {
