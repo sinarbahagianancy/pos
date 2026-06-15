@@ -12,14 +12,11 @@ import {
 
 type ViewMode = "list" | "create" | "summary";
 
-const WARRANTY_TYPES = [
-  "Official Sony Indonesia",
-  "Official Canon Indonesia",
-  "Official Fujifilm Indonesia",
-  "Distributor",
-  "Toko",
-  "No Warranty",
-];
+// Batch Input restricts the warranty options to these three. The DB enum
+// has six values (the three 'Official ... Indonesia' options + these
+// three), but those are reserved for products with branded official
+// warranties — a batch input from a generic supplier is none of those.
+const WARRANTY_TYPES = ["Distributor", "Toko", "No Warranty"];
 const CATEGORIES = ["Body", "Lens", "Accessory"];
 const CONDITIONS = ["New", "Used"];
 
@@ -47,7 +44,7 @@ const emptyRow = (): FormRow => ({
   category: "Body",
   condition: "New",
   mount: "",
-  warrantyType: "Official Sony Indonesia",
+  warrantyType: "Distributor",
   warrantyMonths: 12,
   taxEnabled: true,
   cogs: 0,

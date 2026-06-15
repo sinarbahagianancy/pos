@@ -140,7 +140,8 @@ _Avoid_ for Batch Input Barang: Restock, Stock Addition, Penerimaan Barang (all 
 ### Batch Input Form Design
 
 - **Single header (batch-level fields)**: Nomor Invoice Masuk (text, free-form — becomes the batch ID), Supplier (dropdown of existing suppliers), Date, Notes (textarea, optional).
-- **Per-row table**: each row is a brand-new product (distinct SKU). Columns: Brand, Model, Category, Condition, Mount, Warranty Type, Warranty Months, Tax Enabled, COGS, Price Jual, Qty, Has Serial Number (checkbox), Serial Numbers (textarea, one per line, N lines for N units — only shown when Has Serial Number is checked).
+- **Per-row table**: each row is a brand-new product (distinct SKU). Columns: Brand, Model, Category, Condition, Mount, Warranty Type (see note below), Warranty Months, Tax Enabled, COGS, Price Jual, Qty, Has Serial Number (checkbox), Serial Numbers (textarea, one per line, N lines for N units — only shown when Has Serial Number is checked).
+- **Warranty Type options**: only `Distributor`, `Toko`, `No Warranty` (default: `Distributor`). The DB `warranty_type` enum has six values including the three `Official ... Indonesia` ones, but Batch Input restricts to these three because a batch-from-supplier introduction never has a branded official warranty. (The Inventory page's `Input Barang Baru` form still offers all six, since staff may add an officially-warrantied product via a single-supplier procurement.)
 - **Validation per row** (before submit):
   - Required: Brand, Model, Qty > 0.
   - For SN rows: SN textarea must contain exactly Qty non-empty unique lines, no duplicates with other SNs in the same batch, no duplicates with existing SNs in the `serial_numbers` table.

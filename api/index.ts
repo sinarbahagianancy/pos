@@ -3559,7 +3559,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             const category = String(raw.category ?? "Body");
             const condition = String(raw.condition ?? "New");
             const mount = raw.mount ? String(raw.mount) : null;
-            const warrantyType = String(raw.warrantyType ?? "Official Sony Indonesia");
+            const warrantyType = String(raw.warrantyType ?? "Distributor");
             const warrantyMonths = typeof raw.warrantyMonths === "number" ? raw.warrantyMonths : 12;
             const cogs = typeof raw.cogs === "number" ? raw.cogs : 0;
             const price = typeof raw.price === "number" ? raw.price : 0;

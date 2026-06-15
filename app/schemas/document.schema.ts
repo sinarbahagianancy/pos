@@ -188,7 +188,7 @@ export const validateCreateBatchInputInput = (input: unknown): CreateBatchInputI
       throw new Error(`Item #${idx + 1}: condition must be one of ${KNOWN_CONDITIONS.join(", ")}`);
     }
     const mount = it.mount ? String(it.mount).trim() : undefined;
-    const warrantyType = String(it.warrantyType ?? "Official Sony Indonesia");
+    const warrantyType = String(it.warrantyType ?? "Distributor");
     const warrantyMonths = typeof it.warrantyMonths === "number" ? it.warrantyMonths : 12;
     if (warrantyMonths < 0) throw new Error(`Item #${idx + 1}: warrantyMonths must be >= 0`);
     const cogs = typeof it.cogs === "number" ? it.cogs : 0;
