@@ -560,26 +560,37 @@ const InventoryView: React.FC<InventoryProps> = ({
             Sistem monitoring stok real-time Sinar Bahagia Surabaya.
           </p>
         </div>
-        <div className="flex bg-slate-100 rounded-2xl p-1 self-start sm:self-auto">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 self-start sm:self-auto">
+          <div className="flex bg-slate-100 rounded-2xl p-1">
+            <button
+              onClick={() => setActiveTab("catalog")}
+              className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
+                activeTab === "catalog"
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              Catalog
+            </button>
+            <button
+              onClick={() => setActiveTab("batch-input")}
+              className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
+                activeTab === "batch-input"
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              Batch Input
+            </button>
+          </div>
           <button
-            onClick={() => setActiveTab("catalog")}
-            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
-              activeTab === "catalog"
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-500 hover:text-slate-700"
-            }`}
+            onClick={() => {
+              setShowAddModal(true);
+              setConfirmAdd(false);
+            }}
+            className="bg-indigo-600 text-white px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all w-full sm:w-auto"
           >
-            Catalog
-          </button>
-          <button
-            onClick={() => setActiveTab("batch-input")}
-            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
-              activeTab === "batch-input"
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            Batch Input
+            Input Barang Baru
           </button>
         </div>
       </div>

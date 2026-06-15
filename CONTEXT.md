@@ -20,16 +20,18 @@
 
 ### Document Types
 
-| Term                       | Definition                                                                                                                                                                                                                                               |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Faktur Penjualan**       | Sales invoice document issued to customers                                                                                                                                                                                                               |
-| **Quotation**              | Price estimate document, not a proof of payment                                                                                                                                                                                                          |
-| **Surat Jalan**            | Delivery note accompanying goods sent to a customer. Same format as Faktur Penjualan, but no price columns are printed. Items must come from Inventory.                                                                                                  |
-| **Surat Penarikan Barang** | Internal goods-removal note (damaged / expired / used internally / etc.). Same format as Faktur Penjualan, but no price columns are printed. Items are NOT required to exist in Inventory. Carries both a recipient (person or department) and a reason. |
-| **Batch Input Barang**     | A restock batch: one supplier invoice (Nomor Invoice Masuk) bringing in multiple product lines in a single transaction, supporting SN and non-SN items, integrated to Inventory.                                                                         |
+| Term                       | Definition                                                                                                                                                                                                                                                                            |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Faktur Penjualan**       | Sales invoice document issued to customers                                                                                                                                                                                                                                            |
+| **Quotation**              | Price estimate document, not a proof of payment                                                                                                                                                                                                                                       |
+| **Surat Jalan**            | Delivery note accompanying goods sent to a customer. Same format as Faktur Penjualan, but no price columns are printed. Items must come from Inventory.                                                                                                                               |
+| **Surat Penarikan Barang** | Internal goods-removal note (damaged / expired / used internally / etc.). Same format as Faktur Penjualan, but no price columns are printed. Items are NOT required to exist in Inventory. Carries both a recipient (person or department) and a reason.                              |
+| **Batch Input Barang**     | A restock batch: one supplier invoice (Nomor Invoice Masuk) bringing in multiple product lines in a single transaction, supporting SN and non-SN items, integrated to Inventory.                                                                                                      |
+| **Input Barang Baru**      | Create a brand-new product in the catalog. Operates on the product definition itself (no stock, no supplier invoice). Distinct from Batch Input Barang, which is restocking existing products. The Inventory page header always shows this action, regardless of which tab is active. |
 
 _Avoid_ for Surat Jalan: Delivery Order, DO, Surat Pengiriman, Delivery Note.
 _Avoid_ for Surat Penarikan Barang: Write-off Form, Barang Keluar Form, BKB.
+_Avoid_ for Input Barang Baru: Add Product (use the Indonesian term — it matches the existing button label). Do NOT confuse with Batch Input Barang, which is restocking, not catalog creation.
 _Avoid_ for Batch Input Barang: Restock, Stock Addition, Penerimaan Barang.
 
 ### Quotation Status
