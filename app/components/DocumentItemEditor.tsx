@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { Product, SerialNumber } from "../types";
 import SNPickerModal from "./SNPickerModal";
+import SearchableCombobox, { SearchableComboboxItem } from "./SearchableCombobox";
 
 /**
  * A single row in the document item form.
@@ -88,6 +89,26 @@ const DocumentItemEditor: React.FC<DocumentItemEditorProps> = ({
     return { snProducts: sn, nonSNProducts: nonSn };
   }, [filteredProducts]);
 
+  // Build the items array for the SearchableCombobox, with the
+  // "Nomor Seri" / "Tanpa Nomor Seri" group labels. Memoized so the
+  // combobox's internal filtering doesn't re-run on every parent
+  // re-render.
+  const comboboxItems = useMemo<SearchableComboboxItem[]>(() => {
+    const format = (p: Product) => `${p.brand} ${p.model} (stock: ${p.stock})`;
+    return [
+      ...snProducts.map((p) => ({
+        id: p.id,
+        label: format(p),
+        group: "Nomor Seri",
+      })),
+      ...nonSNProducts.map((p) => ({
+        id: p.id,
+        label: format(p),
+        group: "Tanpa Nomor Seri",
+      })),
+    ];
+  }, [snProducts, nonSNProducts]);
+
   // ---- Mutators ----
   const updateItem = (idx: number, patch: Partial<DocumentFormItem>) => {
     onChange(value.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
@@ -144,37 +165,20 @@ const DocumentItemEditor: React.FC<DocumentItemEditorProps> = ({
   };
 
   /**
-   * Render the product dropdown for a row. Always shows all eligible
+   * Render the product combobox for a row. Always shows all eligible
    * products grouped by hasSerialNumber so the user can pick either
    * type, and the row's shape (card vs grid) adapts after the pick.
-   * Empty optgroups (one category has no available products) are omitted.
+   * Empty groups (one category has no available products) are omitted.
    */
   const renderProductSelect = (idx: number, productId: string) => (
-    <select
+    <SearchableCombobox
+      items={comboboxItems}
       value={productId}
-      onChange={(e) => handleProductChange(idx, e.target.value)}
-      className="col-span-5 px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
-    >
-      <option value="">-- Pilih Produk --</option>
-      {snProducts.length > 0 && (
-        <optgroup label="Nomor Seri">
-          {snProducts.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.brand} {p.model} (stock: {p.stock})
-            </option>
-          ))}
-        </optgroup>
-      )}
-      {nonSNProducts.length > 0 && (
-        <optgroup label="Tanpa Nomor Seri">
-          {nonSNProducts.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.brand} {p.model} (stock: {p.stock})
-            </option>
-          ))}
-        </optgroup>
-      )}
-    </select>
+      onChange={(id) => handleProductChange(idx, id)}
+      placeholder="Pilih produk..."
+      emptyMessage="Tidak ada produk ditemukan"
+      className="col-span-5"
+    />
   );
 
   // ---- Render ----

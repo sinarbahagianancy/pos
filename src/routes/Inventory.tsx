@@ -1,104 +1,11 @@
-import React, { useState, useMemo, useRef, useEffect } from "react";
+import React, { useState, useMemo } from "react";
 import { SortingState } from "@tanstack/react-table";
 import { Product, SerialNumber, AuditLog, Supplier } from "../../app/types";
 import { formatIDR } from "../../app/utils/formatters";
 import { RupiahInput } from "../../app/components/RupiahInput";
-
-// Reusable searchable combobox for supplier selection
-interface SearchableSelectProps {
-  suppliers: Supplier[];
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  required?: boolean;
-  className?: string;
-}
-
-const SearchableSelect: React.FC<SearchableSelectProps> = ({
-  suppliers,
-  value,
-  onChange,
-  placeholder = "Pilih Supplier...",
-  required = false,
-  className = "",
-}) => {
-  const [search, setSearch] = useState("");
-  const [isOpen, setIsOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const filtered = useMemo(() => {
-    if (!search) return suppliers;
-    const q = search.toLowerCase();
-    return suppliers.filter((s) => s.name.toLowerCase().includes(q));
-  }, [search, suppliers]);
-
-  const handleSelect = (name: string) => {
-    onChange(name);
-    setSearch("");
-    setIsOpen(false);
-  };
-
-  const displayValue = value || "";
-
-  return (
-    <div ref={containerRef} className="relative">
-      <input
-        type="text"
-        className={`w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-500/10 ${className}`}
-        placeholder={placeholder}
-        value={isOpen ? search : displayValue}
-        onChange={(e) => {
-          setSearch(e.target.value);
-          setIsOpen(true);
-        }}
-        onFocus={() => {
-          setSearch("");
-          setIsOpen(true);
-        }}
-        required={required && !value}
-      />
-      {/* Dropdown arrow */}
-      <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" />
-        </svg>
-      </div>
-      {isOpen && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto">
-          {filtered.length > 0 ? (
-            filtered.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => handleSelect(s.name)}
-                className={`w-full px-4 py-2.5 text-left text-sm font-bold hover:bg-indigo-50 hover:text-indigo-700 transition-colors ${
-                  value === s.name ? "bg-indigo-50 text-indigo-700" : "text-slate-900"
-                }`}
-              >
-                {s.name}
-              </button>
-            ))
-          ) : (
-            <div className="px-4 py-3 text-sm text-slate-400 italic">
-              Tidak ada supplier ditemukan
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-};
+import SearchableCombobox, {
+  SearchableComboboxItem,
+} from "../../app/components/SearchableCombobox";
 
 interface InventoryProps {
   products: Product[];
@@ -154,6 +61,17 @@ const InventoryView: React.FC<InventoryProps> = ({
   const [filter, setFilter] = useState("");
   const [sorting, setSorting] = useState<SortingState>([{ id: "createdAt", desc: true }]);
   const [adjustingProduct, setAdjustingProduct] = useState<Product | null>(null);
+
+  // Supplier picker items: use the supplier name as both id and label,
+  // because all three call sites in this file store the supplier name
+  // (not the supplier id) in their state. The new SearchableCombobox
+  // matches by `id`, so using the name there keeps the existing data
+  // flow (addSerialNumbers / createProduct / onManualAdjust all expect
+  // a supplier name, not an id) intact.
+  const supplierItems = useMemo<SearchableComboboxItem[]>(
+    () => suppliers.map((s) => ({ id: s.name, label: s.name })),
+    [suppliers],
+  );
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -1134,10 +1052,12 @@ const InventoryView: React.FC<InventoryProps> = ({
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
                   Supplier
                 </label>
-                <SearchableSelect
-                  suppliers={suppliers}
+                <SearchableCombobox
+                  items={supplierItems}
                   value={snOperationSupplier}
                   onChange={setSNOperationSupplier}
+                  placeholder="Pilih Supplier..."
+                  emptyMessage="Tidak ada supplier ditemukan"
                   required
                 />
               </div>
@@ -1520,10 +1440,12 @@ const InventoryView: React.FC<InventoryProps> = ({
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
                   Supplier
                 </label>
-                <SearchableSelect
-                  suppliers={suppliers}
+                <SearchableCombobox
+                  items={supplierItems}
                   value={newProductSupplier}
                   onChange={setNewProductSupplier}
+                  placeholder="Pilih Supplier..."
+                  emptyMessage="Tidak ada supplier ditemukan"
                   required
                 />
               </div>
@@ -2621,10 +2543,12 @@ const InventoryView: React.FC<InventoryProps> = ({
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
                   Supplier
                 </label>
-                <SearchableSelect
-                  suppliers={suppliers}
+                <SearchableCombobox
+                  items={supplierItems}
                   value={simpleAdjustSupplier}
                   onChange={setSimpleAdjustSupplier}
+                  placeholder="Pilih Supplier..."
+                  emptyMessage="Tidak ada supplier ditemukan"
                 />
               </div>
               <div className="space-y-4">
