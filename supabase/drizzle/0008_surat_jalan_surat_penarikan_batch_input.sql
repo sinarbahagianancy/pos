@@ -4,9 +4,36 @@
 --              batch_inputs, batch_input_items
 -- New enum: penarikan_reason
 -- Extended audit_action enum values: Surat Jalan Created, Surat Penarikan Created, Batch Input Created
+--
+-- ORDER MATTERS:
+--   1. New enum (penarikan_reason) must exist before surat_penarikan can reference it
+--   2. ALTER TYPE audit_action ADD VALUE cannot run in a transaction with subsequent
+--      INSERTs that use the new value, so we add it last (and the application
+--      uses the new value only on subsequent requests)
+--   3. All tables that don't depend on the new enums come first
 
 -- ============================================================
--- 1. Per-day counter tables for auto-generated IDs
+-- 1. New enum: penarikan_reason (used by surat_penarikan.reason)
+-- ============================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'penarikan_reason') THEN
+    CREATE TYPE "penarikan_reason" AS ENUM (
+      'Rusak',
+      'Expired',
+      'Dipakai Internal',
+      'Sample/Display',
+      'Employee Sale',
+      'Hilang',
+      'Recall',
+      'Lainnya'
+    );
+  END IF;
+END
+$$;
+
+-- ============================================================
+-- 2. Per-day counter tables for auto-generated IDs
 -- ============================================================
 CREATE TABLE IF NOT EXISTS "surat_jalan_counters" (
   "date" text PRIMARY KEY,
@@ -19,7 +46,7 @@ CREATE TABLE IF NOT EXISTS "surat_penarikan_counters" (
 );
 
 -- ============================================================
--- 2. Surat Jalan (delivery note to a customer)
+-- 3. Surat Jalan (delivery note to a customer)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS "surat_jalan" (
   "id" text PRIMARY KEY,                                -- "SJ/dd/mm/yyyy-NNN"
@@ -47,7 +74,7 @@ CREATE INDEX IF NOT EXISTS "idx_surat_jalan_items_product_id" ON "surat_jalan_it
 CREATE INDEX IF NOT EXISTS "idx_surat_jalan_customer_id" ON "surat_jalan"("customer_id");
 
 -- ============================================================
--- 3. Surat Penarikan Barang (internal goods removal)
+-- 4. Surat Penarikan Barang (internal goods removal)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS "surat_penarikan" (
   "id" text PRIMARY KEY,                                -- "SPB/dd/mm/yyyy-NNN"
@@ -75,7 +102,7 @@ CREATE INDEX IF NOT EXISTS "idx_surat_penarikan_items_product_id" ON "surat_pena
 CREATE INDEX IF NOT EXISTS "idx_surat_penarikan_reason" ON "surat_penarikan"("reason");
 
 -- ============================================================
--- 4. Batch Input Barang (restock from a supplier)
+-- 5. Batch Input Barang (restock from a supplier)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS "batch_inputs" (
   "id" text PRIMARY KEY,                                -- supplier's invoice number (Nomor Invoice Masuk)
@@ -102,26 +129,6 @@ CREATE INDEX IF NOT EXISTS "idx_batch_inputs_created_at" ON "batch_inputs"("crea
 CREATE INDEX IF NOT EXISTS "idx_batch_input_items_batch_input_id" ON "batch_input_items"("batch_input_id");
 CREATE INDEX IF NOT EXISTS "idx_batch_input_items_product_id" ON "batch_input_items"("product_id");
 CREATE INDEX IF NOT EXISTS "idx_batch_inputs_supplier" ON "batch_inputs"("supplier");
-
--- ============================================================
--- 5. New enum: penarikan_reason
--- ============================================================
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'penarikan_reason') THEN
-    CREATE TYPE "penarikan_reason" AS ENUM (
-      'Rusak',
-      'Expired',
-      'Dipakai Internal',
-      'Sample/Display',
-      'Employee Sale',
-      'Hilang',
-      'Recall',
-      'Lainnya'
-    );
-  END IF;
-END
-$$;
 
 -- ============================================================
 -- 6. Extend audit_action enum with the three new document actions
