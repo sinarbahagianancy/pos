@@ -10,6 +10,7 @@ import { formatDate } from "../../app/utils/formatters";
 import { pdf } from "@react-pdf/renderer";
 import { InvoiceDocument } from "../../app/components/InvoicePDF";
 import Pagination from "../../app/components/Pagination";
+import DocumentItemEditor, { DocumentFormItem } from "../../app/components/DocumentItemEditor";
 import {
   getAllSuratPenarikan,
   getSuratPenarikanById,
@@ -48,9 +49,8 @@ const SuratPenarikanView: React.FC<SuratPenarikanViewProps> = ({
   const [reason, setReason] = useState<PenarikanReason>("Rusak");
   const [alasanLainnya, setAlasanLainnya] = useState("");
   const [notes, setNotes] = useState("");
-  const [formItems, setFormItems] = useState<
-    Array<{ productId: string; model: string; brand?: string; sn: string; quantity: number }>
-  >([]);
+  const [formItems, setFormItems] = useState<DocumentFormItem[]>([]);
+  const [rowErrors, setRowErrors] = useState<Record<number, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
   // Preview state
@@ -94,35 +94,6 @@ const SuratPenarikanView: React.FC<SuratPenarikanViewProps> = ({
     setTimeout(() => setToast(null), 3000);
   };
 
-  const handleAddItem = () => {
-    setFormItems([
-      ...formItems,
-      { productId: "", model: "", brand: undefined, sn: "", quantity: 1 },
-    ]);
-  };
-
-  const handleItemChange = (idx: number, field: "productId" | "sn" | "quantity", value: string) => {
-    const next = [...formItems];
-    const item = { ...next[idx] };
-    if (field === "productId") {
-      const product = products.find((p) => p.id === value);
-      item.productId = value;
-      item.model = product?.model ?? "";
-      item.brand = product?.brand;
-      item.sn = "";
-    } else if (field === "sn") {
-      item.sn = value;
-    } else if (field === "quantity") {
-      item.quantity = parseInt(value, 10) || 1;
-    }
-    next[idx] = item;
-    setFormItems(next);
-  };
-
-  const handleRemoveItem = (idx: number) => {
-    setFormItems(formItems.filter((_, i) => i !== idx));
-  };
-
   const handleSubmit = async (alsoPrint: boolean) => {
     if (!recipient.trim()) {
       showToast("Penarik (recipient) is required", "error");
@@ -132,14 +103,59 @@ const SuratPenarikanView: React.FC<SuratPenarikanViewProps> = ({
       showToast("Alasan (free-form) is required when reason is 'Lainnya'", "error");
       return;
     }
-    if (formItems.length === 0) {
+
+    // Filter out empty rows (rows with no product picked).
+    const filledItems = formItems.filter((it) => it.productId);
+    if (filledItems.length === 0) {
       showToast("Surat Penarikan must have at least 1 item", "error");
       return;
     }
-    if (formItems.some((it) => !it.productId)) {
-      showToast("All items must have a product selected", "error");
+
+    // Per-row validation: SN row needs ≥1 SN, non-SN row needs qty ≥ 1.
+    const errors: Record<number, string> = {};
+    filledItems.forEach((it, idx) => {
+      const product = products.find((p) => p.id === it.productId);
+      if (product?.hasSerialNumber) {
+        if (!it.selectedSNs || it.selectedSNs.length === 0) {
+          errors[idx] = "Pilih minimal 1 SN";
+        }
+      } else {
+        if (!it.quantity || it.quantity < 1) {
+          errors[idx] = "Qty harus minimal 1";
+        }
+      }
+    });
+    if (Object.keys(errors).length > 0) {
+      setRowErrors(errors);
+      showToast("Perbaiki baris yang ditandai merah", "error");
       return;
     }
+    setRowErrors({});
+
+    // Expand rows to items: SN row → N items (one per SN, qty 1 each);
+    // non-SN row → 1 item with the form's qty.
+    const expandedItems = filledItems.flatMap((it) => {
+      const product = products.find((p) => p.id === it.productId)!;
+      if (product.hasSerialNumber) {
+        return (it.selectedSNs ?? []).map((sn) => ({
+          productId: it.productId,
+          brand: product.brand,
+          model: product.model,
+          sn,
+          quantity: 1,
+        }));
+      } else {
+        return [
+          {
+            productId: it.productId,
+            brand: product.brand,
+            model: product.model,
+            sn: "",
+            quantity: it.quantity ?? 1,
+          },
+        ];
+      }
+    });
 
     setSubmitting(true);
     try {
@@ -149,13 +165,7 @@ const SuratPenarikanView: React.FC<SuratPenarikanViewProps> = ({
         alasanLainnya: reason === "Lainnya" ? alasanLainnya.trim() : undefined,
         notes: notes.trim() || undefined,
         staffName,
-        items: formItems.map((it) => ({
-          productId: it.productId,
-          brand: it.brand,
-          model: it.model,
-          sn: it.sn,
-          quantity: it.quantity,
-        })),
+        items: expandedItems,
       };
       const created = await createSuratPenarikan(payload);
       showToast(`Surat Penarikan ${created.id} berhasil dibuat`, "success");
@@ -450,89 +460,14 @@ const SuratPenarikanView: React.FC<SuratPenarikanViewProps> = ({
             />
           </div>
 
-          {/* Items */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Items</h3>
-              <button
-                onClick={handleAddItem}
-                className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase hover:bg-slate-800"
-              >
-                + Tambah Item
-              </button>
-            </div>
-            {formItems.length === 0 ? (
-              <div className="text-center py-8 text-sm text-slate-400 border-2 border-dashed border-slate-200 rounded-2xl">
-                Klik "+ Tambah Item" untuk menambahkan barang
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {formItems.map((item, idx) => {
-                  const product = products.find((p) => p.id === item.productId);
-                  const available = product
-                    ? sns.filter((sn) => sn.productId === product.id && sn.status === "In Stock")
-                    : [];
-                  return (
-                    <div
-                      key={idx}
-                      className="grid grid-cols-12 gap-2 p-3 border border-slate-200 rounded-xl"
-                    >
-                      <select
-                        value={item.productId}
-                        onChange={(e) => handleItemChange(idx, "productId", e.target.value)}
-                        className="col-span-5 px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                      >
-                        <option value="">-- Pilih Produk --</option>
-                        {products
-                          .filter((p) => !p.hidden)
-                          .map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.brand} {p.model} (stock: {p.stock})
-                            </option>
-                          ))}
-                      </select>
-                      <input
-                        type="number"
-                        min={1}
-                        value={item.quantity}
-                        onChange={(e) => handleItemChange(idx, "quantity", e.target.value)}
-                        placeholder="Qty"
-                        className="col-span-2 px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                      />
-                      {product?.hasSerialNumber ? (
-                        <select
-                          value={item.sn}
-                          onChange={(e) => handleItemChange(idx, "sn", e.target.value)}
-                          className="col-span-4 px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono"
-                        >
-                          <option value="">-- Pilih SN --</option>
-                          {available.map((sn) => (
-                            <option key={sn.sn} value={sn.sn}>
-                              {sn.sn}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <input
-                          type="text"
-                          value={item.sn}
-                          onChange={(e) => handleItemChange(idx, "sn", e.target.value)}
-                          placeholder="SN (opsional)"
-                          className="col-span-4 px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono"
-                        />
-                      )}
-                      <button
-                        onClick={() => handleRemoveItem(idx)}
-                        className="col-span-1 px-2 text-red-500 hover:bg-red-50 rounded-lg"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          <DocumentItemEditor
+            products={products}
+            sns={sns}
+            value={formItems}
+            onChange={setFormItems}
+            errors={rowErrors}
+            productFilter={(p) => !p.hidden}
+          />
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
             <button
