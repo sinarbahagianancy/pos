@@ -8,6 +8,8 @@ import Pagination from "../../app/components/Pagination";
 import { RupiahInput } from "../../app/components/RupiahInput";
 
 interface SalesLogsProps {
+  activeTab?: "sales" | "quotations";
+  onTabChange?: (tab: "sales" | "quotations") => void;
   sales: Sale[];
   customers: Customer[];
   storeConfig: { storeName: string; address: string; ppnRate: number };
@@ -19,9 +21,29 @@ interface SalesLogsProps {
   onPerPageChange?: (perPage: number) => void;
   onMarkAsPaid?: (saleId: string) => Promise<void>;
   onRecordInstallment?: (saleId: string, amount: number) => Promise<void>;
+  // Quotation tab props
+  quotations?: Quotation[];
+  quotationsLoading?: boolean;
+  quotationPage?: number;
+  quotationPerPage?: number;
+  quotationTotal?: number;
+  quotationTotalPages?: number;
+  onQuotationPageChange?: (page: number) => void;
+  onQuotationPerPageChange?: (perPage: number) => void;
+  quotationStatusFilter?: "Pending" | "Approved" | "Rejected" | "Canceled" | "all";
+  onQuotationStatusFilterChange?: (
+    filter: "Pending" | "Approved" | "Rejected" | "Canceled" | "all",
+  ) => void;
+  onRefreshQuotations?: () => void;
+  onRefreshSales?: () => void;
+  products?: Product[];
+  sns?: SerialNumber[];
+  staffName?: string;
 }
 
 const SalesLogsView: React.FC<SalesLogsProps> = ({
+  activeTab: controlledActiveTab,
+  onTabChange,
   sales,
   customers,
   storeConfig,
@@ -31,8 +53,23 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
   onPageChange,
   perPage = 20,
   onPerPageChange,
-  onMarkAsPaid,
   onRecordInstallment,
+  // Quotation tab props
+  quotations = [],
+  quotationsLoading = false,
+  quotationPage = 1,
+  quotationPerPage = 20,
+  quotationTotal = 0,
+  quotationTotalPages = 1,
+  onQuotationPageChange,
+  onQuotationPerPageChange,
+  quotationStatusFilter = "all",
+  onQuotationStatusFilterChange,
+  onRefreshQuotations,
+  onRefreshSales,
+  products = [],
+  sns = [],
+  staffName = "System",
 }) => {
   const [search, setSearch] = useState("");
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
