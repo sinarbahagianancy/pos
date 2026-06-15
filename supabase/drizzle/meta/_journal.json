@@ -43,6 +43,20 @@
       "when": 1780110164132,
       "tag": "0005_easy_frightful_four",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1780200000000,
+      "tag": "0006_add_po_number_to_sales",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1780300000000,
+      "tag": "0007_quotations",
+      "breakpoints": true
     }
   ]
 }

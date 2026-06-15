@@ -7,6 +7,7 @@ import {
   uuid,
   pgEnum,
   boolean,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
 export const mountTypeEnum = pgEnum("mount_type", [
@@ -71,6 +72,24 @@ export const auditActionEnum = pgEnum("audit_action", [
   "Sale Created",
   "Login",
   "Logout",
+  "Quotation Created",
+  "Quotation Approved",
+  "Quotation Rejected",
+  "Quotation Canceled",
+  "Surat Jalan Created",
+  "Surat Penarikan Created",
+  "Batch Input Created",
+]);
+
+export const penarikanReasonEnum = pgEnum("penarikan_reason", [
+  "Rusak",
+  "Expired",
+  "Dipakai Internal",
+  "Sample/Display",
+  "Employee Sale",
+  "Hilang",
+  "Recall",
+  "Lainnya",
 ]);
 
 export const currencyTypeEnum = pgEnum("currency_type", ["IDR", "USD"]);
@@ -165,12 +184,55 @@ export const sales = pgTable("sales", {
   paymentMethod: paymentMethodEnum("payment_method").notNull(),
   staffName: text("staff_name").notNull(),
   notes: text("notes"),
+  poNumber: text("po_number").default(""),
+  quotationId: text("quotation_id").references((): AnyPgColumn => quotations.id, {
+    onDelete: "set null",
+  }),
   dueDate: timestamp("due_date", { withTimezone: true }),
   isPaid: boolean("is_paid").notNull().default(false),
   paidAt: timestamp("paid_at", { withTimezone: true }),
   amountPaid: numeric("amount_paid", { precision: 15, scale: 2 }).default("0"),
   installments: text("installments").default("[]"),
   timestamp: timestamp("timestamp", { withTimezone: true }).defaultNow(),
+});
+
+export const quotationCounters = pgTable("quotation_counters", {
+  date: text("date").primaryKey(),
+  lastNumber: integer("last_number").notNull().default(0),
+});
+
+export const quotations = pgTable("quotations", {
+  id: text("id").primaryKey(),
+  customerId: text("customer_id").references(() => customers.id, { onDelete: "restrict" }),
+  customerName: text("customer_name").notNull(),
+  subtotal: numeric("subtotal", { precision: 15, scale: 2 }).notNull(),
+  tax: numeric("tax", { precision: 15, scale: 2 }).notNull(),
+  taxEnabled: boolean("tax_enabled").notNull().default(true),
+  total: numeric("total", { precision: 15, scale: 2 }).notNull(),
+  staffName: text("staff_name").notNull(),
+  notes: text("notes"),
+  poNumber: text("po_number").notNull().default(""),
+  status: text("status").notNull().default("Pending"),
+  rejectionReason: text("rejection_reason"),
+  convertedSaleId: text("converted_sale_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  decidedAt: timestamp("decided_at", { withTimezone: true }),
+  decidedBy: text("decided_by"),
+});
+
+export const quotationItems = pgTable("quotation_items", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  quotationId: text("quotation_id")
+    .notNull()
+    .references(() => quotations.id, { onDelete: "cascade" }),
+  productId: text("product_id")
+    .notNull()
+    .references(() => products.id, { onDelete: "restrict" }),
+  brand: text("brand"),
+  model: text("model").notNull(),
+  sn: text("sn").notNull().default(""),
+  price: numeric("price", { precision: 15, scale: 2 }).notNull(),
+  quantity: integer("quantity").notNull().default(1),
 });
 
 export const saleItems = pgTable("sale_items", {
@@ -209,4 +271,100 @@ export const auditLogs = pgTable("audit_logs", {
   details: text("details").notNull(),
   relatedId: text("related_id"),
   timestamp: timestamp("timestamp", { withTimezone: true }).defaultNow(),
+});
+
+// ============================================================
+// Surat Jalan (Delivery Note)
+// ============================================================
+// Auto-generated IDs follow SJ/dd/mm/yyyy-NNN, counter resets daily.
+export const suratJalanCounters = pgTable("surat_jalan_counters", {
+  date: text("date").primaryKey(),
+  lastNumber: integer("last_number").notNull().default(0),
+});
+
+export const suratJalan = pgTable("surat_jalan", {
+  id: text("id").primaryKey(),
+  customerId: text("customer_id").references(() => customers.id, { onDelete: "restrict" }),
+  customerName: text("customer_name").notNull(),
+  poNumber: text("po_number").notNull().default(""),
+  notes: text("notes"),
+  staffName: text("staff_name").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
+export const suratJalanItems = pgTable("surat_jalan_items", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  suratJalanId: text("surat_jalan_id")
+    .notNull()
+    .references(() => suratJalan.id, { onDelete: "cascade" }),
+  productId: text("product_id")
+    .notNull()
+    .references(() => products.id, { onDelete: "restrict" }),
+  brand: text("brand"),
+  model: text("model").notNull(),
+  sn: text("sn").notNull().default(""),
+  quantity: integer("quantity").notNull().default(1),
+});
+
+// ============================================================
+// Surat Penarikan Barang (Goods Withdrawal)
+// ============================================================
+// Auto-generated IDs follow SPB/dd/mm/yyyy-NNN, counter resets daily.
+export const suratPenarikanCounters = pgTable("surat_penarikan_counters", {
+  date: text("date").primaryKey(),
+  lastNumber: integer("last_number").notNull().default(0),
+});
+
+export const suratPenarikan = pgTable("surat_penarikan", {
+  id: text("id").primaryKey(),
+  recipient: text("recipient").notNull(),
+  reason: penarikanReasonEnum("reason").notNull(),
+  alasanLainnya: text("alasan_lainnya"),
+  notes: text("notes"),
+  staffName: text("staff_name").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
+export const suratPenarikanItems = pgTable("surat_penarikan_items", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  suratPenarikanId: text("surat_penarikan_id")
+    .notNull()
+    .references(() => suratPenarikan.id, { onDelete: "cascade" }),
+  productId: text("product_id")
+    .notNull()
+    .references(() => products.id, { onDelete: "restrict" }),
+  brand: text("brand"),
+  model: text("model").notNull(),
+  sn: text("sn").notNull().default(""),
+  quantity: integer("quantity").notNull().default(1),
+});
+
+// ============================================================
+// Batch Input Barang (Bulk Restock)
+// ============================================================
+// ID is the supplier's invoice number (Nomor Invoice Masuk), free-form.
+export const batchInputs = pgTable("batch_inputs", {
+  id: text("id").primaryKey(),
+  supplier: text("supplier").notNull(),
+  date: timestamp("date", { withTimezone: true }).defaultNow(),
+  notes: text("notes"),
+  staffName: text("staff_name").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
+export const batchInputItems = pgTable("batch_input_items", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  batchInputId: text("batch_input_id")
+    .notNull()
+    .references(() => batchInputs.id, { onDelete: "cascade" }),
+  productId: text("product_id")
+    .notNull()
+    .references(() => products.id, { onDelete: "restrict" }),
+  brand: text("brand"),
+  model: text("model").notNull(),
+  quantity: integer("quantity").notNull().default(1),
+  // JSON array of SNs (e.g. ["SN1","SN2","SN3"]). Empty array for non-SN items.
+  sns: text("sns").notNull().default("[]"),
+  cogs: numeric("cogs", { precision: 15, scale: 2 }).notNull(),
+  price: numeric("price", { precision: 15, scale: 2 }).notNull(),
 });
