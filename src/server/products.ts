@@ -87,17 +87,61 @@ export interface PaginatedProductsResult {
   totalPages: number;
 }
 
+// Search-query helpers for the dev-server /api/products route.
+// Mirrors the production handler in api/index.ts: tokenize on whitespace,
+// lowercase, strip non-alphanumeric edges, drop empties; escape ILIKE
+// wildcards in user input.
+const tokenizeSearchQuery = (q: string): string[] =>
+  q
+    .toLowerCase()
+    .split(/\s+/)
+    .map((t) => t.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, ""))
+    .filter((t) => t.length > 0);
+
+const escapeLikePattern = (s: string): string =>
+  s
+    .replace(/\\/g, () => "\\\\")
+    .replace(/%/g, () => "\\%")
+    .replace(/_/g, () => "\\_");
+
+const buildProductSearchWhere = (tokens: string[]): { whereSql: string; params: string[] } => {
+  const params: string[] = [];
+  const tokenClauses = tokens.map((rawToken) => {
+    const token = escapeLikePattern(rawToken);
+    const i = params.length + 1;
+    params.push(`%${token}%`);
+    return `(
+      p.brand    ILIKE $${i} OR
+      p.model    ILIKE $${i} OR
+      p.id       ILIKE $${i} OR
+      p.supplier ILIKE $${i}
+    )`;
+  });
+  const whereSql = `p.deleted = false${tokenClauses.length > 0 ? ` AND ${tokenClauses.join(" AND ")}` : ""}`;
+  return { whereSql, params };
+};
+
 export const getAllProducts = async (
   page: number = 1,
   limit: number = 20,
+  q?: string,
 ): Promise<PaginatedProductsResult> => {
   const offset = (page - 1) * limit;
+  const trimmedQ = (q || "").trim();
+  const tokens = trimmedQ === "" ? [] : tokenizeSearchQuery(trimmedQ);
+  const { whereSql, params: searchParams } = buildProductSearchWhere(tokens);
 
-  // Get total count
+  // Get total count (filtered by the same WHERE as the data query)
   const countResult = await client.unsafe(
-    "SELECT COUNT(*) as count FROM products WHERE deleted = false",
+    `SELECT COUNT(*) as count FROM products p WHERE ${whereSql}`,
+    searchParams,
   );
   const total = parseInt(countResult[0]?.count || "0", 10);
+
+  // Data query: limit/offset follow the search tokens in the param list.
+  const dataParams = [...searchParams, limit, offset];
+  const limitIdx = dataParams.length - 1;
+  const offsetIdx = dataParams.length;
 
   // Use direct SQL to avoid any Drizzle ORM issues
   const rawResult = await client.unsafe(
@@ -109,11 +153,11 @@ export const getAllProducts = async (
       p.tax_enabled, p.invoice_number, p.created_at,
       (SELECT COUNT(*) FROM serial_numbers sn WHERE sn.product_id = p.id) as sn_count
     FROM products p
-    WHERE p.deleted = false
+    WHERE ${whereSql}
     ORDER BY p.created_at DESC
-    LIMIT $1 OFFSET $2
+    LIMIT $${limitIdx} OFFSET $${offsetIdx}
   `,
-    [limit, offset],
+    dataParams,
   );
 
   return {

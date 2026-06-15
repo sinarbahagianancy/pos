@@ -13,6 +13,13 @@ export interface PaginatedProductsResult {
 export interface ProductsParams {
   page?: number;
   limit?: number;
+  /**
+   * Free-text search query. Tokenized on whitespace server-side; each token
+   * must be a case-insensitive substring of at least one of
+   * (brand, model, id, supplier), with all tokens required (AND).
+   * Empty/whitespace-only is treated as "no filter".
+   */
+  q?: string;
 }
 
 export interface PaginatedAuditLogsResult {
@@ -52,11 +59,15 @@ export const getAllAuditLogs = async (
 export const getAllProducts = async (
   params: ProductsParams = {},
 ): Promise<PaginatedProductsResult> => {
-  const { page = 1, limit = 20 } = params;
-  const queryString = new URLSearchParams({
+  const { page = 1, limit = 20, q } = params;
+  const searchParams: Record<string, string> = {
     page: page.toString(),
     limit: limit.toString(),
-  }).toString();
+  };
+  if (q !== undefined && q.trim() !== "") {
+    searchParams.q = q;
+  }
+  const queryString = new URLSearchParams(searchParams).toString();
 
   const response = await fetch(`${API_BASE}/products?${queryString}`);
   if (!response.ok) {

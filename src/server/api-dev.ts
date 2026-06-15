@@ -27,7 +27,8 @@ export default function apiServerPlugin() {
             try {
               const page = parseInt(queryParams.page as string) || 1;
               const limit = parseInt(queryParams.limit as string) || 20;
-              const result = await getAllProducts(page, limit);
+              const q = (queryParams.q as string) || "";
+              const result = await getAllProducts(page, limit, q);
               res.setHeader("Content-Type", "application/json");
               res.end(JSON.stringify(result));
               return;

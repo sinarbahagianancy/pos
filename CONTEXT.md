@@ -131,6 +131,22 @@ _Avoid_ for Batch Input Barang: Restock, Stock Addition, Penerimaan Barang (all 
 - **Surat Penarikan Barang**: `recipient` is free-form text (person or department). No link to `customers` or `staff_members` table. v1 has no autocomplete.
 - **Batch Input Barang**: `supplier` is a dropdown of existing `suppliers` (must be added via the Suppliers page first; no inline supplier creation in v1).
 
+### Inventory Search
+
+- **Server-side, case-insensitive, token-AND substring match.** Applied to the Inventory page's search box (placeholder: `"Cari produk..."`). Runs on the DB; the result set is paginated, not loaded into memory.
+- **Searchable columns**: `brand`, `model`, `id`, `supplier`. (Not `category` / `condition` / `mount` — those are structured enums, reserved for a future filter dropdown.)
+- **Tokenization**: query is split on whitespace, lowercased, and each token has leading/trailing non-alphanumeric characters stripped. Empty tokens are discarded. So `"  Sony A7!  "` → `["sony", "a7"]`.
+- **Matching rule (per-token cross-column AND)**: each token must be a substring of at least one of the four searchable columns, and all tokens must match. Tokens may hit different columns. Example: query `"sony a7"` matches a product with `brand="Sony", model="A7 IV"` because `"sony"` hits `brand` and `"a7"` hits `model`.
+- **ILIKE wildcard escaping**: `%`, `_`, and `\` in the user input are escaped before being embedded in the SQL pattern, so a user typing `"50%"` matches the literal substring `"50%"`, not `"50<anything>"`.
+- **Empty query**: an empty (or whitespace-only) query means no `WHERE` filter beyond the existing `deleted = false` — i.e. the normal unfiltered list, newest first.
+- **Sort order with an active search**: results are still ordered `created_at DESC` (newest first). B has no relevance score, so all matches are equally "correct"; preserving the unfiltered order is the only sensible choice.
+- **Pagination interaction**: every search change (including clearing) resets the page to 1.
+- **Debounce**: 300ms between input stop and API request.
+- **Empty state**: when the search returns zero matches, the table body shows a single row with the message `"Tidak ada produk yang cocok dengan pencarian."` (Indonesian, matching the rest of the table's voice).
+- **Future migration to typo-tolerant search (Trigram similarity / `pg_trgm`)**: the matching rule can be swapped without changing the API contract or the client. The natural C-strategy migration point adds a GIN index on `lower(brand || ' ' || model || ' ' || supplier || ' ' || id)` with `gin_trgm_ops` and replaces the ILIKE chain with a similarity-ranked query.
+
+_Avoid_ `LIKE '%' || q || '%'` without escaping — a user typing `"50%"` would otherwise match `"50 anything"`. _Avoid_ including `category` / `condition` / `mount` in the free-text search — they're structured enums, not free text. _Avoid_ re-ranking by relevance in v1 — with B there is no relevance score, and the `created_at DESC` order is the only meaningful one.
+
 ### Penarikan Reason (Alasan) Structure
 
 - New Postgres enum `penarikan_reason` with values: `Rusak`, `Expired`, `Dipakai Internal`, `Sample/Display`, `Employee Sale`, `Hilang`, `Recall`, `Lainnya`.

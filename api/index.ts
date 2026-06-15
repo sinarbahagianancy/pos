@@ -625,6 +625,49 @@ const db = {
   },
 };
 
+// Search-query helpers for GET /api/products.
+// Tokenize: split on whitespace, lowercase, strip non-alphanumeric edges,
+// drop empties. So "  Sony A7!  " -> ["sony", "a7"].
+const tokenizeSearchQuery = (q: string): string[] =>
+  q
+    .toLowerCase()
+    .split(/\s+/)
+    .map((t) => t.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, ""))
+    .filter((t) => t.length > 0);
+
+// Escape ILIKE wildcards in user input so a user typing "50%" matches
+// the literal substring "50%", not "50<anything>". The escape character
+// itself must be escaped first. Uses a function-form replacement to
+// sidestep String.prototype.replace's $ and \ special-character handling.
+const escapeLikePattern = (s: string): string =>
+  s
+    .replace(/\\/g, () => "\\\\")
+    .replace(/%/g, () => "\\%")
+    .replace(/_/g, () => "\\_");
+
+// Build the dynamic WHERE clause for a per-token cross-column AND search
+// across (brand, model, id, supplier). Returns the SQL fragment (without
+// the leading "WHERE") and the matching parameter list.
+//
+// The caller is responsible for combining this with the rest of the
+// query (e.g. the data + count queries in GET /api/products).
+const buildProductSearchWhere = (tokens: string[]): { whereSql: string; params: string[] } => {
+  const params: string[] = [];
+  const tokenClauses = tokens.map((rawToken) => {
+    const token = escapeLikePattern(rawToken);
+    const i = params.length + 1;
+    params.push(`%${token}%`);
+    return `(
+      brand    ILIKE $${i} OR
+      model    ILIKE $${i} OR
+      id       ILIKE $${i} OR
+      supplier ILIKE $${i}
+    )`;
+  });
+  const whereSql = `deleted = false${tokenClauses.length > 0 ? ` AND ${tokenClauses.join(" AND ")}` : ""}`;
+  return { whereSql, params };
+};
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { method, url } = req;
 
@@ -661,22 +704,54 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   };
 
   try {
-    // GET /api/products with pagination
+    // GET /api/products with pagination + optional free-text search
+    // (search: ?q=...  -- case-insensitive, token-AND substring across
+    // brand, model, id, supplier; sort is always created_at DESC).
     if (method === "GET" && (url === "/api/products" || url?.startsWith("/api/products?"))) {
       const { page, limit } = getPageLimit(req);
-      const { data, total, totalPages } = await getPaginatedResults(
-        "products",
-        "deleted = false",
-        "created_at DESC",
-        page,
-        limit,
+      const queryParams = (req.query as Record<string, string>) || {};
+      const q = (queryParams.q || "").trim();
+
+      if (q === "") {
+        // Fast path: no search filter, identical to the pre-search behavior.
+        const { data, total, totalPages } = await getPaginatedResults(
+          "products",
+          "deleted = false",
+          "created_at DESC",
+          page,
+          limit,
+        );
+        return res.status(200).json({
+          products: data.map(parseDbProduct),
+          total,
+          page,
+          limit,
+          totalPages,
+        });
+      }
+
+      // Search path: tokenize, escape ILIKE wildcards, build a dynamic
+      // WHERE clause. Per-token cross-column AND across (brand, model, id, supplier).
+      const tokens = tokenizeSearchQuery(q);
+      const { whereSql, params: searchParams } = buildProductSearchWhere(tokens);
+      const offset = (page - 1) * limit;
+
+      const dataParams = [...searchParams, limit, offset];
+      const result = await query(
+        `SELECT * FROM products WHERE ${whereSql} ORDER BY created_at DESC LIMIT $${dataParams.length - 1} OFFSET $${dataParams.length}`,
+        dataParams,
       );
+      const countResult = await query(
+        `SELECT COUNT(*) as count FROM products WHERE ${whereSql}`,
+        searchParams,
+      );
+      const total = Number(countResult[0]?.count) || 0;
       return res.status(200).json({
-        products: data.map(parseDbProduct),
+        products: result.map(parseDbProduct),
         total,
         page,
         limit,
-        totalPages,
+        totalPages: Math.ceil(total / limit),
       });
     }
 
