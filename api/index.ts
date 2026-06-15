@@ -3424,23 +3424,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           date: String(r.date),
           notes: r.notes || undefined,
           staffName: r.staff_name,
-          items: (itemsByBatch[r.id as string] || []).map((it: any) => ({
-            id: it.id,
-            batchInputId: it.batch_input_id,
-            productId: it.product_id,
-            brand: it.brand || undefined,
-            model: it.model,
-            quantity: it.quantity,
-            sns: (() => {
-              try {
-                return JSON.parse(it.sns);
-              } catch {
-                return [];
-              }
-            })(),
-            cogs: typeof it.cogs === "string" ? parseFloat(it.cogs) : it.cogs,
-            price: typeof it.price === "string" ? parseFloat(it.price) : it.price,
-          })),
+          items: (itemsByBatch[r.id as string] || []).map((it: any) => {
+            let sns: string[] = [];
+            try {
+              sns = JSON.parse((it.sns as string) || "[]");
+            } catch {
+              sns = [];
+            }
+            return {
+              id: it.id,
+              batchInputId: it.batch_input_id,
+              productId: it.product_id,
+              brand: it.brand || undefined,
+              model: it.model,
+              category: (it.category as string) || "Body",
+              condition: (it.condition as string) || "New",
+              mount: it.mount || undefined,
+              warrantyType: (it.warranty_type as string) || "Official Sony Indonesia",
+              warrantyMonths: (it.warranty_months as number) || 12,
+              cogs: typeof it.cogs === "string" ? parseFloat(it.cogs) : it.cogs,
+              price: typeof it.price === "string" ? parseFloat(it.price) : it.price,
+              hasSerialNumber: Boolean(it.has_serial_number),
+              taxEnabled: it.tax_enabled === undefined ? true : Boolean(it.tax_enabled),
+              quantity: it.quantity,
+              sns,
+            };
+          }),
           createdAt: String(r.created_at),
         })),
         total,
@@ -3465,9 +3474,72 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       try {
         const result = await getClient().begin(async (tx) => {
+          // 1. Header uniqueness check (supplier invoice = batch id)
           const [existing] = await tx.unsafe("SELECT id FROM batch_inputs WHERE id = $1", [id]);
-          if (existing) throw new Error(`Batch with supplier invoice '${id}' already exists`);
+          if (existing) throw new Error(`Batch dengan nomor invoice '${id}' sudah ada`);
 
+          // 2. Duplicate-SKU check against the existing catalog
+          for (let i = 0; i < items.length; i++) {
+            const it = items[i] as Record<string, unknown>;
+            const brand = it.brand ? String(it.brand).trim() : "";
+            const model = String(it.model ?? "").trim();
+            if (!model) throw new Error(`Item #${i + 1}: model is required`);
+            const [clash] = await tx.unsafe(
+              `SELECT brand, model, stock FROM products
+               WHERE LOWER(TRIM(COALESCE(brand, ''))) = LOWER(TRIM($1))
+                 AND LOWER(TRIM(model)) = LOWER(TRIM($2))
+                 AND deleted = false
+               LIMIT 1`,
+              [brand, model],
+            );
+            if (clash) {
+              const c = clash as { brand?: string; model: string; stock: number };
+              throw new Error(
+                `Item #${i + 1}: "${c.brand ?? ""} ${c.model}" sudah ada di katalog (stok: ${c.stok}). ` +
+                  `Gunakan Inventory > Tambah Stok untuk menambah stok barang yang sudah ada.`,
+              );
+            }
+          }
+
+          // 3. Duplicate-SKU check WITHIN the batch
+          const seenInBatch = new Set<string>();
+          for (let i = 0; i < items.length; i++) {
+            const it = items[i] as Record<string, unknown>;
+            const brand = it.brand ? String(it.brand).trim() : "";
+            const model = String(it.model ?? "").trim();
+            const key = `${brand.toLowerCase()}|${model.toLowerCase()}`;
+            if (seenInBatch.has(key)) {
+              throw new Error(`Item #${i + 1}: duplikat SKU dalam batch`);
+            }
+            seenInBatch.add(key);
+          }
+
+          // 4. SN uniqueness checks: across the batch, and against existing serial_numbers
+          const allBatchSNs: string[] = [];
+          for (const raw of items as Array<Record<string, unknown>>) {
+            if (raw.hasSerialNumber) {
+              const sns = Array.isArray(raw.sns)
+                ? (raw.sns as unknown[]).map((s) => String(s).trim()).filter(Boolean)
+                : [];
+              for (const sn of sns) {
+                if (allBatchSNs.includes(sn)) {
+                  throw new Error(`SN '${sn}' muncul lebih dari sekali dalam batch`);
+                }
+                allBatchSNs.push(sn);
+              }
+            }
+          }
+          if (allBatchSNs.length > 0) {
+            const [clash] = await tx.unsafe(
+              `SELECT sn FROM serial_numbers WHERE sn = ANY($1::text[])`,
+              [allBatchSNs],
+            );
+            if (clash) {
+              throw new Error(`SN '${(clash as { sn: string }).sn}' sudah ada di sistem`);
+            }
+          }
+
+          // 5. Insert header FIRST so the FK from batch_input_items has a target
           await tx.unsafe(
             `INSERT INTO batch_inputs (id, supplier, date, notes, staff_name)
              VALUES ($1, $2, $3, $4, $5)`,
@@ -3480,111 +3552,137 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             ],
           );
 
-          for (const it of items as Array<Record<string, unknown>>) {
-            const [product] = await tx.unsafe(
-              "SELECT id, has_serial_number, invoice_number, brand FROM products WHERE id = $1 FOR UPDATE",
-              [String(it.productId)],
+          // 6. For each row: insert new product, snapshot row, SN rows, audit
+          for (const raw of items as Array<Record<string, unknown>>) {
+            const brand = raw.brand ? String(raw.brand).trim() : "";
+            const model = String(raw.model).trim();
+            const category = String(raw.category ?? "Body");
+            const condition = String(raw.condition ?? "New");
+            const mount = raw.mount ? String(raw.mount) : null;
+            const warrantyType = String(raw.warrantyType ?? "Official Sony Indonesia");
+            const warrantyMonths = typeof raw.warrantyMonths === "number" ? raw.warrantyMonths : 12;
+            const cogs = typeof raw.cogs === "number" ? raw.cogs : 0;
+            const price = typeof raw.price === "number" ? raw.price : 0;
+            const hasSerialNumber = Boolean(raw.hasSerialNumber);
+            const taxEnabled = raw.taxEnabled === undefined ? true : Boolean(raw.taxEnabled);
+            const quantity = typeof raw.quantity === "number" ? raw.quantity : 0;
+            const sns = Array.isArray(raw.sns)
+              ? (raw.sns as unknown[]).map((s) => String(s).trim()).filter(Boolean)
+              : [];
+
+            if (quantity <= 0) throw new Error(`Item ${model}: quantity must be > 0`);
+            if (hasSerialNumber && sns.length !== quantity) {
+              throw new Error(`Item ${model}: butuh ${quantity} SN, dapat ${sns.length}`);
+            }
+
+            const newPid = `BRC-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            const stockForNewProduct = hasSerialNumber ? sns.length : quantity;
+            const restockEntry = {
+              sn: sns,
+              inv: id,
+              timestamp: new Date().toISOString(),
+            };
+
+            await tx.unsafe(
+              `INSERT INTO products (
+                id, brand, model, category, mount, condition,
+                price, cogs, warranty_months, warranty_type,
+                stock, has_serial_number, supplier, date_restocked,
+                tax_enabled, deleted, hidden,
+                invoice_number, created_at, updated_at
+              ) VALUES (
+                $1, $2, $3, $4, $5, $6,
+                $7, $8, $9, $10,
+                $11, $12, $13, $14,
+                $15, false, 0,
+                $16, NOW(), NOW()
+              )`,
+              [
+                newPid,
+                brand || "N/A",
+                model,
+                category,
+                mount,
+                condition,
+                String(price),
+                String(cogs),
+                warrantyMonths,
+                warrantyType,
+                stockForNewProduct,
+                hasSerialNumber,
+                supplier,
+                input.date ? new Date(String(input.date)) : new Date(),
+                taxEnabled,
+                JSON.stringify([restockEntry]),
+              ],
             );
-            if (!product) throw new Error(`Product ${String(it.productId)} not found`);
-            const hasSerialNumber = (product as { has_serial_number: boolean }).has_serial_number;
-            const sns = Array.isArray(it.sns) ? (it.sns as string[]).map(String) : [];
-            const quantity = typeof it.quantity === "number" ? (it.quantity as number) : 0;
-            const cogs = typeof it.cogs === "number" ? (it.cogs as number) : 0;
-            const price = typeof it.price === "number" ? (it.price as number) : 0;
+
+            await tx.unsafe(
+              `INSERT INTO batch_input_items (
+                batch_input_id, product_id, brand, model,
+                category, condition, mount, warranty_type, warranty_months,
+                cogs, price, has_serial_number, tax_enabled,
+                quantity, sns
+              ) VALUES (
+                $1, $2, $3, $4,
+                $5, $6, $7, $8, $9,
+                $10, $11, $12, $13,
+                $14, $15
+              )`,
+              [
+                id,
+                newPid,
+                brand || null,
+                model,
+                category,
+                condition,
+                mount,
+                warrantyType,
+                warrantyMonths,
+                String(cogs),
+                String(price),
+                hasSerialNumber,
+                taxEnabled,
+                quantity,
+                JSON.stringify(sns),
+              ],
+            );
 
             if (hasSerialNumber) {
-              if (sns.length !== quantity) {
-                throw new Error(
-                  `SN count mismatch for ${String(it.model)}: need ${quantity}, got ${sns.length}`,
-                );
-              }
-              const seen = new Set<string>();
-              for (const sn of sns) {
-                if (seen.has(sn))
-                  throw new Error(`Duplicate SN '${sn}' in batch for ${String(it.model)}`);
-                seen.add(sn);
-              }
-              for (const sn of sns) {
-                const [existingSn] = await tx.unsafe(
-                  "SELECT sn FROM serial_numbers WHERE sn = $1",
-                  [sn],
-                );
-                if (existingSn) throw new Error(`SN '${sn}' already exists in inventory`);
-              }
               for (const sn of sns) {
                 await tx.unsafe(
                   `INSERT INTO serial_numbers (sn, product_id, status) VALUES ($1, $2, 'In Stock')`,
-                  [sn, String(it.productId)],
+                  [sn, newPid],
                 );
               }
             }
-
-            const brand: string | null = it.brand
-              ? String(it.brand)
-              : (product as { brand?: string }).brand || null;
-            await tx.unsafe(
-              `INSERT INTO batch_input_items (batch_input_id, product_id, brand, model, quantity, sns, cogs, price)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-              [
-                id,
-                String(it.productId),
-                brand,
-                String(it.model),
-                quantity,
-                JSON.stringify(sns),
-                String(cogs),
-                String(price),
-              ],
-            );
-
-            const existingInvoice = (product as { invoice_number: string | null }).invoice_number;
-            let restockHistory: Array<{ sn: string[]; inv: string; timestamp: string }> = [];
-            if (existingInvoice) {
-              try {
-                restockHistory = JSON.parse(existingInvoice);
-              } catch {
-                restockHistory = [];
-              }
-            }
-            restockHistory.push({ sn: sns, inv: id, timestamp: new Date().toISOString() });
-
-            await tx.unsafe(
-              `UPDATE products
-               SET stock = stock + $1, cogs = $2, price = $3, supplier = $4, date_restocked = $5, invoice_number = $6, updated_at = NOW()
-               WHERE id = $7`,
-              [
-                quantity,
-                String(cogs),
-                String(price),
-                supplier,
-                input.date ? new Date(String(input.date)) : new Date(),
-                JSON.stringify(restockHistory),
-                String(it.productId),
-              ],
-            );
 
             const snDetail = sns.length > 0 ? ` SN: ${sns.join(", ")}` : "";
             await tx.unsafe(
               `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())`,
               [
-                `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+                `LOG-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
                 staffName,
                 "Stock Addition",
-                `Added ${quantity} unit(s) of ${String(it.model)} from supplier ${supplier}, invoice: ${id}.${snDetail}`,
-                String(it.productId),
+                `Created product ${brand} ${model} (${quantity} unit(s), harga: ${price}, cogs: ${cogs}) from supplier ${supplier}, invoice: ${id}.${snDetail}`,
+                newPid,
               ],
             );
           }
+
+          // 7. Summary audit log
           await tx.unsafe(
             `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())`,
             [
-              `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+              `LOG-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
               staffName,
               "Batch Input Created",
-              `BI ${id} — ${items.length} item(s) from ${supplier}`,
+              `BI ${id} — ${items.length} produk baru dari ${supplier}`,
               id,
             ],
           );
+
+          // 8. Return the new batch
           const [header] = await tx.unsafe("SELECT * FROM batch_inputs WHERE id = $1", [id]);
           const itemRows = await tx.unsafe(
             "SELECT * FROM batch_input_items WHERE batch_input_id = $1 ORDER BY id",
@@ -3607,7 +3705,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         "SELECT * FROM batch_input_items WHERE batch_input_id = $1 ORDER BY id",
         [batchId],
       );
-      return res.status(200).json({ ...header, items: itemRows });
+      const items = (itemRows as Array<Record<string, unknown>>).map((it) => {
+        let sns: string[] = [];
+        try {
+          sns = JSON.parse((it.sns as string) || "[]");
+        } catch {
+          sns = [];
+        }
+        return {
+          id: it.id,
+          batchInputId: it.batch_input_id,
+          productId: it.product_id,
+          brand: it.brand || undefined,
+          model: it.model,
+          category: (it.category as string) || "Body",
+          condition: (it.condition as string) || "New",
+          mount: it.mount || undefined,
+          warrantyType: (it.warranty_type as string) || "Official Sony Indonesia",
+          warrantyMonths: (it.warranty_months as number) || 12,
+          cogs: typeof it.cogs === "string" ? parseFloat(it.cogs) : it.cogs,
+          price: typeof it.price === "string" ? parseFloat(it.price) : it.price,
+          hasSerialNumber: Boolean(it.has_serial_number),
+          taxEnabled: it.tax_enabled === undefined ? true : Boolean(it.tax_enabled),
+          quantity: it.quantity,
+          sns,
+        };
+      });
+      return res.status(200).json({ ...header, items });
     }
 
     // GET /api/audit-logs with pagination
