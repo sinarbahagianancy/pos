@@ -38,7 +38,11 @@ export type AuditAction =
   | "Warranty Updated"
   | "Sale Created"
   | "Login"
-  | "Logout";
+  | "Logout"
+  | "Quotation Created"
+  | "Quotation Approved"
+  | "Quotation Rejected"
+  | "Quotation Canceled";
 
 export interface Supplier {
   id: string;
@@ -117,12 +121,47 @@ export interface Sale {
   paymentMethod: PaymentMethod;
   staffName: string;
   notes?: string;
+  poNumber?: string;
+  quotationId?: string;
   dueDate?: string;
   isPaid?: boolean;
   paidAt?: string;
   amountPaid?: number;
   installments?: { amount: number; timestamp: string }[];
   timestamp: string;
+}
+
+export type QuotationStatus = "Pending" | "Approved" | "Rejected" | "Canceled";
+
+export interface QuotationItem {
+  id: string;
+  quotationId: string;
+  productId: string;
+  brand?: string;
+  model: string;
+  sn: string;
+  price: number;
+  quantity: number;
+}
+
+export interface Quotation {
+  id: string;
+  customerId?: string;
+  customerName: string;
+  items: QuotationItem[];
+  subtotal: number;
+  tax: number;
+  taxEnabled?: boolean;
+  total: number;
+  staffName: string;
+  notes?: string;
+  poNumber?: string;
+  status: QuotationStatus;
+  rejectionReason?: string;
+  convertedSaleId?: string;
+  createdAt: string;
+  decidedAt?: string;
+  decidedBy?: string;
 }
 
 export interface WarrantyClaim {
@@ -161,4 +200,87 @@ export interface StaffMember {
   name: string;
   role: string;
   authUserId?: string;
+}
+
+// ============================================================
+// Surat Jalan (Delivery Note)
+// ============================================================
+export interface SuratJalanItem {
+  id: string;
+  suratJalanId: string;
+  productId: string;
+  brand?: string;
+  model: string;
+  sn: string;
+  quantity: number;
+}
+
+export interface SuratJalan {
+  id: string;
+  customerId?: string;
+  customerName: string;
+  poNumber?: string;
+  notes?: string;
+  staffName: string;
+  items: SuratJalanItem[];
+  createdAt: string;
+}
+
+// ============================================================
+// Surat Penarikan Barang (Goods Withdrawal)
+// ============================================================
+export type PenarikanReason =
+  | "Rusak"
+  | "Expired"
+  | "Dipakai Internal"
+  | "Sample/Display"
+  | "Employee Sale"
+  | "Hilang"
+  | "Recall"
+  | "Lainnya";
+
+export interface SuratPenarikanItem {
+  id: string;
+  suratPenarikanId: string;
+  productId: string;
+  brand?: string;
+  model: string;
+  sn: string;
+  quantity: number;
+}
+
+export interface SuratPenarikan {
+  id: string;
+  recipient: string;
+  reason: PenarikanReason;
+  alasanLainnya?: string;
+  notes?: string;
+  staffName: string;
+  items: SuratPenarikanItem[];
+  createdAt: string;
+}
+
+// ============================================================
+// Batch Input Barang (Bulk Restock)
+// ============================================================
+export interface BatchInputItem {
+  id: string;
+  batchInputId: string;
+  productId: string;
+  brand?: string;
+  model: string;
+  quantity: number;
+  sns: string[];
+  cogs: number;
+  price: number;
+}
+
+export interface BatchInput {
+  id: string; // supplier's invoice number (Nomor Invoice Masuk)
+  supplier: string;
+  date: string;
+  notes?: string;
+  staffName: string;
+  items: BatchInputItem[];
+  createdAt: string;
 }

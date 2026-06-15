@@ -1,0 +1,188 @@
+import type { PenarikanReason } from "../types";
+
+export const PenarikanReasons: PenarikanReason[] = [
+  "Rusak",
+  "Expired",
+  "Dipakai Internal",
+  "Sample/Display",
+  "Employee Sale",
+  "Hilang",
+  "Recall",
+  "Lainnya",
+];
+
+// ============================================================
+// Surat Jalan
+// ============================================================
+export interface CreateSuratJalanItemInput {
+  productId: string;
+  brand?: string;
+  model: string;
+  sn?: string; // required for SN products; can be NOSN-* or empty for non-SN
+  quantity?: number; // defaults to 1
+}
+
+export interface CreateSuratJalanInput {
+  customerId?: string;
+  customerName: string;
+  poNumber: string;
+  notes?: string;
+  staffName: string;
+  items: CreateSuratJalanItemInput[];
+}
+
+export const validateCreateSuratJalanInput = (input: unknown): CreateSuratJalanInput => {
+  const data = input as Record<string, unknown>;
+  if (!data || typeof data !== "object") {
+    throw new Error("Invalid Surat Jalan input");
+  }
+  const customerName = String(data.customerName ?? "").trim();
+  if (!customerName) throw new Error("Customer name is required");
+  const staffName = String(data.staffName ?? "").trim();
+  if (!staffName) throw new Error("Staff name is required");
+  const poNumber = String(data.poNumber ?? "").trim();
+  if (!poNumber) throw new Error("PO Number is required");
+  const items = Array.isArray(data.items) ? data.items : [];
+  if (items.length === 0) throw new Error("Surat Jalan must have at least 1 item");
+  const customerId = data.customerId ? String(data.customerId) : undefined;
+  const notes = data.notes ? String(data.notes) : undefined;
+  const validatedItems = items.map((raw: unknown, idx: number) => {
+    const it = raw as Record<string, unknown>;
+    if (!it.productId || !String(it.productId)) {
+      throw new Error(`Item #${idx + 1}: productId is required`);
+    }
+    if (!it.model || !String(it.model)) {
+      throw new Error(`Item #${idx + 1}: model is required`);
+    }
+    return {
+      productId: String(it.productId),
+      brand: it.brand ? String(it.brand) : undefined,
+      model: String(it.model),
+      sn: it.sn ? String(it.sn) : "",
+      quantity: typeof it.quantity === "number" && it.quantity > 0 ? it.quantity : 1,
+    };
+  });
+  return { customerId, customerName, poNumber, notes, staffName, items: validatedItems };
+};
+
+// ============================================================
+// Surat Penarikan
+// ============================================================
+export interface CreateSuratPenarikanItemInput {
+  productId: string;
+  brand?: string;
+  model: string;
+  sn?: string;
+  quantity?: number;
+}
+
+export interface CreateSuratPenarikanInput {
+  recipient: string;
+  reason: PenarikanReason;
+  alasanLainnya?: string;
+  notes?: string;
+  staffName: string;
+  items: CreateSuratPenarikanItemInput[];
+}
+
+export const validateCreateSuratPenarikanInput = (input: unknown): CreateSuratPenarikanInput => {
+  const data = input as Record<string, unknown>;
+  if (!data || typeof data !== "object") {
+    throw new Error("Invalid Surat Penarikan input");
+  }
+  const recipient = String(data.recipient ?? "").trim();
+  if (!recipient) throw new Error("Recipient (Penarik) is required");
+  const reason = String(data.reason ?? "") as PenarikanReason;
+  if (!PenarikanReasons.includes(reason)) {
+    throw new Error(`Invalid reason: ${reason}`);
+  }
+  const alasanLainnya = data.alasanLainnya ? String(data.alasanLainnya).trim() : undefined;
+  if (reason === "Lainnya" && !alasanLainnya) {
+    throw new Error("Free-form reason (alasan_lainnya) is required when reason = 'Lainnya'");
+  }
+  const staffName = String(data.staffName ?? "").trim();
+  if (!staffName) throw new Error("Staff name is required");
+  const items = Array.isArray(data.items) ? data.items : [];
+  if (items.length === 0) throw new Error("Surat Penarikan must have at least 1 item");
+  const notes = data.notes ? String(data.notes) : undefined;
+  const validatedItems = items.map((raw: unknown, idx: number) => {
+    const it = raw as Record<string, unknown>;
+    if (!it.productId || !String(it.productId)) {
+      throw new Error(`Item #${idx + 1}: productId is required`);
+    }
+    if (!it.model || !String(it.model)) {
+      throw new Error(`Item #${idx + 1}: model is required`);
+    }
+    return {
+      productId: String(it.productId),
+      brand: it.brand ? String(it.brand) : undefined,
+      model: String(it.model),
+      sn: it.sn ? String(it.sn) : "",
+      quantity: typeof it.quantity === "number" && it.quantity > 0 ? it.quantity : 1,
+    };
+  });
+  return { recipient, reason, alasanLainnya, notes, staffName, items: validatedItems };
+};
+
+// ============================================================
+// Batch Input
+// ============================================================
+export interface CreateBatchInputItemInput {
+  productId: string;
+  brand?: string;
+  model: string;
+  quantity: number;
+  sns: string[];
+  cogs: number;
+  price: number;
+}
+
+export interface CreateBatchInputInput {
+  id: string; // supplier's invoice number (Nomor Invoice Masuk)
+  supplier: string;
+  date?: string;
+  notes?: string;
+  staffName: string;
+  items: CreateBatchInputItemInput[];
+}
+
+export const validateCreateBatchInputInput = (input: unknown): CreateBatchInputInput => {
+  const data = input as Record<string, unknown>;
+  if (!data || typeof data !== "object") {
+    throw new Error("Invalid Batch Input input");
+  }
+  const id = String(data.id ?? "").trim();
+  if (!id) throw new Error("Nomor Invoice Masuk (id) is required");
+  const supplier = String(data.supplier ?? "").trim();
+  if (!supplier) throw new Error("Supplier is required");
+  const staffName = String(data.staffName ?? "").trim();
+  if (!staffName) throw new Error("Staff name is required");
+  const items = Array.isArray(data.items) ? data.items : [];
+  if (items.length === 0) throw new Error("Batch Input must have at least 1 item");
+  const date = data.date ? String(data.date) : undefined;
+  const notes = data.notes ? String(data.notes) : undefined;
+  const validatedItems = items.map((raw: unknown, idx: number) => {
+    const it = raw as Record<string, unknown>;
+    if (!it.productId || !String(it.productId)) {
+      throw new Error(`Item #${idx + 1}: productId is required`);
+    }
+    if (!it.model || !String(it.model)) {
+      throw new Error(`Item #${idx + 1}: model is required`);
+    }
+    const quantity = typeof it.quantity === "number" ? it.quantity : 0;
+    if (quantity <= 0) throw new Error(`Item #${idx + 1}: quantity must be > 0`);
+    const sns = Array.isArray(it.sns) ? it.sns.map((s) => String(s)) : [];
+    const cogs = typeof it.cogs === "number" ? it.cogs : 0;
+    const price = typeof it.price === "number" ? it.price : 0;
+    return {
+      productId: String(it.productId),
+      brand: it.brand ? String(it.brand) : undefined,
+      model: String(it.model),
+      quantity,
+      sns,
+      cogs,
+      price,
+    };
+  });
+  return { id, supplier, date, notes, staffName, items: validatedItems };
+};
