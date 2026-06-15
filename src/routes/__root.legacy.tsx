@@ -1,3 +1,5 @@
+// Dead code — see src/router.tsx for the active AppLayout. Kept temporarily for reference.
+// Nothing imports from this file; do not edit as if it were live.
 import React from "react";
 import { Outlet, Link, useNavigate } from "@tanstack/react-router";
 
