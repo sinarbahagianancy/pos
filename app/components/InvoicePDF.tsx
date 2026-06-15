@@ -411,7 +411,10 @@ interface InvoiceItem {
   sn: string;
   price: number;
   warrantyExpiry?: string;
+  quantity?: number; // for Surat Jalan / Penarikan / Batch Input
 }
+
+export type InvoiceDocumentKind = "invoice" | "quotation" | "surat-jalan" | "surat-penarikan";
 
 interface InvoiceData {
   // Store info
@@ -436,10 +439,14 @@ interface InvoiceData {
   customerAddress?: string;
   customerNpwp?: string;
 
+  // Penarikan fields
+  recipient?: string; // Penarik (person or department)
+  reason?: string; // Alasan (e.g. "Rusak", "Lainnya: ...")
+
   // Items
   items: InvoiceItem[];
 
-  // Totals
+  // Totals (only used by invoice/quotation)
   subtotal: number;
   tax: number;
   taxRate?: number;
@@ -504,13 +511,37 @@ const PhoneIcon = ({ size = 6, color = "#000000" }: { size?: number; color?: str
 // Component
 // ============================================================
 
-export const InvoiceDocument: React.FC<{ data: InvoiceData; layout?: InvoiceLayout }> = ({
-  data,
-  layout = "a5-landscape",
-}) => {
-  const isQuotation = data.isQuotation || false;
+export const InvoiceDocument: React.FC<{
+  data: InvoiceData;
+  layout?: InvoiceLayout;
+  kind?: InvoiceDocumentKind;
+}> = ({ data, layout = "a5-landscape", kind }) => {
+  // Derive flags from `kind`, falling back to legacy `isQuotation` on data
+  const resolvedKind: InvoiceDocumentKind = kind ?? (data.isQuotation ? "quotation" : "invoice");
+  const isInvoice = resolvedKind === "invoice";
+  const isQuotation = resolvedKind === "quotation";
+  const isSuratJalan = resolvedKind === "surat-jalan";
+  const isSuratPenarikan = resolvedKind === "surat-penarikan";
+  // Surat Jalan & Surat Penarikan have no prices, totals, or payment
+  const hidePrices = isSuratJalan || isSuratPenarikan;
+  const hideTotals = isSuratJalan || isSuratPenarikan;
+  const hideTerbilang = isSuratJalan || isSuratPenarikan;
+  const hidePembayaran = isSuratJalan || isSuratPenarikan;
 
   const displayDiscount = data.discount || 0;
+
+  // Title text
+  const titleLines: string[] = (() => {
+    if (isInvoice) return ["Faktur", "Penjualan"];
+    if (isQuotation) return ["Quotation"];
+    if (isSuratJalan) return ["Surat", "Jalan"];
+    if (isSuratPenarikan) return ["Surat", "Penarikan Barang"];
+    return ["Faktur", "Penjualan"];
+  })();
+
+  // For Surat Jalan, quantity shown is 1 (one row per SN, like Invoice/Quotation).
+  // For Surat Penarikan, the per-row quantity may be > 1.
+  const showQuantityPerRow = isSuratPenarikan;
 
   const pageContent = (
     <>
@@ -522,10 +553,13 @@ export const InvoiceDocument: React.FC<{ data: InvoiceData; layout?: InvoiceLayo
             <Image src="/logo.png" style={styles.logo} />
           </View>
 
-          {/* Title Column - Faktur Penjualan (2 lines) */}
+          {/* Title Column */}
           <View style={styles.titleColumn}>
-            <Text style={styles.invoiceTitle}>Faktur</Text>
-            <Text style={styles.invoiceTitle}>Penjualan</Text>
+            {titleLines.map((line, idx) => (
+              <Text key={idx} style={styles.invoiceTitle}>
+                {line}
+              </Text>
+            ))}
           </View>
 
           {/* Address Column */}
@@ -548,22 +582,43 @@ export const InvoiceDocument: React.FC<{ data: InvoiceData; layout?: InvoiceLayo
 
       {/* ==================== CUSTOMER + INVOICE DETAILS ==================== */}
       <View style={styles.customerInvoiceRow}>
-        {/* Kepada (Customer) - Left */}
-        {!isQuotation && (
+        {/* Customer slot OR Penarik+Alasan */}
+        {isSuratPenarikan ? (
           <View style={styles.customerSection}>
-            <Text style={styles.customerLabel}>Kepada :</Text>
-            <Text style={styles.customerName}>{data.customerName}</Text>
-            <Text style={styles.customerNik}>NIK: {data.customerNpwp || ""}</Text>
-            {data.customerAddress && (
-              <Text style={styles.customerAddress}>{data.customerAddress}</Text>
-            )}
+            <View style={{ flexDirection: "row", marginBottom: 1 }}>
+              <Text style={[styles.customerLabel, { width: 50 }]}>Penarik :</Text>
+              <Text style={styles.customerName}>{data.recipient || "-"}</Text>
+            </View>
+            <View style={{ flexDirection: "row" }}>
+              <Text style={[styles.customerLabel, { width: 50 }]}>Alasan :</Text>
+              <Text style={[styles.customerNik, { flex: 1 }]}>{data.reason || "-"}</Text>
+            </View>
           </View>
+        ) : (
+          !isQuotation && (
+            <View style={styles.customerSection}>
+              <Text style={styles.customerLabel}>Kepada :</Text>
+              <Text style={styles.customerName}>{data.customerName}</Text>
+              <Text style={styles.customerNik}>NIK: {data.customerNpwp || ""}</Text>
+              {data.customerAddress && (
+                <Text style={styles.customerAddress}>{data.customerAddress}</Text>
+              )}
+            </View>
+          )
         )}
 
         {/* Invoice Details Box - Right */}
         <View style={styles.invoiceDetailsBox}>
           <View style={styles.invoiceDetailRow}>
-            <Text style={styles.invoiceDetailLabel}>No. Invoice</Text>
+            <Text style={styles.invoiceDetailLabel}>
+              {isQuotation
+                ? "No. Quotation"
+                : isSuratJalan
+                  ? "No. Surat Jalan"
+                  : isSuratPenarikan
+                    ? "No. Penarikan"
+                    : "No. Invoice"}
+            </Text>
             <Text style={styles.invoiceDetailSeparator}>:</Text>
             <Text style={styles.invoiceDetailValue}>{data.invoiceNumber}</Text>
           </View>
@@ -572,11 +627,14 @@ export const InvoiceDocument: React.FC<{ data: InvoiceData; layout?: InvoiceLayo
             <Text style={styles.invoiceDetailSeparator}>:</Text>
             <Text style={styles.invoiceDetailValue}>{data.date}</Text>
           </View>
-          <View style={styles.invoiceDetailRow}>
-            <Text style={styles.invoiceDetailLabel}>No. PO</Text>
-            <Text style={styles.invoiceDetailSeparator}>:</Text>
-            <Text style={styles.invoiceDetailValue}>{data.poNumber || ""}</Text>
-          </View>
+          {/* PO row: hidden for Surat Penarikan (no PO field) */}
+          {!isSuratPenarikan && (
+            <View style={styles.invoiceDetailRow}>
+              <Text style={styles.invoiceDetailLabel}>No. PO</Text>
+              <Text style={styles.invoiceDetailSeparator}>:</Text>
+              <Text style={styles.invoiceDetailValue}>{data.poNumber || ""}</Text>
+            </View>
+          )}
         </View>
       </View>
 
@@ -593,15 +651,19 @@ export const InvoiceDocument: React.FC<{ data: InvoiceData; layout?: InvoiceLayo
           <View style={styles.colQty}>
             <Text style={[styles.tableHeaderText, { textAlign: "center" }]}>Qty</Text>
           </View>
-          <View style={styles.colHarga}>
-            <Text style={[styles.tableHeaderText, { textAlign: "right" }]}>@Harga</Text>
-          </View>
-          <View style={styles.colDiskon}>
-            <Text style={[styles.tableHeaderText, { textAlign: "center" }]}>Diskon</Text>
-          </View>
-          <View style={styles.colTotalHarga}>
-            <Text style={[styles.tableHeaderText, { textAlign: "right" }]}>Total Harga</Text>
-          </View>
+          {hidePrices ? null : (
+            <>
+              <View style={styles.colHarga}>
+                <Text style={[styles.tableHeaderText, { textAlign: "right" }]}>@Harga</Text>
+              </View>
+              <View style={styles.colDiskon}>
+                <Text style={[styles.tableHeaderText, { textAlign: "center" }]}>Diskon</Text>
+              </View>
+              <View style={styles.colTotalHarga}>
+                <Text style={[styles.tableHeaderText, { textAlign: "right" }]}>Total Harga</Text>
+              </View>
+            </>
+          )}
         </View>
         {/* Rows */}
         {data.items.map((item, index) => {
@@ -620,74 +682,86 @@ export const InvoiceDocument: React.FC<{ data: InvoiceData; layout?: InvoiceLayo
                 </Text>
               </View>
               <View style={[styles.tableCellView, styles.colQty]}>
-                <Text style={[styles.tableCell, { textAlign: "center" }]}>1</Text>
-              </View>
-              <View style={[styles.tableCellView, styles.colHarga]}>
-                <Text style={[styles.tableCell, { textAlign: "right" }]}>
-                  {formatNumber(item.price)}
+                <Text style={[styles.tableCell, { textAlign: "center" }]}>
+                  {showQuantityPerRow && item.quantity ? item.quantity : 1}
                 </Text>
               </View>
-              <View style={[styles.tableCellView, styles.colDiskon]}>
-                <Text style={[styles.tableCell, { textAlign: "center" }]}>0</Text>
-              </View>
-              <View style={[styles.tableCellView, styles.colTotalHarga]}>
-                <Text style={[styles.tableCell, { textAlign: "right" }]}>
-                  {formatNumber(item.price)}
-                </Text>
-              </View>
+              {hidePrices ? null : (
+                <>
+                  <View style={[styles.tableCellView, styles.colHarga]}>
+                    <Text style={[styles.tableCell, { textAlign: "right" }]}>
+                      {formatNumber(item.price)}
+                    </Text>
+                  </View>
+                  <View style={[styles.tableCellView, styles.colDiskon]}>
+                    <Text style={[styles.tableCell, { textAlign: "center" }]}>0</Text>
+                  </View>
+                  <View style={[styles.tableCellView, styles.colTotalHarga]}>
+                    <Text style={[styles.tableCell, { textAlign: "right" }]}>
+                      {formatNumber(item.price)}
+                    </Text>
+                  </View>
+                </>
+              )}
             </View>
           );
         })}
       </View>
 
-      {/* ==================== TERBILANG ==================== */}
-      <View style={styles.terbilangSection}>
-        <Text style={styles.terbilangLabel}>Terbilang :</Text>
-        <Text style={styles.terbilangValue}>{terbilang(data.total)}</Text>
-      </View>
+      {/* ==================== TERBILANG (only when prices exist) ==================== */}
+      {hideTerbilang ? null : (
+        <View style={styles.terbilangSection}>
+          <Text style={styles.terbilangLabel}>Terbilang :</Text>
+          <Text style={styles.terbilangValue}>{terbilang(data.total)}</Text>
+        </View>
+      )}
 
-      {/* ==================== MIDDLE: KETERANGAN + TOTALS ==================== */}
+      {/* ==================== MIDDLE: KETERANGAN (+ TOTALS if applicable) ==================== */}
       <View style={styles.middleSection}>
         <View style={styles.keteranganBox}>
           <Text style={styles.keteranganLabel}>Keterangan :</Text>
           <Text style={styles.keteranganContent}>{data.notes || ""}</Text>
         </View>
-        <View style={styles.totalsBox}>
-          {data.taxEnabled && (
-            <>
-              <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>Sub Total</Text>
-                <Text style={styles.totalValue}>{formatNumber(data.subtotal)}</Text>
-              </View>
-              <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>Diskon</Text>
-                <Text style={styles.totalValue}>{formatNumber(displayDiscount)}</Text>
-              </View>
-              <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>PPN ({data.taxRate || 0}%)</Text>
-                <Text style={styles.totalValue}>{formatNumber(data.tax)}</Text>
-              </View>
-            </>
-          )}
-          <View style={styles.grandTotalRow}>
-            <Text style={styles.grandTotalLabel}>Total</Text>
-            <Text style={styles.grandTotalValue}>{formatNumber(data.total)}</Text>
+        {hideTotals ? null : (
+          <View style={styles.totalsBox}>
+            {data.taxEnabled && (
+              <>
+                <View style={styles.totalRow}>
+                  <Text style={styles.totalLabel}>Sub Total</Text>
+                  <Text style={styles.totalValue}>{formatNumber(data.subtotal)}</Text>
+                </View>
+                <View style={styles.totalRow}>
+                  <Text style={styles.totalLabel}>Diskon</Text>
+                  <Text style={styles.totalValue}>{formatNumber(displayDiscount)}</Text>
+                </View>
+                <View style={styles.totalRow}>
+                  <Text style={styles.totalLabel}>PPN ({data.taxRate || 0}%)</Text>
+                  <Text style={styles.totalValue}>{formatNumber(data.tax)}</Text>
+                </View>
+              </>
+            )}
+            <View style={styles.grandTotalRow}>
+              <Text style={styles.grandTotalLabel}>Total</Text>
+              <Text style={styles.grandTotalValue}>{formatNumber(data.total)}</Text>
+            </View>
           </View>
-        </View>
+        )}
       </View>
 
       {/* ==================== BOTTOM: PEMBAYARAN | TANDA TERIMA | PERHATIAN ==================== */}
       <View style={styles.bottomSection}>
-        {/* Pembayaran */}
-        <View style={styles.pembayaranColumn}>
-          <Text style={styles.pembayaranLabel}>Pembayaran :</Text>
-          <Text style={styles.pembayaranValue}>{data.paymentMethod}</Text>
-          <View style={styles.bankRow}>
-            <View style={styles.bankLogo} />
-            <Text style={styles.bankInfo}>BCA : 010-175-0085</Text>
+        {/* Pembayaran — hidden for SJ/Penarikan */}
+        {hidePembayaran ? null : (
+          <View style={styles.pembayaranColumn}>
+            <Text style={styles.pembayaranLabel}>Pembayaran :</Text>
+            <Text style={styles.pembayaranValue}>{data.paymentMethod}</Text>
+            <View style={styles.bankRow}>
+              <View style={styles.bankLogo} />
+              <Text style={styles.bankInfo}>BCA : 010-5577-988</Text>
+            </View>
+            <Text style={styles.bankHolder}>DJOKO SUBARDJO DJOHAN</Text>
           </View>
-          <Text style={styles.bankHolder}>DJOKO SUBARDJO DJOHAN</Text>
-        </View>
+        )}
 
         {/* Tanda Terima */}
         <View style={styles.tandaTerimaColumn}>
