@@ -41,6 +41,9 @@ const SuratJalanView = lazy(() =>
 const SuratPenarikanView = lazy(() =>
   import("./routes/SuratPenarikan").then((m) => ({ default: m.default })),
 );
+const BatchInputView = lazy(() =>
+  import("./routes/BatchInput").then((m) => ({ default: m.default })),
+);
 const LoginView = lazy(() => import("./routes/Login").then((m) => ({ default: m.default })));
 
 // Loading fallback
@@ -207,6 +210,12 @@ const AppLayout = () => {
       label: "Penarikan Barang",
       path: "/surat-penarikan",
       icon: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4",
+    },
+    {
+      id: "batch-input",
+      label: "Batch Input",
+      path: "/batch-input",
+      icon: "M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
     },
     {
       id: "inventory",
@@ -1348,6 +1357,22 @@ const SuratPenarikanComponent = () => {
   );
 };
 
+const BatchInputComponent = () => {
+  const staffName = useUser()?.name || "System";
+  const { data: suppliersData } = useQuery({
+    queryKey: ["suppliers", 1, 1000],
+    queryFn: () => getAllSuppliers({ page: 1, limit: 1000 }),
+  });
+
+  return (
+    <BatchInputView
+      products={productsData?.products || []}
+      suppliers={suppliersData?.suppliers || []}
+      staffName={staffName}
+    />
+  );
+};
+
 // Protected route wrapper
 const ProtectedRoute: React.FC<{ component: React.FC }> = ({ component: Component }) => {
   const isAuthenticated = useAuthCheck();
@@ -1393,6 +1418,12 @@ const suratPenarikanRoute = new Route({
   getParentRoute: () => rootRoute,
   path: "/surat-penarikan",
   component: () => <ProtectedRoute component={SuratPenarikanComponent} />,
+});
+
+const batchInputRoute = new Route({
+  getParentRoute: () => rootRoute,
+  path: "/batch-input",
+  component: () => <ProtectedRoute component={BatchInputComponent} />,
 });
 
 const dashboardRoute = new Route({
@@ -1456,6 +1487,7 @@ const routeTree = rootRoute.addChildren([
   salesLogsRoute,
   suratJalanRoute,
   suratPenarikanRoute,
+  batchInputRoute,
   inventoryRoute,
   suppliersRoute,
   customersRoute,
