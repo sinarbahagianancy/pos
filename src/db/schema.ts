@@ -367,4 +367,14 @@ export const batchInputItems = pgTable("batch_input_items", {
   sns: text("sns").notNull().default("[]"),
   cogs: numeric("cogs", { precision: 15, scale: 2 }).notNull(),
   price: numeric("price", { precision: 15, scale: 2 }).notNull(),
+  // Snapshot columns (preserve the new product's state at creation time, even
+  // if the product is later renamed/repriced in /inventory). Stored as text
+  // rather than enum types so a future enum change doesn't break old logs.
+  category: text("category").notNull().default("Body"),
+  condition: text("condition").notNull().default("New"),
+  mount: text("mount"),
+  warrantyType: text("warranty_type").notNull().default("Official Sony Indonesia"),
+  warrantyMonths: integer("warranty_months").notNull().default(12),
+  hasSerialNumber: boolean("has_serial_number").notNull().default(false),
+  taxEnabled: boolean("tax_enabled").notNull().default(true),
 });
