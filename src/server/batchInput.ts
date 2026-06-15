@@ -1,6 +1,6 @@
 import { client, db } from "../db";
 import { batchInputs, batchInputItems, auditLogs, products, serialNumbers } from "../db/schema";
-import { eq, sql, desc, or, ilike } from "drizzle-orm";
+import { eq, sql, desc, or, ilike, inArray } from "drizzle-orm";
 import { validateCreateBatchInputInput } from "../../app/schemas/document.schema";
 import type { BatchInput, BatchInputItem } from "../../app/types";
 
@@ -18,32 +18,62 @@ export interface PaginatedBatchInputResult {
 
 // ============================================================
 // Parsers
+//
+// These parsers see rows from two different sources:
+//   - raw SQL via `client.unsafe(...)` / `tx.unsafe(...)`  → snake_case keys
+//   - Drizzle via `db.select().from(...)`                   → camelCase keys
+// `pick()` falls back from snake_case to camelCase so the same parser works
+// for both code paths. New callers should prefer the typed Drizzle column
+// reference over `pick()`, but the existing raw-SQL callers (create flows)
+// rely on this fallback.
 // ============================================================
+const pick = <T = unknown>(row: Record<string, unknown>, snake: string, camel: string): T => {
+  const v = row[snake] ?? row[camel];
+  return v === undefined ? (undefined as unknown as T) : (v as T);
+};
+
+// Drizzle's typed `db.select().from(table)` returns timestamps as `Date`,
+// while raw SQL via `db.execute()` / `client.unsafe()` / `tx.unsafe()` returns
+// them as ISO-ish strings (postgres-js default). Normalise both to ISO.
+const toIso = (v: unknown): string => {
+  if (v instanceof Date) return v.toISOString();
+  if (typeof v === "string") {
+    const d = new Date(v);
+    if (!Number.isNaN(d.getTime())) return d.toISOString();
+  }
+  return new Date().toISOString();
+};
 
 const parseDbBatchInputItem = (row: Record<string, unknown>): BatchInputItem => {
-  const snsRaw = (row.sns as string) ?? "[]";
+  const snsRaw = (pick(row, "sns", "sns") as string) ?? "[]";
   let sns: string[] = [];
   try {
     sns = JSON.parse(snsRaw);
   } catch {
     sns = [];
   }
+  const cogsRaw = pick(row, "cogs", "cogs");
+  const priceRaw = pick(row, "price", "price");
   return {
-    id: row.id as string,
-    batchInputId: row.batch_input_id as string,
-    productId: row.product_id as string,
-    brand: (row.brand as string | undefined) ?? undefined,
-    model: row.model as string,
-    category: (row.category as string) ?? "Body",
-    condition: (row.condition as string) ?? "New",
-    mount: (row.mount as string | null) ?? undefined,
-    warrantyType: (row.warranty_type as string) ?? "Official Sony Indonesia",
-    warrantyMonths: (row.warranty_months as number) ?? 12,
-    cogs: typeof row.cogs === "string" ? parseFloat(row.cogs) : (row.cogs as number),
-    price: typeof row.price === "string" ? parseFloat(row.price) : (row.price as number),
-    hasSerialNumber: Boolean(row.has_serial_number),
-    taxEnabled: row.tax_enabled === undefined ? true : Boolean(row.tax_enabled),
-    quantity: (row.quantity as number) ?? 1,
+    id: pick(row, "id", "id"),
+    batchInputId: pick(row, "batch_input_id", "batchInputId"),
+    productId: pick(row, "product_id", "productId"),
+    brand: pick(row, "brand", "brand"),
+    model: pick(row, "model", "model"),
+    category: (pick(row, "category", "category") as string) ?? "Body",
+    condition: (pick(row, "condition", "condition") as string) ?? "New",
+    mount: pick(row, "mount", "mount"),
+    warrantyType:
+      (pick(row, "warranty_type", "warrantyType") as string) ?? "Official Sony Indonesia",
+    warrantyMonths: (pick(row, "warranty_months", "warrantyMonths") as number) ?? 12,
+    cogs: typeof cogsRaw === "string" ? parseFloat(cogsRaw) : ((cogsRaw as number) ?? 0),
+    price: typeof priceRaw === "string" ? parseFloat(priceRaw) : ((priceRaw as number) ?? 0),
+    hasSerialNumber: Boolean(pick(row, "has_serial_number", "hasSerialNumber")),
+    taxEnabled:
+      pick(row, "tax_enabled", "taxEnabled") === undefined
+        ? true
+        : Boolean(pick(row, "tax_enabled", "taxEnabled")),
+    quantity: (pick(row, "quantity", "quantity") as number) ?? 1,
     sns,
   };
 };
@@ -52,13 +82,13 @@ const parseDbBatchInput = (
   row: Record<string, unknown>,
   items: BatchInputItem[] = [],
 ): BatchInput => ({
-  id: row.id as string,
-  supplier: row.supplier as string,
-  date: (row.date as Date | null)?.toISOString() ?? new Date().toISOString(),
-  notes: (row.notes as string | undefined) ?? undefined,
-  staffName: row.staff_name as string,
+  id: pick(row, "id", "id"),
+  supplier: pick(row, "supplier", "supplier"),
+  date: toIso(pick(row, "date", "date")),
+  notes: pick(row, "notes", "notes"),
+  staffName: pick(row, "staff_name", "staffName"),
   items,
-  createdAt: (row.created_at as Date | null)?.toISOString() ?? new Date().toISOString(),
+  createdAt: toIso(pick(row, "created_at", "createdAt")),
 });
 
 // ============================================================
@@ -316,8 +346,8 @@ export const getAllBatchInputHandler = async (
 
   // Paginated rows
   const rows = await db.execute(sql`
-    SELECT b.*
-    FROM ${batchInputs} b
+    SELECT ${batchInputs}.*
+    FROM ${batchInputs}
     WHERE ${
       search
         ? or(
@@ -327,7 +357,7 @@ export const getAllBatchInputHandler = async (
           )
         : sql`TRUE`
     }
-    ORDER BY b.created_at DESC
+    ORDER BY ${batchInputs.createdAt} DESC
     LIMIT ${limit} OFFSET ${offset}
   `);
 
@@ -338,7 +368,7 @@ export const getAllBatchInputHandler = async (
     const allItems = await db
       .select()
       .from(batchInputItems)
-      .where(sql`${batchInputItems.batchInputId} = ANY(${batchIds})`);
+      .where(inArray(batchInputItems.batchInputId, batchIds));
     for (const item of allItems) {
       const bi = item.batchInputId;
       if (!itemsByBatchId.has(bi)) itemsByBatchId.set(bi, []);

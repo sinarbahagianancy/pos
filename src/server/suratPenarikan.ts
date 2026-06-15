@@ -1,6 +1,6 @@
 import { client, db } from "../db";
 import { suratPenarikan, suratPenarikanItems, auditLogs } from "../db/schema";
-import { eq, sql, desc, or, ilike } from "drizzle-orm";
+import { eq, sql, desc, or, ilike, inArray } from "drizzle-orm";
 import { validateCreateSuratPenarikanInput } from "../../app/schemas/document.schema";
 import type { SuratPenarikan, SuratPenarikanItem, PenarikanReason } from "../../app/types";
 
@@ -20,28 +20,56 @@ export interface PaginatedSuratPenarikanResult {
 // Parsers
 // ============================================================
 
+// ============================================================
+// Parsers
+//
+// These parsers see rows from two different sources:
+//   - raw SQL via `client.unsafe(...)` / `tx.unsafe(...)`  → snake_case keys
+//   - Drizzle via `db.select().from(...)`                   → camelCase keys
+// `pick()` falls back from snake_case to camelCase so the same parser works
+// for both code paths. New callers should prefer the typed Drizzle column
+// reference over `pick()`, but the existing raw-SQL callers (create flows)
+// rely on this fallback.
+// ============================================================
+const pick = <T = unknown>(row: Record<string, unknown>, snake: string, camel: string): T => {
+  const v = row[snake] ?? row[camel];
+  return v === undefined ? (undefined as unknown as T) : (v as T);
+};
+
+// Drizzle's typed `db.select().from(table)` returns timestamps as `Date`,
+// while raw SQL via `db.execute()` / `client.unsafe()` / `tx.unsafe()` returns
+// them as ISO-ish strings (postgres-js default). Normalise both to ISO.
+const toIso = (v: unknown): string => {
+  if (v instanceof Date) return v.toISOString();
+  if (typeof v === "string") {
+    const d = new Date(v);
+    if (!Number.isNaN(d.getTime())) return d.toISOString();
+  }
+  return new Date().toISOString();
+};
+
 const parseDbSuratPenarikanItem = (row: Record<string, unknown>): SuratPenarikanItem => ({
-  id: row.id as string,
-  suratPenarikanId: row.surat_penarikan_id as string,
-  productId: row.product_id as string,
-  brand: (row.brand as string | undefined) ?? undefined,
-  model: row.model as string,
-  sn: row.sn as string,
-  quantity: row.quantity as number,
+  id: pick(row, "id", "id"),
+  suratPenarikanId: pick(row, "surat_penarikan_id", "suratPenarikanId"),
+  productId: pick(row, "product_id", "productId"),
+  brand: pick(row, "brand", "brand"),
+  model: pick(row, "model", "model"),
+  sn: pick(row, "sn", "sn"),
+  quantity: pick(row, "quantity", "quantity"),
 });
 
 const parseDbSuratPenarikan = (
   row: Record<string, unknown>,
   items: SuratPenarikanItem[] = [],
 ): SuratPenarikan => ({
-  id: row.id as string,
-  recipient: row.recipient as string,
-  reason: row.reason as PenarikanReason,
-  alasanLainnya: (row.alasan_lainnya as string | undefined) ?? undefined,
-  notes: (row.notes as string | undefined) ?? undefined,
-  staffName: row.staff_name as string,
+  id: pick(row, "id", "id"),
+  recipient: pick(row, "recipient", "recipient"),
+  reason: pick(row, "reason", "reason"),
+  alasanLainnya: pick(row, "alasan_lainnya", "alasanLainnya"),
+  notes: pick(row, "notes", "notes"),
+  staffName: pick(row, "staff_name", "staffName"),
   items,
-  createdAt: (row.created_at as Date | null)?.toISOString() ?? new Date().toISOString(),
+  createdAt: toIso(pick(row, "created_at", "createdAt")),
 });
 
 // ============================================================
@@ -234,7 +262,7 @@ export const getAllSuratPenarikanHandler = async (
     const itemsRaw = await db
       .select()
       .from(suratPenarikanItems)
-      .where(sql`${suratPenarikanItems.suratPenarikanId} = ANY(${spbIds})`)
+      .where(inArray(suratPenarikanItems.suratPenarikanId, spbIds))
       .orderBy(suratPenarikanItems.id);
     items = itemsRaw.map((i) => parseDbSuratPenarikanItem(i as unknown as Record<string, unknown>));
   }
