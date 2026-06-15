@@ -20,19 +20,19 @@
 
 ### Document Types
 
-| Term                       | Definition                                                                                                                                                                                                                                                                            |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Faktur Penjualan**       | Sales invoice document issued to customers                                                                                                                                                                                                                                            |
-| **Quotation**              | Price estimate document, not a proof of payment                                                                                                                                                                                                                                       |
-| **Surat Jalan**            | Delivery note accompanying goods sent to a customer. Same format as Faktur Penjualan, but no price columns are printed. Items must come from Inventory.                                                                                                                               |
-| **Surat Penarikan Barang** | Internal goods-removal note (damaged / expired / used internally / etc.). Same format as Faktur Penjualan, but no price columns are printed. Items are NOT required to exist in Inventory. Carries both a recipient (person or department) and a reason.                              |
-| **Batch Input Barang**     | A restock batch: one supplier invoice (Nomor Invoice Masuk) bringing in multiple product lines in a single transaction, supporting SN and non-SN items, integrated to Inventory.                                                                                                      |
-| **Input Barang Baru**      | Create a brand-new product in the catalog. Operates on the product definition itself (no stock, no supplier invoice). Distinct from Batch Input Barang, which is restocking existing products. The Inventory page header always shows this action, regardless of which tab is active. |
+| Term                       | Definition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Faktur Penjualan**       | Sales invoice document issued to customers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **Quotation**              | Price estimate document, not a proof of payment                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| **Surat Jalan**            | Delivery note accompanying goods sent to a customer. Same format as Faktur Penjualan, but no price columns are printed. Items must come from Inventory.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| **Surat Penarikan Barang** | Internal goods-removal note (damaged / expired / used internally / etc.). Same format as Faktur Penjualan, but no price columns are printed. Items are NOT required to exist in Inventory. Carries both a recipient (person or department) and a reason.                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| **Batch Input Barang**     | A **catalog-introduction** batch: a single supplier invoice (Nomor Invoice Masuk) that introduces one or more brand-new products to the catalog in a single transaction. Each row is a distinct SKU (not in the catalog yet) with full product attributes (brand, model, category, condition, mount, warranty type + months, tax enabled, COGS, price, qty, has*serial_number, SNs). One supplier per batch. The Nomor Invoice Masuk itself is the batch's ID (free-form text, no auto-generation, no counter table). The batch lives on a dedicated top-level page (not a tab inside Inventory). For adding stock to an \_existing* product, the user uses the per-row "Tambah Stok" button on the Inventory page, NOT Batch Input. |
+| **Input Barang Baru**      | Create a single brand-new product in the catalog (one SKU at a time). The Inventory page header always shows this action, regardless of which tab is active. Use this when adding a single product; use **Batch Input Barang** when introducing multiple new products via one supplier invoice.                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 _Avoid_ for Surat Jalan: Delivery Order, DO, Surat Pengiriman, Delivery Note.
 _Avoid_ for Surat Penarikan Barang: Write-off Form, Barang Keluar Form, BKB.
-_Avoid_ for Input Barang Baru: Add Product (use the Indonesian term — it matches the existing button label). Do NOT confuse with Batch Input Barang, which is restocking, not catalog creation.
-_Avoid_ for Batch Input Barang: Restock, Stock Addition, Penerimaan Barang.
+_Avoid_ for Input Barang Baru: Add Product (use the Indonesian term — it matches the existing button label). Do NOT confuse with Batch Input Barang, which introduces new products, not restocks existing ones.
+_Avoid_ for Batch Input Barang: Restock, Stock Addition, Penerimaan Barang (all of these imply adding stock to existing products, which is the Inventory page's job, not Batch Input's). Do NOT call it a tab inside Inventory — it's a top-level page.
 
 ### Quotation Status
 
@@ -104,7 +104,7 @@ _Avoid_ for Batch Input Barang: Restock, Stock Addition, Penerimaan Barang.
 
 - **Surat Jalan**: deducts stock immediately on creation. Audit action: `Sales Deduction`. Reason: SJ is a logistics event, the goods have physically left. The companion Faktur Penjualan is the _financial_ event.
 - **Surat Penarikan Barang**: deducts stock immediately on creation, capped at the available stock per item. If the form claims more units than are in stock, deduction stops at the available amount; the form still records what was claimed. Audit action: `Sales Deduction`. Reason: the form _is_ the write-off event.
-- **Batch Input Barang**: adds to stock on creation. Each item line either appends to `products.invoice_number` (restock history, for non-SN lines) or inserts new rows into `serial_numbers` (for SN lines, status `In Stock`). Audit action: `Stock Addition`.
+- **Batch Input Barang**: introduces brand-new products to the catalog on creation. Each row INSERTs a new product in `products` (with `id = BRC-{timestamp}` from the existing `createProduct` pattern), with the supplier invoice appended to the new product's `invoice_number` history and the new product's `supplier` + `date_restocked` set from the batch header. For SN rows, the SNs are inserted into `serial_numbers` (status `In Stock`). Audit per row: `Stock Addition` (matches the existing `createProduct` precedent — this is a pre-existing semantic smell, not something to fix in this session). Audit summary: `Batch Input Created`.
 
 ### Document Lifecycle
 
@@ -119,11 +119,11 @@ _Avoid_ for Batch Input Barang: Restock, Stock Addition, Penerimaan Barang.
 - **Identity (the "No." on the PDF and in the DB)**:
   - **Surat Jalan**: auto-generated, format `SJ/dd/mm/yyyy-NNN` (counter resets daily, like Quotation)
   - **Surat Penarikan Barang**: auto-generated, format `SPB/dd/mm/yyyy-NNN` (same scheme)
-  - **Batch Input Barang**: **free-form** — the supplier's invoice number (Nomor Invoice Masuk), supplied by the user
+  - **Batch Input Barang**: **free-form text** — the supplier's invoice number (Nomor Invoice Masuk) is the batch's primary key. No counter table, no auto-generation. User-typed, unique per batch.
 - **PO Number field**:
   - **Surat Jalan**: yes, mandatory, custom-typed (matches existing `sales.po_number` rule)
   - **Surat Penarikan Barang**: **no** — not a customer-facing commercial document
-  - **Batch Input Barang**: **no** — the `supplier_invoice` field plays a similar role
+  - **Batch Input Barang**: **no** — the supplier invoice (Nomor Invoice Masuk) plays a similar role and is the batch's own ID
 
 ### Document Customer / Recipient / Supplier
 
@@ -139,13 +139,29 @@ _Avoid_ for Batch Input Barang: Restock, Stock Addition, Penerimaan Barang.
 
 ### Batch Input Form Design
 
-- Single header (Nomor Invoice Masuk, Supplier dropdown, Date, Notes) + unified product-row table.
-- Each row has a product picker; once chosen, the row "knows" whether it's SN or non-SN via `products.has_serial_number` and shows the appropriate input.
-- **SN row**: `Qty` editable, `SNs` textarea appears. Validation: line-count must equal `Qty`, no duplicates, no SNs already in the system. Empty lines ignored.
-- **Non-SN row**: `Qty` editable, `SNs` textarea hidden.
-- `COGS` and `Harga Jual` pre-filled from the product record, editable inline. On batch submit, products get `cogs` and `price` updated to these values (consistent with the existing `adjustStock` flow).
-- **New products can NOT be created inline** — they must be added via the existing Inventory → Add Product flow first. Batch Input only accepts _existing_ products.
-- **One supplier per batch**.
+- **Single header (batch-level fields)**: Nomor Invoice Masuk (text, free-form — becomes the batch ID), Supplier (dropdown of existing suppliers), Date, Notes (textarea, optional).
+- **Per-row table**: each row is a brand-new product (distinct SKU). Columns: Brand, Model, Category, Condition, Mount, Warranty Type, Warranty Months, Tax Enabled, COGS, Price Jual, Qty, Has Serial Number (checkbox), Serial Numbers (textarea, one per line, N lines for N units — only shown when Has Serial Number is checked).
+- **Validation per row** (before submit):
+  - Required: Brand, Model, Qty > 0.
+  - For SN rows: SN textarea must contain exactly Qty non-empty unique lines, no duplicates with other SNs in the same batch, no duplicates with existing SNs in the `serial_numbers` table.
+  - For non-SN rows: SN textarea hidden.
+  - **Duplicate-SKU check**: if `brand+model` (case-insensitive, trimmed) already exists in `products`, the row gets an inline red error: `"Konflik dengan 'Sony A7 IV' yang sudah ada di katalog (stok: 2). Hapus baris ini atau perbaiki SKU."`. User can delete the conflicting row; other rows proceed.
+- **Empty rows** (no brand, no model) are silently skipped on submit — the user can leave them in the form to indicate "I'm still filling this in."
+- **`+ Tambah Baris`** button below the table adds a new empty row.
+- **Sticky footer**: `Batal` (cancels and returns to list) and `Simpan` (submits the batch).
+- **No new product creation inline** — wait, that was the old rule. In the new design, the WHOLE POINT is to create new products inline. Strike that.
+- **One supplier per batch.**
+
+### Batch Input Page Lifecycle
+
+The Batch Input page has **four modes** (in-page state, not separate routes — matches `SuratJalan.tsx` pattern):
+
+1. `list` (default): the Batch Input Log table. Shows: ID (= Nomor Invoice Masuk), Date, Supplier, Total Units (sum of quantities across rows), Staff, [View] button. The page has one button: `Tambah Batch Input` (top right).
+2. `create`: the form. Clicking `Tambah Batch Input` switches to this mode. Shows: batch-level header (supplier, date, invoice number, notes) + per-row table.
+3. `summary` (post-submit): after a successful save, this mode shows a "Batch Berhasil Dibuat" hero with a checkmark and a table of the newly-created products (with their `BRC-{timestamp}` IDs). One button: `Kembali ke Log` returns to `list` mode.
+4. `detail-modal` (overlay on `list`): clicking a log row's `View` button opens a modal with the same per-row read-only table as `summary`, but for a historical batch.
+
+No "edit" or "delete" mode in v1 — batches are terminal on creation (consistent with the SJ/SPB terminal-on-creation rule).
 
 ### Document PDF Layout (Surat Jalan & Surat Penarikan)
 
@@ -165,7 +181,7 @@ _Avoid_ for Batch Input Barang: Restock, Stock Addition, Penerimaan Barang.
 
 - **Surat Jalan**: new top-level sidebar item
 - **Surat Penarikan Barang**: new top-level sidebar item
-- **Batch Input Barang**: **tab inside the existing Inventory page** (tab 1 _Catalog_ existing, tab 2 _Batch Input_ new). The Batch Input form + history co-locate with the product catalog.
+- **Batch Input Barang**: **dedicated top-level sidebar item** (between Inventory and Surat Jalan). The Inventory page does NOT have a Batch Input tab. The page has one button (Tambah Batch Input) and one table (Batch Input Log).
 
 ### Document List View & Reprint
 
