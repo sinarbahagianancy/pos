@@ -47,13 +47,13 @@ const parseDbSuratJalan = (
 // ============================================================
 // Allocate next Surat Jalan ID (per-day counter)
 // ============================================================
-const allocateSuratJalanId = async (tx: typeof client): Promise<string> => {
+const allocateSuratJalanId = async (tx: any): Promise<string> => {
   const result = await tx.unsafe(
     `INSERT INTO surat_jalan_counters (date, last_number) VALUES (CURRENT_DATE, 1)
      ON CONFLICT (date) DO UPDATE SET last_number = surat_jalan_counters.last_number + 1
      RETURNING last_number`,
   );
-  const seq = (result[0] as { last_number: number }).last_number;
+  const seq = (result[0] as any).last_number;
   const now = new Date();
   const dd = String(now.getDate()).padStart(2, "0");
   const mm = String(now.getMonth() + 1).padStart(2, "0");
@@ -91,7 +91,7 @@ export const createSuratJalanHandler = async (raw: unknown): Promise<SuratJalan>
       }
       if (Number(product.stock) < quantity) {
         throw new Error(
-          `Insufficient stock for ${(product as { model: string }).model}: need ${quantity}, have ${product.stock}`,
+          `Insufficient stock for ${(product as any).model}: need ${quantity}, have ${product.stock}`,
         );
       }
     }
@@ -103,9 +103,9 @@ export const createSuratJalanHandler = async (raw: unknown): Promise<SuratJalan>
           "SELECT status FROM serial_numbers WHERE sn = $1 FOR UPDATE",
           [item.sn],
         );
-        if (!snRow || (snRow as { status: string }).status !== "In Stock") {
+        if (!snRow || (snRow as any).status !== "In Stock") {
           throw new Error(
-            `Serial number ${item.sn} is not available (status: ${(snRow as { status?: string } | undefined)?.status || "not found"})`,
+            `Serial number ${item.sn} is not available (status: ${(snRow as any)?.status || "not found"})`,
           );
         }
       }
@@ -136,7 +136,7 @@ export const createSuratJalanHandler = async (raw: unknown): Promise<SuratJalan>
         const [product] = await tx.unsafe("SELECT brand FROM products WHERE id = $1", [
           item.productId,
         ]);
-        brand = (product as { brand?: string } | undefined)?.brand;
+        brand = (product as any)?.brand;
       }
       await tx.unsafe(
         `INSERT INTO surat_jalan_items (surat_jalan_id, product_id, brand, model, sn, quantity)

@@ -446,7 +446,7 @@ const BatchInputTab: React.FC<BatchInputTabProps> = ({ products, suppliers, staf
                         >
                           <option value="">-- Pilih Produk --</option>
                           {products
-                            .filter((p) => !p.hidden && !p.deleted)
+                            .filter((p) => !p.hidden)
                             .map((p) => (
                               <option key={p.id} value={p.id}>
                                 {p.brand} {p.model}

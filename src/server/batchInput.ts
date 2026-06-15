@@ -95,7 +95,7 @@ export const createBatchInputHandler = async (raw: unknown): Promise<BatchInput>
       if (!product) {
         throw new Error(`Product ${item.productId} not found`);
       }
-      const hasSerialNumber = (product as { has_serial_number: boolean }).has_serial_number;
+      const hasSerialNumber = (product as any).has_serial_number;
 
       // Validate SNs for SN products
       if (hasSerialNumber) {
@@ -131,7 +131,7 @@ export const createBatchInputHandler = async (raw: unknown): Promise<BatchInput>
       // Look up brand if not provided
       let brand = item.brand;
       if (!brand) {
-        brand = (product as { brand?: string }).brand;
+        brand = (product as any).brand;
       }
 
       // Insert batch_input_item
@@ -151,7 +151,7 @@ export const createBatchInputHandler = async (raw: unknown): Promise<BatchInput>
       );
 
       // Update product: stock, cogs, price, supplier, date_restocked, invoice_number (restock history)
-      const existingInvoice = (product as { invoice_number: string | null }).invoice_number;
+      const existingInvoice = (product as any).invoice_number;
       let restockHistory: Array<{ sn: string[]; inv: string; timestamp: string }> = [];
       if (existingInvoice) {
         try {

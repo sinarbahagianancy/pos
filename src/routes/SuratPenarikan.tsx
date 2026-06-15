@@ -484,7 +484,7 @@ const SuratPenarikanView: React.FC<SuratPenarikanViewProps> = ({
                       >
                         <option value="">-- Pilih Produk --</option>
                         {products
-                          .filter((p) => !p.hidden && !p.deleted)
+                          .filter((p) => !p.hidden)
                           .map((p) => (
                             <option key={p.id} value={p.id}>
                               {p.brand} {p.model} (stock: {p.stock})

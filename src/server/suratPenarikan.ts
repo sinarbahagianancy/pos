@@ -47,13 +47,13 @@ const parseDbSuratPenarikan = (
 // ============================================================
 // Allocate next Surat Penarikan ID (per-day counter)
 // ============================================================
-const allocateSuratPenarikanId = async (tx: typeof client): Promise<string> => {
+const allocateSuratPenarikanId = async (tx: any): Promise<string> => {
   const result = await tx.unsafe(
     `INSERT INTO surat_penarikan_counters (date, last_number) VALUES (CURRENT_DATE, 1)
      ON CONFLICT (date) DO UPDATE SET last_number = surat_penarikan_counters.last_number + 1
      RETURNING last_number`,
   );
-  const seq = (result[0] as { last_number: number }).last_number;
+  const seq = (result[0] as any).last_number;
   const now = new Date();
   const dd = String(now.getDate()).padStart(2, "0");
   const mm = String(now.getMonth() + 1).padStart(2, "0");
@@ -102,7 +102,7 @@ export const createSuratPenarikanHandler = async (raw: unknown): Promise<SuratPe
       if (!product) {
         throw new Error(`Product ${item.productId} not found`);
       }
-      const available = Number((product as { stock: number }).stock);
+      const available = Number((product as any).stock);
       const actualQty = Math.min(requestedQty, available);
       const shortfall = requestedQty - actualQty;
 
@@ -112,7 +112,7 @@ export const createSuratPenarikanHandler = async (raw: unknown): Promise<SuratPe
         const [prodBrand] = await tx.unsafe("SELECT brand FROM products WHERE id = $1", [
           item.productId,
         ]);
-        brand = (prodBrand as { brand?: string } | undefined)?.brand;
+        brand = (prodBrand as any)?.brand;
       }
 
       // For SN items with shortage, only deduct up to available (skip non-existent SNs)
@@ -122,7 +122,7 @@ export const createSuratPenarikanHandler = async (raw: unknown): Promise<SuratPe
           "SELECT status FROM serial_numbers WHERE sn = $1 FOR UPDATE",
           [sn],
         );
-        if (!snRow || (snRow as { status: string }).status !== "In Stock") {
+        if (!snRow || (snRow as any).status !== "In Stock") {
           // SN not available; this item can't be deducted. Skip.
           sn = "";
         } else {

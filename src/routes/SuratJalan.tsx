@@ -506,7 +506,7 @@ const SuratJalanView: React.FC<SuratJalanViewProps> = ({
                       >
                         <option value="">-- Pilih Produk --</option>
                         {products
-                          .filter((p) => !p.hidden && !p.deleted && p.stock > 0)
+                          .filter((p) => !p.hidden && p.stock > 0)
                           .map((p) => (
                             <option key={p.id} value={p.id}>
                               {p.brand} {p.model} (stock: {p.stock})
