@@ -266,13 +266,22 @@ export interface SuratPenarikan {
 export interface BatchInputItem {
   id: string;
   batchInputId: string;
-  productId: string;
+  productId: string; // generated server-side (BRC-{timestamp}) when the row creates a new product
+  // Snapshot of the new product's attributes at creation time. Stored as plain
+  // strings (not enum types) so a future enum rename doesn't break old logs.
   brand?: string;
   model: string;
-  quantity: number;
-  sns: string[];
+  category: string;
+  condition: string;
+  mount?: string;
+  warrantyType: string;
+  warrantyMonths: number;
   cogs: number;
   price: number;
+  hasSerialNumber: boolean;
+  taxEnabled: boolean;
+  quantity: number;
+  sns: string[];
 }
 
 export interface BatchInput {
