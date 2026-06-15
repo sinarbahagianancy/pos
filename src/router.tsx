@@ -542,6 +542,7 @@ const InventoryComponent = () => {
       onPageChange={setProductPage}
       perPage={productsPerPage}
       onPerPageChange={setProductsPerPage}
+      staffName={staffName}
     />
   );
 };
