@@ -1,14 +1,6 @@
 import { client, db } from "../db";
-import {
-  suratJalan,
-  suratJalanItems,
-  suratJalanCounters,
-  serialNumbers,
-  products,
-  customers,
-  auditLogs,
-} from "../db/schema";
-import { eq, sql, desc, and, or, ilike } from "drizzle-orm";
+import { suratJalan, suratJalanItems, auditLogs } from "../db/schema";
+import { eq, sql, desc, or, ilike } from "drizzle-orm";
 import { validateCreateSuratJalanInput } from "../../app/schemas/document.schema";
 import type { SuratJalan, SuratJalanItem } from "../../app/types";
 

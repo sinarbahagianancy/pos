@@ -535,6 +535,134 @@ export default function apiServerPlugin() {
             return;
           }
 
+          // GET /api/quotations?page=&limit=&status=Pending|Approved|Rejected|Canceled
+          if (path === "quotations" && req.method === "GET") {
+            const { getAllQuotationsHandler } = await import("./quotations.js");
+            try {
+              const page = parseInt(queryParams.page as string) || 1;
+              const limit = parseInt(queryParams.limit as string) || 20;
+              const status = queryParams.status as
+                | "Pending"
+                | "Approved"
+                | "Rejected"
+                | "Canceled"
+                | undefined;
+              const result = await getAllQuotationsHandler(page, limit, status);
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify(result));
+            } catch (error) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ error: String(error) }));
+            }
+            return;
+          }
+
+          // GET /api/quotations/:id
+          if (
+            path.startsWith("quotations/") &&
+            req.method === "GET" &&
+            !path.includes("/approve") &&
+            !path.includes("/reject") &&
+            !path.includes("/cancel")
+          ) {
+            const id = decodeURIComponent(path.replace("quotations/", ""));
+            const { getQuotationByIdHandler } = await import("./quotations.js");
+            try {
+              const result = await getQuotationByIdHandler(id);
+              if (!result) {
+                res.statusCode = 404;
+                res.end(JSON.stringify({ error: "Quotation not found" }));
+                return;
+              }
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify(result));
+            } catch (error) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ error: String(error) }));
+            }
+            return;
+          }
+
+          // PUT /api/quotations/:id/approve
+          if (path.startsWith("quotations/") && path.endsWith("/approve") && req.method === "PUT") {
+            const id = decodeURIComponent(path.replace("quotations/", "").replace("/approve", ""));
+            const { approveQuotationHandler } = await import("./quotations.js");
+            let body = "";
+            req.on("data", (chunk) => (body += chunk));
+            req.on("end", async () => {
+              try {
+                const data = JSON.parse(body);
+                const result = await approveQuotationHandler(id, data);
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify(result));
+              } catch (error) {
+                res.statusCode = 400;
+                res.end(JSON.stringify({ error: String(error) }));
+              }
+            });
+            return;
+          }
+
+          // PUT /api/quotations/:id/reject
+          if (path.startsWith("quotations/") && path.endsWith("/reject") && req.method === "PUT") {
+            const id = decodeURIComponent(path.replace("quotations/", "").replace("/reject", ""));
+            const { rejectQuotationHandler } = await import("./quotations.js");
+            let body = "";
+            req.on("data", (chunk) => (body += chunk));
+            req.on("end", async () => {
+              try {
+                const { reason, staffName } = JSON.parse(body);
+                const result = await rejectQuotationHandler(id, reason, staffName);
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify(result));
+              } catch (error) {
+                res.statusCode = 400;
+                res.end(JSON.stringify({ error: String(error) }));
+              }
+            });
+            return;
+          }
+
+          // PUT /api/quotations/:id/cancel
+          if (path.startsWith("quotations/") && path.endsWith("/cancel") && req.method === "PUT") {
+            const id = decodeURIComponent(path.replace("quotations/", "").replace("/cancel", ""));
+            const { cancelQuotationHandler } = await import("./quotations.js");
+            let body = "";
+            req.on("data", (chunk) => (body += chunk));
+            req.on("end", async () => {
+              try {
+                const { reason, staffName } = JSON.parse(body);
+                const result = await cancelQuotationHandler(id, reason, staffName);
+                res.setHeader("Content-Type", "application/json");
+                res.end(JSON.stringify(result));
+              } catch (error) {
+                res.statusCode = 400;
+                res.end(JSON.stringify({ error: String(error) }));
+              }
+            });
+            return;
+          }
+
+          // POST /api/quotations
+          if (path === "quotations" && req.method === "POST") {
+            const { createQuotationHandler } = await import("./quotations.js");
+            let body = "";
+            req.on("data", (chunk) => (body += chunk));
+            req.on("end", async () => {
+              try {
+                const data = JSON.parse(body);
+                const result = await createQuotationHandler(data);
+                res.setHeader("Content-Type", "application/json");
+                res.statusCode = 201;
+                res.end(JSON.stringify(result));
+              } catch (error) {
+                res.statusCode = 400;
+                res.end(JSON.stringify({ error: String(error) }));
+              }
+            });
+            return;
+          }
+
           if (path === "sales" && req.method === "POST") {
             const { createSaleHandler } = await import("./customers.js");
             let body = "";
@@ -547,7 +675,9 @@ export default function apiServerPlugin() {
                 res.statusCode = 201;
                 res.end(JSON.stringify(result));
               } catch (error) {
-                res.statusCode = 500;
+                // createSaleHandler errors are validation/business errors (PO Number missing,
+                // insufficient stock, SN unavailable) — they should be 400, not 500.
+                res.statusCode = 400;
                 res.end(JSON.stringify({ error: String(error) }));
               }
             });
@@ -687,6 +817,177 @@ export default function apiServerPlugin() {
                 res.end(JSON.stringify({ error: String(error) }));
               }
             });
+            return;
+          }
+
+          // ============================================================
+          // Surat Jalan
+          // ============================================================
+          if (path === "surat-jalan" && req.method === "GET") {
+            const { getAllSuratJalanHandler } = await import("./suratJalan.js");
+            try {
+              const page = parseInt(queryParams.page as string) || 1;
+              const limit = parseInt(queryParams.limit as string) || 20;
+              const search = queryParams.search as string | undefined;
+              const result = await getAllSuratJalanHandler(page, limit, search);
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify(result));
+            } catch (error) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ error: String(error) }));
+            }
+            return;
+          }
+
+          if (path === "surat-jalan" && req.method === "POST") {
+            const { createSuratJalanHandler } = await import("./suratJalan.js");
+            let body = "";
+            req.on("data", (chunk) => (body += chunk));
+            req.on("end", async () => {
+              try {
+                const data = JSON.parse(body);
+                const result = await createSuratJalanHandler(data);
+                res.setHeader("Content-Type", "application/json");
+                res.statusCode = 201;
+                res.end(JSON.stringify(result));
+              } catch (error) {
+                res.statusCode = 400;
+                res.end(JSON.stringify({ error: String(error) }));
+              }
+            });
+            return;
+          }
+
+          if (path.startsWith("surat-jalan/") && req.method === "GET") {
+            const id = decodeURIComponent(path.replace("surat-jalan/", ""));
+            const { getSuratJalanByIdHandler } = await import("./suratJalan.js");
+            try {
+              const result = await getSuratJalanByIdHandler(id);
+              if (!result) {
+                res.statusCode = 404;
+                res.end(JSON.stringify({ error: "Surat Jalan not found" }));
+                return;
+              }
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify(result));
+            } catch (error) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ error: String(error) }));
+            }
+            return;
+          }
+
+          // ============================================================
+          // Surat Penarikan Barang
+          // ============================================================
+          if (path === "surat-penarikan" && req.method === "GET") {
+            const { getAllSuratPenarikanHandler } = await import("./suratPenarikan.js");
+            try {
+              const page = parseInt(queryParams.page as string) || 1;
+              const limit = parseInt(queryParams.limit as string) || 20;
+              const search = queryParams.search as string | undefined;
+              const result = await getAllSuratPenarikanHandler(page, limit, search);
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify(result));
+            } catch (error) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ error: String(error) }));
+            }
+            return;
+          }
+
+          if (path === "surat-penarikan" && req.method === "POST") {
+            const { createSuratPenarikanHandler } = await import("./suratPenarikan.js");
+            let body = "";
+            req.on("data", (chunk) => (body += chunk));
+            req.on("end", async () => {
+              try {
+                const data = JSON.parse(body);
+                const result = await createSuratPenarikanHandler(data);
+                res.setHeader("Content-Type", "application/json");
+                res.statusCode = 201;
+                res.end(JSON.stringify(result));
+              } catch (error) {
+                res.statusCode = 400;
+                res.end(JSON.stringify({ error: String(error) }));
+              }
+            });
+            return;
+          }
+
+          if (path.startsWith("surat-penarikan/") && req.method === "GET") {
+            const id = decodeURIComponent(path.replace("surat-penarikan/", ""));
+            const { getSuratPenarikanByIdHandler } = await import("./suratPenarikan.js");
+            try {
+              const result = await getSuratPenarikanByIdHandler(id);
+              if (!result) {
+                res.statusCode = 404;
+                res.end(JSON.stringify({ error: "Surat Penarikan not found" }));
+                return;
+              }
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify(result));
+            } catch (error) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ error: String(error) }));
+            }
+            return;
+          }
+
+          // ============================================================
+          // Batch Input Barang
+          // ============================================================
+          if (path === "batch-input" && req.method === "GET") {
+            const { getAllBatchInputHandler } = await import("./batchInput.js");
+            try {
+              const page = parseInt(queryParams.page as string) || 1;
+              const limit = parseInt(queryParams.limit as string) || 20;
+              const search = queryParams.search as string | undefined;
+              const result = await getAllBatchInputHandler(page, limit, search);
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify(result));
+            } catch (error) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ error: String(error) }));
+            }
+            return;
+          }
+
+          if (path === "batch-input" && req.method === "POST") {
+            const { createBatchInputHandler } = await import("./batchInput.js");
+            let body = "";
+            req.on("data", (chunk) => (body += chunk));
+            req.on("end", async () => {
+              try {
+                const data = JSON.parse(body);
+                const result = await createBatchInputHandler(data);
+                res.setHeader("Content-Type", "application/json");
+                res.statusCode = 201;
+                res.end(JSON.stringify(result));
+              } catch (error) {
+                res.statusCode = 400;
+                res.end(JSON.stringify({ error: String(error) }));
+              }
+            });
+            return;
+          }
+
+          if (path.startsWith("batch-input/") && req.method === "GET") {
+            const id = decodeURIComponent(path.replace("batch-input/", ""));
+            const { getBatchInputByIdHandler } = await import("./batchInput.js");
+            try {
+              const result = await getBatchInputByIdHandler(id);
+              if (!result) {
+                res.statusCode = 404;
+                res.end(JSON.stringify({ error: "Batch Input not found" }));
+                return;
+              }
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify(result));
+            } catch (error) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ error: String(error) }));
+            }
             return;
           }
 

@@ -115,6 +115,7 @@ interface Sale {
   paymentMethod: PaymentMethod;
   staffName: string;
   notes?: string;
+  poNumber?: string;
   dueDate?: string;
   isPaid?: boolean;
   paidAt?: string;
@@ -256,6 +257,7 @@ const parseDbSale = (row: Record<string, unknown>): Sale => {
     paymentMethod: row.payment_method as PaymentMethod,
     staffName: row.staff_name as string,
     notes: row.notes as string | undefined,
+    poNumber: (row.po_number as string | undefined) ?? "",
     dueDate: row.due_date as string | undefined,
     isPaid: row.is_paid as boolean,
     paidAt: row.paid_at as string | undefined,
@@ -287,6 +289,77 @@ const parseDbSaleItem = (row: Record<string, unknown>): SaleItem => ({
   price: typeof row.price === "string" ? parseFloat(row.price) : (row.price as number),
   cogs: typeof row.cogs === "string" ? parseFloat(row.cogs) : (row.cogs as number),
   warrantyExpiry: row.warranty_expiry as string,
+});
+
+// ============================================================
+// Quotation types & parsers
+// ============================================================
+
+type QuotationStatus = "Pending" | "Approved" | "Rejected" | "Canceled";
+
+interface QuotationItem {
+  id: string;
+  quotationId: string;
+  productId: string;
+  brand?: string;
+  model: string;
+  sn: string;
+  price: number;
+  quantity: number;
+}
+
+interface Quotation {
+  id: string;
+  customerId?: string;
+  customerName: string;
+  items: QuotationItem[];
+  subtotal: number;
+  tax: number;
+  taxEnabled?: boolean;
+  total: number;
+  staffName: string;
+  notes?: string;
+  poNumber?: string;
+  status: QuotationStatus;
+  rejectionReason?: string;
+  convertedSaleId?: string;
+  createdAt: string;
+  decidedAt?: string;
+  decidedBy?: string;
+}
+
+const parseDbQuotationItem = (row: Record<string, unknown>): QuotationItem => ({
+  id: row.id as string,
+  quotationId: row.quotation_id as string,
+  productId: row.product_id as string,
+  brand: row.brand as string | undefined,
+  model: row.model as string,
+  sn: row.sn as string,
+  price: typeof row.price === "string" ? parseFloat(row.price) : (row.price as number),
+  quantity: row.quantity as number,
+});
+
+const parseDbQuotation = (
+  row: Record<string, unknown>,
+  items: QuotationItem[] = [],
+): Quotation => ({
+  id: row.id as string,
+  customerId: (row.customer_id as string | undefined) ?? undefined,
+  customerName: row.customer_name as string,
+  items,
+  subtotal: typeof row.subtotal === "string" ? parseFloat(row.subtotal) : (row.subtotal as number),
+  tax: typeof row.tax === "string" ? parseFloat(row.tax) : (row.tax as number),
+  taxEnabled: row.tax_enabled as boolean,
+  total: typeof row.total === "string" ? parseFloat(row.total) : (row.total as number),
+  staffName: row.staff_name as string,
+  notes: (row.notes as string | undefined) ?? undefined,
+  poNumber: ((row.po_number as string | undefined) ?? "") as string,
+  status: (row.status as QuotationStatus) ?? "Pending",
+  rejectionReason: (row.rejection_reason as string | undefined) ?? undefined,
+  convertedSaleId: (row.converted_sale_id as string | undefined) ?? undefined,
+  createdAt: row.created_at as string,
+  decidedAt: (row.decided_at as string | undefined) ?? undefined,
+  decidedBy: (row.decided_by as string | undefined) ?? undefined,
 });
 
 // Staff and Store Config types
@@ -1924,6 +1997,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         paymentMethod,
         staffName,
         notes,
+        poNumber,
         dueDate,
         isPaid,
         amountPaid,
@@ -1931,6 +2005,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       if (!id || !customerId || !items || items.length === 0 || !paymentMethod || !staffName) {
         return res.status(400).json({ error: "Missing required fields" });
+      }
+
+      // PO Number is mandatory — reject empty/whitespace-only values
+      const trimmedPo = typeof poNumber === "string" ? poNumber.trim() : "";
+      if (!trimmedPo) {
+        return res.status(400).json({ error: "PO Number is required" });
       }
 
       const saleAmountPaid = amountPaid || 0;
@@ -1984,7 +2064,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
           // Insert sale
           await tx.unsafe(
-            `INSERT INTO sales (id, customer_id, customer_name, subtotal, tax, tax_enabled, total, payment_method, staff_name, notes, due_date, is_paid, amount_paid, installments) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+            `INSERT INTO sales (id, customer_id, customer_name, subtotal, tax, tax_enabled, total, payment_method, staff_name, notes, po_number, due_date, is_paid, amount_paid, installments) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
             [
               id,
               customerId,
@@ -1996,6 +2076,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               paymentMethod,
               staffName,
               notes || null,
+              trimmedPo,
               dueDate || null,
               isPaid ?? false,
               String(saleAmountPaid),
@@ -2264,6 +2345,533 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json(result.map(parseDbSaleItem));
     }
 
+    // === QUOTATION ROUTES ===
+
+    // GET /api/quotations?page=&limit=&status=
+    if (method === "GET" && (url === "/api/quotations" || url?.startsWith("/api/quotations?"))) {
+      try {
+        const page = parseInt((req.query as Record<string, string>)?.page || "1", 10) || 1;
+        const limit = parseInt((req.query as Record<string, string>)?.limit || "20", 10) || 20;
+        const status = (req.query as Record<string, string>)?.status as QuotationStatus | undefined;
+        const offset = (page - 1) * limit;
+
+        const hasStatus =
+          status && ["Pending", "Approved", "Rejected", "Canceled"].includes(status);
+        const filterClause = hasStatus ? "WHERE status = $3" : "";
+        const countParams: unknown[] = [];
+        if (hasStatus) countParams.push(status);
+
+        const countResult = await query(
+          `SELECT COUNT(*) as count FROM quotations ${filterClause}`,
+          countParams,
+        );
+        const total = Number(countResult[0]?.count) || 0;
+
+        const dataParams: unknown[] = [limit, offset];
+        if (hasStatus) dataParams.push(status);
+        const result = await query(
+          `SELECT * FROM quotations ${filterClause} ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
+          dataParams,
+        );
+
+        // Fetch items for all returned quotations
+        const ids: string[] = result.map((r: Record<string, unknown>) => r.id as string);
+        const itemsMap = new Map<string, QuotationItem[]>();
+        if (ids.length > 0) {
+          const placeholders = ids.map((_, i) => `$${i + 1}`).join(", ");
+          const itemRows = await query(
+            `SELECT * FROM quotation_items WHERE quotation_id IN (${placeholders}) ORDER BY id`,
+            ids,
+          );
+          for (const row of itemRows) {
+            const item = parseDbQuotationItem(row);
+            if (!itemsMap.has(item.quotationId)) itemsMap.set(item.quotationId, []);
+            itemsMap.get(item.quotationId)!.push(item);
+          }
+        }
+
+        return res.status(200).json({
+          quotations: result.map((r: Record<string, unknown>) =>
+            parseDbQuotation(r, itemsMap.get(r.id as string) || []),
+          ),
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        });
+      } catch (err) {
+        console.error("Get quotations error:", err);
+        return res.status(500).json({ error: "Failed to fetch quotations" });
+      }
+    }
+
+    // GET /api/quotations/:id
+    if (
+      method === "GET" &&
+      url?.startsWith("/api/quotations/") &&
+      !url.endsWith("/approve") &&
+      !url.endsWith("/reject") &&
+      !url.endsWith("/cancel")
+    ) {
+      const quotationId = decodeURIComponent(url.replace("/api/quotations/", ""));
+      try {
+        const result = await query("SELECT * FROM quotations WHERE id = $1", [quotationId]);
+        if (result.length === 0) {
+          return res.status(404).json({ error: "Quotation not found" });
+        }
+        const itemRows = await query(
+          "SELECT * FROM quotation_items WHERE quotation_id = $1 ORDER BY id",
+          [quotationId],
+        );
+        return res
+          .status(200)
+          .json(parseDbQuotation(result[0], itemRows.map(parseDbQuotationItem)));
+      } catch (err) {
+        console.error("Get quotation error:", err);
+        return res.status(500).json({ error: "Failed to fetch quotation" });
+      }
+    }
+
+    // POST /api/quotations - Create new quotation
+    if (method === "POST" && url === "/api/quotations") {
+      const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+      const {
+        customerId,
+        customerName,
+        items,
+        subtotal,
+        tax,
+        taxEnabled,
+        total,
+        staffName,
+        notes,
+        poNumber,
+      } = input;
+
+      if (!items || items.length === 0) {
+        return res.status(400).json({ error: "Quotation must have at least 1 item" });
+      }
+      if (!customerName || !String(customerName).trim()) {
+        return res.status(400).json({ error: "Customer name is required" });
+      }
+      if (!staffName) {
+        return res.status(400).json({ error: "Missing staffName" });
+      }
+      const trimmedPo = typeof poNumber === "string" ? poNumber.trim() : "";
+      if (!trimmedPo) {
+        return res.status(400).json({ error: "PO Number is required" });
+      }
+
+      try {
+        const result = await getClient().begin(async (tx) => {
+          // Atomically allocate the next Quotation number for today
+          const counterResult = await tx.unsafe(
+            `INSERT INTO quotation_counters (date, last_number) VALUES (CURRENT_DATE, 1)
+             ON CONFLICT (date) DO UPDATE SET last_number = quotation_counters.last_number + 1
+             RETURNING last_number`,
+          );
+          const seq = counterResult[0].last_number as number;
+          const now = new Date();
+          const dd = String(now.getDate()).padStart(2, "0");
+          const mm = String(now.getMonth() + 1).padStart(2, "0");
+          const yyyy = now.getFullYear();
+          const quotationId = `SB/${dd}/${mm}/${yyyy}-${String(seq).padStart(3, "0")}`;
+
+          await tx.unsafe(
+            `INSERT INTO quotations (id, customer_id, customer_name, subtotal, tax, tax_enabled, total, staff_name, notes, po_number, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'Pending')`,
+            [
+              quotationId,
+              customerId || null,
+              customerName,
+              String(subtotal),
+              String(tax),
+              taxEnabled ?? true,
+              String(total),
+              staffName,
+              notes || null,
+              trimmedPo,
+            ],
+          );
+
+          for (const item of items) {
+            await tx.unsafe(
+              `INSERT INTO quotation_items (quotation_id, product_id, brand, model, sn, price, quantity)
+               VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+              [
+                quotationId,
+                item.productId,
+                item.brand || null,
+                item.model,
+                item.sn || "",
+                String(item.price),
+                item.quantity || 1,
+              ],
+            );
+          }
+
+          await tx.unsafe(
+            `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())`,
+            [
+              `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+              staffName,
+              "Quotation Created",
+              `Quotation ${quotationId} created - ${items.length} item(s), Total: Rp ${new Intl.NumberFormat("id-ID").format(total)}, Customer: ${customerName}`,
+              quotationId,
+            ],
+          );
+
+          const created = await tx.unsafe("SELECT * FROM quotations WHERE id = $1", [quotationId]);
+          const createdItems = await tx.unsafe(
+            "SELECT * FROM quotation_items WHERE quotation_id = $1 ORDER BY id",
+            [quotationId],
+          );
+          return parseDbQuotation(created[0], createdItems.map(parseDbQuotationItem));
+        });
+        return res.status(201).json(result);
+      } catch (err) {
+        console.error("Quotation create error:", err);
+        const message = err instanceof Error ? err.message : "Failed to create quotation";
+        return res.status(400).json({ error: message });
+      }
+    }
+
+    // PUT /api/quotations/:id/approve - Approve and convert to Sale
+    if (method === "PUT" && url?.startsWith("/api/quotations/") && url.endsWith("/approve")) {
+      const quotationId = decodeURIComponent(
+        url.replace("/api/quotations/", "").replace("/approve", ""),
+      );
+      const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+      const { itemSns, paymentMethod, staffName, dueDate, amountPaid, itemPrices } = input || {};
+
+      if (!paymentMethod) return res.status(400).json({ error: "Payment method is required" });
+      if (!staffName) return res.status(400).json({ error: "Missing staffName" });
+
+      try {
+        const result = await getClient().begin(async (tx) => {
+          // 1) Lock the Quotation row
+          const qRows = await tx.unsafe("SELECT * FROM quotations WHERE id = $1 FOR UPDATE", [
+            quotationId,
+          ]);
+          if (qRows.length === 0) throw new Error("Quotation not found");
+          const quotation = qRows[0];
+          if (quotation.status !== "Pending") {
+            throw new Error(`Quotation is already ${quotation.status}`);
+          }
+
+          // 2) Fetch items
+          const itemRows = await tx.unsafe(
+            "SELECT * FROM quotation_items WHERE quotation_id = $1 ORDER BY id",
+            [quotationId],
+          );
+          if (itemRows.length === 0) throw new Error("Quotation has no items");
+
+          const snOverride = new Map<string, string>();
+          for (const o of itemSns || []) snOverride.set(o.itemId, o.sn);
+          const priceOverride = new Map<string, number>();
+          for (const o of itemPrices || []) priceOverride.set(o.itemId, o.price);
+
+          // 3) Pre-flight: check SNs and stock
+          for (const itemRow of itemRows) {
+            const itemId = itemRow.id as string;
+            const effectiveSn = snOverride.get(itemId) ?? (itemRow.sn as string);
+            if (effectiveSn && !effectiveSn.startsWith("NOSN-")) {
+              const [snCheck] = await tx.unsafe(
+                "SELECT status FROM serial_numbers WHERE sn = $1 FOR UPDATE",
+                [effectiveSn],
+              );
+              if (!snCheck || snCheck.status !== "In Stock") {
+                throw new Error(
+                  `Serial number ${effectiveSn} is no longer available (status: ${snCheck?.status ?? "not found"})`,
+                );
+              }
+            }
+            const productId = itemRow.product_id as string;
+            const qty = itemRow.quantity as number;
+            const [productCheck] = await tx.unsafe(
+              "SELECT stock, model FROM products WHERE id = $1 FOR UPDATE",
+              [productId],
+            );
+            if (!productCheck || Number(productCheck.stock) < qty) {
+              throw new Error(
+                `Insufficient stock for ${productCheck?.model ?? productId}: need ${qty}, have ${productCheck?.stock ?? 0}`,
+              );
+            }
+          }
+
+          // 4) Compute totals
+          let subtotalCalc = 0;
+          for (const itemRow of itemRows) {
+            const itemId = itemRow.id as string;
+            const basePrice =
+              priceOverride.get(itemId) ??
+              (typeof itemRow.price === "string"
+                ? parseFloat(itemRow.price)
+                : (itemRow.price as number));
+            subtotalCalc += basePrice * (itemRow.quantity as number);
+          }
+          const taxCalc = quotation.tax_enabled
+            ? typeof quotation.tax === "string"
+              ? parseFloat(quotation.tax)
+              : (quotation.tax as number)
+            : 0;
+          const totalCalc = subtotalCalc + taxCalc;
+
+          const saleId = `INV-${Date.now()}`;
+          const saleAmountPaid = Number(amountPaid) || 0;
+          const installmentsJson =
+            saleAmountPaid > 0
+              ? JSON.stringify([{ amount: saleAmountPaid, timestamp: new Date().toISOString() }])
+              : "[]";
+
+          // 5) Insert Sale
+          await tx.unsafe(
+            `INSERT INTO sales (id, customer_id, customer_name, subtotal, tax, tax_enabled, total, payment_method, staff_name, notes, po_number, quotation_id, due_date, is_paid, amount_paid, installments)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+            [
+              saleId,
+              quotation.customer_id,
+              quotation.customer_name,
+              String(subtotalCalc),
+              String(taxCalc),
+              quotation.tax_enabled,
+              String(totalCalc),
+              paymentMethod,
+              staffName,
+              quotation.notes || null,
+              quotation.po_number || "",
+              quotationId,
+              dueDate || null,
+              paymentMethod !== "Utang" || saleAmountPaid >= totalCalc,
+              String(saleAmountPaid),
+              installmentsJson,
+            ],
+          );
+
+          // 6) Insert sale_items, mark SNs Sold, deduct stock
+          for (const itemRow of itemRows) {
+            const itemId = itemRow.id as string;
+            const effectiveSn = snOverride.get(itemId) ?? (itemRow.sn as string);
+            const effectivePrice =
+              priceOverride.get(itemId) ??
+              (typeof itemRow.price === "string"
+                ? parseFloat(itemRow.price)
+                : (itemRow.price as number));
+            const productId = itemRow.product_id as string;
+            const qty = itemRow.quantity as number;
+
+            const productRow = await tx.unsafe("SELECT * FROM products WHERE id = $1", [productId]);
+            const product = productRow[0];
+            const warrantyMonths = (product?.warranty_months as number) ?? 0;
+            const nowDate = new Date();
+            const expiry = new Date(nowDate);
+            expiry.setMonth(expiry.getMonth() + warrantyMonths);
+            const warrantyExpiry = expiry.toISOString();
+            const cogs = product?.cogs != null ? String(product.cogs) : "0";
+
+            await tx.unsafe(
+              `INSERT INTO sale_items (sale_id, product_id, brand, model, sn, price, cogs, warranty_expiry, quantity)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+              [
+                saleId,
+                productId,
+                itemRow.brand || product?.brand || null,
+                itemRow.model,
+                effectiveSn,
+                String(effectivePrice),
+                cogs,
+                warrantyExpiry,
+                qty,
+              ],
+            );
+
+            if (effectiveSn && !effectiveSn.startsWith("NOSN-")) {
+              await tx.unsafe("UPDATE serial_numbers SET status = 'Sold' WHERE sn = $1", [
+                effectiveSn,
+              ]);
+            }
+            await tx.unsafe("UPDATE products SET stock = stock - $1 WHERE id = $2", [
+              qty,
+              productId,
+            ]);
+
+            const snLabel =
+              effectiveSn && !effectiveSn.startsWith("NOSN-") ? `SN: ${effectiveSn}` : "tanpa SN";
+            await tx.unsafe(
+              `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())`,
+              [
+                `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+                staffName,
+                "Sales Deduction",
+                `Sold ${qty} unit(s) of ${itemRow.model} (${snLabel}) to ${quotation.customer_name} (from Quotation ${quotationId})`,
+                productId,
+              ],
+            );
+          }
+
+          // 7) Update Quotation status
+          const decidedAt = new Date().toISOString();
+          await tx.unsafe(
+            `UPDATE quotations SET status = 'Approved', converted_sale_id = $1, decided_at = $2, decided_by = $3 WHERE id = $4`,
+            [saleId, decidedAt, staffName, quotationId],
+          );
+
+          // 8) Loyalty points
+          if ((paymentMethod !== "Utang" || saleAmountPaid >= totalCalc) && quotation.customer_id) {
+            const pointsEarned = Math.floor(totalCalc / 1000);
+            if (pointsEarned > 0) {
+              await tx.unsafe(
+                "UPDATE customers SET loyalty_points = loyalty_points + $1, updated_at = NOW() WHERE id = $2",
+                [pointsEarned, quotation.customer_id],
+              );
+            }
+          }
+
+          // 9) Audit logs
+          await tx.unsafe(
+            `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())`,
+            [
+              `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+              staffName,
+              "Sale Created",
+              `Sale ${saleId} created from Quotation ${quotationId} - ${itemRows.length} item(s), Total: Rp ${new Intl.NumberFormat("id-ID").format(totalCalc)}, Customer: ${quotation.customer_name}`,
+              saleId,
+            ],
+          );
+          await tx.unsafe(
+            `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())`,
+            [
+              `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+              staffName,
+              "Quotation Approved",
+              `Quotation ${quotationId} approved → converted to Sale ${saleId}`,
+              quotationId,
+            ],
+          );
+
+          const updatedQ = await tx.unsafe("SELECT * FROM quotations WHERE id = $1", [quotationId]);
+          const itemsForReturn = itemRows.map((r: Record<string, unknown>) =>
+            parseDbQuotationItem({
+              ...r,
+              sn: snOverride.get(r.id as string) ?? r.sn,
+              price: priceOverride.get(r.id as string)?.toString() ?? r.price,
+            }),
+          );
+          return {
+            quotation: parseDbQuotation(updatedQ[0], itemsForReturn),
+            sale: { id: saleId },
+          };
+        });
+        return res.status(200).json(result);
+      } catch (err) {
+        console.error("Approve quotation error:", err);
+        const message = err instanceof Error ? err.message : "Failed to approve quotation";
+        return res
+          .status(
+            message.includes("already") ||
+              message.includes("no longer") ||
+              message.includes("Insufficient")
+              ? 409
+              : 400,
+          )
+          .json({ error: message });
+      }
+    }
+
+    // PUT /api/quotations/:id/reject
+    if (method === "PUT" && url?.startsWith("/api/quotations/") && url.endsWith("/reject")) {
+      const quotationId = decodeURIComponent(
+        url.replace("/api/quotations/", "").replace("/reject", ""),
+      );
+      const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+      const { reason, staffName } = input || {};
+
+      const trimmedReason = typeof reason === "string" ? reason.trim() : "";
+      if (!trimmedReason) return res.status(400).json({ error: "Reason is required" });
+      if (!staffName) return res.status(400).json({ error: "Missing staffName" });
+
+      try {
+        const result = await getClient().begin(async (tx) => {
+          const rows = await tx.unsafe("SELECT * FROM quotations WHERE id = $1 FOR UPDATE", [
+            quotationId,
+          ]);
+          if (rows.length === 0) throw new Error("Quotation not found");
+          if (rows[0].status !== "Pending") {
+            throw new Error(`Quotation is already ${rows[0].status}`);
+          }
+          const now = new Date().toISOString();
+          await tx.unsafe(
+            `UPDATE quotations SET status = 'Rejected', rejection_reason = $1, decided_at = $2, decided_by = $3 WHERE id = $4`,
+            [trimmedReason, now, staffName, quotationId],
+          );
+          await tx.unsafe(
+            `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())`,
+            [
+              `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+              staffName,
+              "Quotation Rejected",
+              `Quotation ${quotationId} rejected - reason: ${trimmedReason}`,
+              quotationId,
+            ],
+          );
+          const updated = await tx.unsafe("SELECT * FROM quotations WHERE id = $1", [quotationId]);
+          return parseDbQuotation(updated[0], []);
+        });
+        return res.status(200).json(result);
+      } catch (err) {
+        console.error("Reject quotation error:", err);
+        const message = err instanceof Error ? err.message : "Failed to reject quotation";
+        return res.status(message.includes("already") ? 409 : 400).json({ error: message });
+      }
+    }
+
+    // PUT /api/quotations/:id/cancel
+    if (method === "PUT" && url?.startsWith("/api/quotations/") && url.endsWith("/cancel")) {
+      const quotationId = decodeURIComponent(
+        url.replace("/api/quotations/", "").replace("/cancel", ""),
+      );
+      const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+      const { reason, staffName } = input || {};
+
+      const trimmedReason = typeof reason === "string" ? reason.trim() : "";
+      if (!trimmedReason) return res.status(400).json({ error: "Reason is required" });
+      if (!staffName) return res.status(400).json({ error: "Missing staffName" });
+
+      try {
+        const result = await getClient().begin(async (tx) => {
+          const rows = await tx.unsafe("SELECT * FROM quotations WHERE id = $1 FOR UPDATE", [
+            quotationId,
+          ]);
+          if (rows.length === 0) throw new Error("Quotation not found");
+          if (rows[0].status !== "Pending") {
+            throw new Error(`Quotation is already ${rows[0].status}`);
+          }
+          const now = new Date().toISOString();
+          await tx.unsafe(
+            `UPDATE quotations SET status = 'Canceled', rejection_reason = $1, decided_at = $2, decided_by = $3 WHERE id = $4`,
+            [trimmedReason, now, staffName, quotationId],
+          );
+          await tx.unsafe(
+            `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())`,
+            [
+              `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+              staffName,
+              "Quotation Canceled",
+              `Quotation ${quotationId} canceled - reason: ${trimmedReason}`,
+              quotationId,
+            ],
+          );
+          const updated = await tx.unsafe("SELECT * FROM quotations WHERE id = $1", [quotationId]);
+          return parseDbQuotation(updated[0], []);
+        });
+        return res.status(200).json(result);
+      } catch (err) {
+        console.error("Cancel quotation error:", err);
+        const message = err instanceof Error ? err.message : "Failed to cancel quotation";
+        return res.status(message.includes("already") ? 409 : 400).json({ error: message });
+      }
+    }
+
     // === WARRANTY CLAIMS ROUTES ===
 
     // GET /api/warranty-claims with pagination
@@ -2362,6 +2970,644 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       return res.status(200).json(parseDbWarrantyClaim(result[0]));
+    }
+
+    // ============================================================
+    // Surat Jalan
+    // ============================================================
+    if (method === "GET" && (url === "/api/surat-jalan" || url?.startsWith("/api/surat-jalan?"))) {
+      const { page, limit } = getPageLimit(req);
+      const offset = (page - 1) * limit;
+      const search = (req.query?.search as string | undefined) || "";
+      const whereClause = search
+        ? `WHERE id ILIKE $3 OR customer_name ILIKE $3 OR po_number ILIKE $3`
+        : "";
+      const params: (string | number)[] = search ? [limit, offset, `%${search}%`] : [limit, offset];
+      const result = await query(
+        `SELECT * FROM surat_jalan ${whereClause} ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
+        params,
+      );
+      const countResult = await query(
+        `SELECT COUNT(*) as count FROM surat_jalan ${whereClause}`,
+        search ? [`%${search}%`] : [],
+      );
+      const total = Number(countResult[0]?.count) || 0;
+      const sjIds = result.map((r: Record<string, unknown>) => r.id as string);
+      let itemsBySj: Record<string, unknown[]> = {};
+      if (sjIds.length > 0) {
+        const placeholders = sjIds.map((_, i) => `$${i + 1}`).join(",");
+        const itemsResult = await query(
+          `SELECT * FROM surat_jalan_items WHERE surat_jalan_id IN (${placeholders}) ORDER BY id`,
+          sjIds,
+        );
+        for (const it of itemsResult) {
+          const sid = it.surat_jalan_id as string;
+          if (!itemsBySj[sid]) itemsBySj[sid] = [];
+          itemsBySj[sid].push(it);
+        }
+      }
+      return res.status(200).json({
+        suratJalan: result.map((r: Record<string, unknown>) => ({
+          id: r.id,
+          customerId: r.customer_id || undefined,
+          customerName: r.customer_name,
+          poNumber: r.po_number || "",
+          notes: r.notes || undefined,
+          staffName: r.staff_name,
+          items: (itemsBySj[r.id as string] || []).map((it: any) => ({
+            id: it.id,
+            suratJalanId: it.surat_jalan_id,
+            productId: it.product_id,
+            brand: it.brand || undefined,
+            model: it.model,
+            sn: it.sn,
+            quantity: it.quantity,
+          })),
+          createdAt: String(r.created_at),
+        })),
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      });
+    }
+
+    if (method === "POST" && url === "/api/surat-jalan") {
+      const input = body as Record<string, unknown>;
+      const items = Array.isArray(input.items) ? input.items : [];
+      if (items.length === 0) {
+        return res.status(400).json({ error: "Surat Jalan must have at least 1 item" });
+      }
+      const customerName = String(input.customerName ?? "").trim();
+      if (!customerName) return res.status(400).json({ error: "Customer name is required" });
+      const staffName = String(input.staffName ?? "").trim();
+      if (!staffName) return res.status(400).json({ error: "Missing staffName" });
+      const poNumber = String(input.poNumber ?? "").trim();
+      if (!poNumber) return res.status(400).json({ error: "PO Number is required" });
+
+      try {
+        const result = await getClient().begin(async (tx) => {
+          const counterResult = await tx.unsafe(
+            `INSERT INTO surat_jalan_counters (date, last_number) VALUES (CURRENT_DATE, 1)
+             ON CONFLICT (date) DO UPDATE SET last_number = surat_jalan_counters.last_number + 1
+             RETURNING last_number`,
+          );
+          const seq = (counterResult[0] as { last_number: number }).last_number;
+          const now = new Date();
+          const dd = String(now.getDate()).padStart(2, "0");
+          const mm = String(now.getMonth() + 1).padStart(2, "0");
+          const yyyy = now.getFullYear();
+          const sjId = `SJ/${dd}/${mm}/${yyyy}-${String(seq).padStart(3, "0")}`;
+
+          const productQuantities = new Map<string, number>();
+          for (const it of items as Array<Record<string, unknown>>) {
+            const qty = typeof it.quantity === "number" ? it.quantity : 1;
+            productQuantities.set(
+              String(it.productId),
+              (productQuantities.get(String(it.productId)) || 0) + qty,
+            );
+          }
+          for (const [productId, quantity] of productQuantities) {
+            const [product] = await tx.unsafe(
+              "SELECT stock, model FROM products WHERE id = $1 FOR UPDATE",
+              [productId],
+            );
+            if (!product) throw new Error(`Product ${productId} not found`);
+            if (Number((product as { stock: number }).stock) < quantity) {
+              throw new Error(
+                `Insufficient stock for ${(product as { model: string }).model}: need ${quantity}, have ${(product as { stock: number }).stock}`,
+              );
+            }
+          }
+          for (const it of items as Array<Record<string, unknown>>) {
+            const sn = it.sn ? String(it.sn) : "";
+            if (sn && !sn.startsWith("NOSN-")) {
+              const [snRow] = await tx.unsafe(
+                "SELECT status FROM serial_numbers WHERE sn = $1 FOR UPDATE",
+                [sn],
+              );
+              if (!snRow || (snRow as { status: string }).status !== "In Stock") {
+                throw new Error(`Serial number ${sn} is not available`);
+              }
+            }
+          }
+
+          await tx.unsafe(
+            `INSERT INTO surat_jalan (id, customer_id, customer_name, po_number, notes, staff_name)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [
+              sjId,
+              input.customerId ? String(input.customerId) : null,
+              customerName,
+              poNumber,
+              input.notes ? String(input.notes) : null,
+              staffName,
+            ],
+          );
+
+          for (const it of items as Array<Record<string, unknown>>) {
+            const qty = typeof it.quantity === "number" ? it.quantity : 1;
+            let brand: string | null = it.brand ? String(it.brand) : null;
+            if (!brand) {
+              const [product] = await tx.unsafe("SELECT brand FROM products WHERE id = $1", [
+                String(it.productId),
+              ]);
+              brand = (product as { brand?: string } | undefined)?.brand || null;
+            }
+            const sn = it.sn ? String(it.sn) : "";
+            await tx.unsafe(
+              `INSERT INTO surat_jalan_items (surat_jalan_id, product_id, brand, model, sn, quantity)
+               VALUES ($1, $2, $3, $4, $5, $6)`,
+              [sjId, String(it.productId), brand, String(it.model), sn, qty],
+            );
+            await tx.unsafe(
+              "UPDATE products SET stock = GREATEST(stock - $1, 0), updated_at = NOW() WHERE id = $2",
+              [qty, String(it.productId)],
+            );
+            if (sn && !sn.startsWith("NOSN-")) {
+              await tx.unsafe("UPDATE serial_numbers SET status = 'Sold' WHERE sn = $1", [sn]);
+            }
+            const snLabel = !sn || sn.startsWith("NOSN-") ? "tanpa SN" : `SN: ${sn}`;
+            await tx.unsafe(
+              `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())`,
+              [
+                `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+                staffName,
+                "Sales Deduction",
+                `Delivered via SJ ${sjId}: ${qty} unit(s) of ${String(it.model)} (${snLabel}) to ${customerName}`,
+                String(it.productId),
+              ],
+            );
+          }
+          await tx.unsafe(
+            `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())`,
+            [
+              `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+              staffName,
+              "Surat Jalan Created",
+              `SJ ${sjId} — ${items.length} item(s), Customer: ${customerName}, PO: ${poNumber}`,
+              sjId,
+            ],
+          );
+          const [header] = await tx.unsafe("SELECT * FROM surat_jalan WHERE id = $1", [sjId]);
+          const itemRows = await tx.unsafe(
+            "SELECT * FROM surat_jalan_items WHERE surat_jalan_id = $1 ORDER BY id",
+            [sjId],
+          );
+          return { ...(header as Record<string, unknown>), items: itemRows };
+        });
+        return res.status(201).json(result);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to create Surat Jalan";
+        return res.status(400).json({ error: message });
+      }
+    }
+
+    if (method === "GET" && url?.startsWith("/api/surat-jalan/")) {
+      const sjId = decodeURIComponent(url.replace("/api/surat-jalan/", ""));
+      const [header] = await query("SELECT * FROM surat_jalan WHERE id = $1", [sjId]);
+      if (!header) return res.status(404).json({ error: "Surat Jalan not found" });
+      const itemRows = await query(
+        "SELECT * FROM surat_jalan_items WHERE surat_jalan_id = $1 ORDER BY id",
+        [sjId],
+      );
+      return res.status(200).json({ ...header, items: itemRows });
+    }
+
+    // ============================================================
+    // Surat Penarikan Barang
+    // ============================================================
+    if (
+      method === "GET" &&
+      (url === "/api/surat-penarikan" || url?.startsWith("/api/surat-penarikan?"))
+    ) {
+      const { page, limit } = getPageLimit(req);
+      const offset = (page - 1) * limit;
+      const search = (req.query?.search as string | undefined) || "";
+      const whereClause = search ? `WHERE id ILIKE $3 OR recipient ILIKE $3` : "";
+      const params: (string | number)[] = search ? [limit, offset, `%${search}%`] : [limit, offset];
+      const result = await query(
+        `SELECT * FROM surat_penarikan ${whereClause} ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
+        params,
+      );
+      const countResult = await query(
+        `SELECT COUNT(*) as count FROM surat_penarikan ${whereClause}`,
+        search ? [`%${search}%`] : [],
+      );
+      const total = Number(countResult[0]?.count) || 0;
+      const spbIds = result.map((r: Record<string, unknown>) => r.id as string);
+      let itemsBySpb: Record<string, unknown[]> = {};
+      if (spbIds.length > 0) {
+        const placeholders = spbIds.map((_, i) => `$${i + 1}`).join(",");
+        const itemsResult = await query(
+          `SELECT * FROM surat_penarikan_items WHERE surat_penarikan_id IN (${placeholders}) ORDER BY id`,
+          spbIds,
+        );
+        for (const it of itemsResult) {
+          const sid = it.surat_penarikan_id as string;
+          if (!itemsBySpb[sid]) itemsBySpb[sid] = [];
+          itemsBySpb[sid].push(it);
+        }
+      }
+      return res.status(200).json({
+        suratPenarikan: result.map((r: Record<string, unknown>) => ({
+          id: r.id,
+          recipient: r.recipient,
+          reason: r.reason,
+          alasanLainnya: r.alasan_lainnya || undefined,
+          notes: r.notes || undefined,
+          staffName: r.staff_name,
+          items: (itemsBySpb[r.id as string] || []).map((it: any) => ({
+            id: it.id,
+            suratPenarikanId: it.surat_penarikan_id,
+            productId: it.product_id,
+            brand: it.brand || undefined,
+            model: it.model,
+            sn: it.sn,
+            quantity: it.quantity,
+          })),
+          createdAt: String(r.created_at),
+        })),
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      });
+    }
+
+    if (method === "POST" && url === "/api/surat-penarikan") {
+      const input = body as Record<string, unknown>;
+      const items = Array.isArray(input.items) ? input.items : [];
+      if (items.length === 0) {
+        return res.status(400).json({ error: "Surat Penarikan must have at least 1 item" });
+      }
+      const recipient = String(input.recipient ?? "").trim();
+      if (!recipient) return res.status(400).json({ error: "Recipient (Penarik) is required" });
+      const reason = String(input.reason ?? "");
+      const validReasons = [
+        "Rusak",
+        "Expired",
+        "Dipakai Internal",
+        "Sample/Display",
+        "Employee Sale",
+        "Hilang",
+        "Recall",
+        "Lainnya",
+      ];
+      if (!validReasons.includes(reason)) {
+        return res.status(400).json({ error: `Invalid reason: ${reason}` });
+      }
+      const alasanLainnya = input.alasanLainnya ? String(input.alasanLainnya).trim() : undefined;
+      if (reason === "Lainnya" && !alasanLainnya) {
+        return res
+          .status(400)
+          .json({ error: "alasan_lainnya is required when reason = 'Lainnya'" });
+      }
+      const staffName = String(input.staffName ?? "").trim();
+      if (!staffName) return res.status(400).json({ error: "Missing staffName" });
+
+      try {
+        const result = await getClient().begin(async (tx) => {
+          const counterResult = await tx.unsafe(
+            `INSERT INTO surat_penarikan_counters (date, last_number) VALUES (CURRENT_DATE, 1)
+             ON CONFLICT (date) DO UPDATE SET last_number = surat_penarikan_counters.last_number + 1
+             RETURNING last_number`,
+          );
+          const seq = (counterResult[0] as { last_number: number }).last_number;
+          const now = new Date();
+          const dd = String(now.getDate()).padStart(2, "0");
+          const mm = String(now.getMonth() + 1).padStart(2, "0");
+          const yyyy = now.getFullYear();
+          const spbId = `SPB/${dd}/${mm}/${yyyy}-${String(seq).padStart(3, "0")}`;
+          const reasonLabel =
+            reason === "Lainnya" && alasanLainnya ? `Lainnya: ${alasanLainnya}` : reason;
+
+          await tx.unsafe(
+            `INSERT INTO surat_penarikan (id, recipient, reason, alasan_lainnya, notes, staff_name)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [
+              spbId,
+              recipient,
+              reason,
+              alasanLainnya || null,
+              input.notes ? String(input.notes) : null,
+              staffName,
+            ],
+          );
+
+          for (const it of items as Array<Record<string, unknown>>) {
+            const requestedQty = typeof it.quantity === "number" ? it.quantity : 1;
+            const [product] = await tx.unsafe(
+              "SELECT stock, model FROM products WHERE id = $1 FOR UPDATE",
+              [String(it.productId)],
+            );
+            if (!product) throw new Error(`Product ${String(it.productId)} not found`);
+            const available = Number((product as { stock: number }).stock);
+            const actualQty = Math.min(requestedQty, available);
+            let brand: string | null = it.brand ? String(it.brand) : null;
+            if (!brand) {
+              const [prodBrand] = await tx.unsafe("SELECT brand FROM products WHERE id = $1", [
+                String(it.productId),
+              ]);
+              brand = (prodBrand as { brand?: string } | undefined)?.brand || null;
+            }
+            let sn = it.sn ? String(it.sn) : "";
+            if (sn && !sn.startsWith("NOSN-")) {
+              const [snRow] = await tx.unsafe(
+                "SELECT status FROM serial_numbers WHERE sn = $1 FOR UPDATE",
+                [sn],
+              );
+              if (!snRow || (snRow as { status: string }).status !== "In Stock") {
+                sn = "";
+              } else {
+                await tx.unsafe("UPDATE serial_numbers SET status = 'Damaged' WHERE sn = $1", [sn]);
+              }
+            }
+            await tx.unsafe(
+              `INSERT INTO surat_penarikan_items (surat_penarikan_id, product_id, brand, model, sn, quantity)
+               VALUES ($1, $2, $3, $4, $5, $6)`,
+              [spbId, String(it.productId), brand, String(it.model), sn, actualQty],
+            );
+            if (actualQty > 0) {
+              await tx.unsafe(
+                "UPDATE products SET stock = GREATEST(stock - $1, 0), updated_at = NOW() WHERE id = $2",
+                [actualQty, String(it.productId)],
+              );
+            }
+            const snLabel = !sn || sn.startsWith("NOSN-") ? "tanpa SN" : `SN: ${sn}`;
+            const detailShort =
+              requestedQty > actualQty
+                ? ` (capped: requested ${requestedQty}, available ${available})`
+                : "";
+            await tx.unsafe(
+              `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())`,
+              [
+                `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+                staffName,
+                "Sales Deduction",
+                `Penarikan: ${actualQty} unit(s) of ${String(it.model)} (${snLabel}) by ${recipient}, reason: ${reasonLabel}${detailShort}`,
+                String(it.productId),
+              ],
+            );
+          }
+          await tx.unsafe(
+            `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())`,
+            [
+              `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+              staffName,
+              "Surat Penarikan Created",
+              `SPB ${spbId} — ${items.length} item(s), Penarik: ${recipient}, Alasan: ${reasonLabel}`,
+              spbId,
+            ],
+          );
+          const [header] = await tx.unsafe("SELECT * FROM surat_penarikan WHERE id = $1", [spbId]);
+          const itemRows = await tx.unsafe(
+            "SELECT * FROM surat_penarikan_items WHERE surat_penarikan_id = $1 ORDER BY id",
+            [spbId],
+          );
+          return { ...(header as Record<string, unknown>), items: itemRows };
+        });
+        return res.status(201).json(result);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to create Surat Penarikan";
+        return res.status(400).json({ error: message });
+      }
+    }
+
+    if (method === "GET" && url?.startsWith("/api/surat-penarikan/")) {
+      const spbId = decodeURIComponent(url.replace("/api/surat-penarikan/", ""));
+      const [header] = await query("SELECT * FROM surat_penarikan WHERE id = $1", [spbId]);
+      if (!header) return res.status(404).json({ error: "Surat Penarikan not found" });
+      const itemRows = await query(
+        "SELECT * FROM surat_penarikan_items WHERE surat_penarikan_id = $1 ORDER BY id",
+        [spbId],
+      );
+      return res.status(200).json({ ...header, items: itemRows });
+    }
+
+    // ============================================================
+    // Batch Input Barang
+    // ============================================================
+    if (method === "GET" && (url === "/api/batch-input" || url?.startsWith("/api/batch-input?"))) {
+      const { page, limit } = getPageLimit(req);
+      const offset = (page - 1) * limit;
+      const search = (req.query?.search as string | undefined) || "";
+      const whereClause = search ? `WHERE id ILIKE $3 OR supplier ILIKE $3` : "";
+      const params: (string | number)[] = search ? [limit, offset, `%${search}%`] : [limit, offset];
+      const result = await query(
+        `SELECT * FROM batch_inputs ${whereClause} ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
+        params,
+      );
+      const countResult = await query(
+        `SELECT COUNT(*) as count FROM batch_inputs ${whereClause}`,
+        search ? [`%${search}%`] : [],
+      );
+      const total = Number(countResult[0]?.count) || 0;
+      const batchIds = result.map((r: Record<string, unknown>) => r.id as string);
+      let itemsByBatch: Record<string, unknown[]> = {};
+      if (batchIds.length > 0) {
+        const placeholders = batchIds.map((_, i) => `$${i + 1}`).join(",");
+        const itemsResult = await query(
+          `SELECT * FROM batch_input_items WHERE batch_input_id IN (${placeholders}) ORDER BY id`,
+          batchIds,
+        );
+        for (const it of itemsResult) {
+          const bid = it.batch_input_id as string;
+          if (!itemsByBatch[bid]) itemsByBatch[bid] = [];
+          itemsByBatch[bid].push(it);
+        }
+      }
+      return res.status(200).json({
+        batchInputs: result.map((r: Record<string, unknown>) => ({
+          id: r.id,
+          supplier: r.supplier,
+          date: String(r.date),
+          notes: r.notes || undefined,
+          staffName: r.staff_name,
+          items: (itemsByBatch[r.id as string] || []).map((it: any) => ({
+            id: it.id,
+            batchInputId: it.batch_input_id,
+            productId: it.product_id,
+            brand: it.brand || undefined,
+            model: it.model,
+            quantity: it.quantity,
+            sns: (() => {
+              try {
+                return JSON.parse(it.sns);
+              } catch {
+                return [];
+              }
+            })(),
+            cogs: typeof it.cogs === "string" ? parseFloat(it.cogs) : it.cogs,
+            price: typeof it.price === "string" ? parseFloat(it.price) : it.price,
+          })),
+          createdAt: String(r.created_at),
+        })),
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      });
+    }
+
+    if (method === "POST" && url === "/api/batch-input") {
+      const input = body as Record<string, unknown>;
+      const items = Array.isArray(input.items) ? input.items : [];
+      if (items.length === 0) {
+        return res.status(400).json({ error: "Batch Input must have at least 1 item" });
+      }
+      const id = String(input.id ?? "").trim();
+      if (!id) return res.status(400).json({ error: "Nomor Invoice Masuk (id) is required" });
+      const supplier = String(input.supplier ?? "").trim();
+      if (!supplier) return res.status(400).json({ error: "Supplier is required" });
+      const staffName = String(input.staffName ?? "").trim();
+      if (!staffName) return res.status(400).json({ error: "Missing staffName" });
+
+      try {
+        const result = await getClient().begin(async (tx) => {
+          const [existing] = await tx.unsafe("SELECT id FROM batch_inputs WHERE id = $1", [id]);
+          if (existing) throw new Error(`Batch with supplier invoice '${id}' already exists`);
+
+          await tx.unsafe(
+            `INSERT INTO batch_inputs (id, supplier, date, notes, staff_name)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [
+              id,
+              supplier,
+              input.date ? new Date(String(input.date)) : new Date(),
+              input.notes ? String(input.notes) : null,
+              staffName,
+            ],
+          );
+
+          for (const it of items as Array<Record<string, unknown>>) {
+            const [product] = await tx.unsafe(
+              "SELECT id, has_serial_number, invoice_number, brand FROM products WHERE id = $1 FOR UPDATE",
+              [String(it.productId)],
+            );
+            if (!product) throw new Error(`Product ${String(it.productId)} not found`);
+            const hasSerialNumber = (product as { has_serial_number: boolean }).has_serial_number;
+            const sns = Array.isArray(it.sns) ? (it.sns as string[]).map(String) : [];
+            const quantity = typeof it.quantity === "number" ? (it.quantity as number) : 0;
+            const cogs = typeof it.cogs === "number" ? (it.cogs as number) : 0;
+            const price = typeof it.price === "number" ? (it.price as number) : 0;
+
+            if (hasSerialNumber) {
+              if (sns.length !== quantity) {
+                throw new Error(
+                  `SN count mismatch for ${String(it.model)}: need ${quantity}, got ${sns.length}`,
+                );
+              }
+              const seen = new Set<string>();
+              for (const sn of sns) {
+                if (seen.has(sn))
+                  throw new Error(`Duplicate SN '${sn}' in batch for ${String(it.model)}`);
+                seen.add(sn);
+              }
+              for (const sn of sns) {
+                const [existingSn] = await tx.unsafe(
+                  "SELECT sn FROM serial_numbers WHERE sn = $1",
+                  [sn],
+                );
+                if (existingSn) throw new Error(`SN '${sn}' already exists in inventory`);
+              }
+              for (const sn of sns) {
+                await tx.unsafe(
+                  `INSERT INTO serial_numbers (sn, product_id, status) VALUES ($1, $2, 'In Stock')`,
+                  [sn, String(it.productId)],
+                );
+              }
+            }
+
+            const brand: string | null = it.brand
+              ? String(it.brand)
+              : (product as { brand?: string }).brand || null;
+            await tx.unsafe(
+              `INSERT INTO batch_input_items (batch_input_id, product_id, brand, model, quantity, sns, cogs, price)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+              [
+                id,
+                String(it.productId),
+                brand,
+                String(it.model),
+                quantity,
+                JSON.stringify(sns),
+                String(cogs),
+                String(price),
+              ],
+            );
+
+            const existingInvoice = (product as { invoice_number: string | null }).invoice_number;
+            let restockHistory: Array<{ sn: string[]; inv: string; timestamp: string }> = [];
+            if (existingInvoice) {
+              try {
+                restockHistory = JSON.parse(existingInvoice);
+              } catch {
+                restockHistory = [];
+              }
+            }
+            restockHistory.push({ sn: sns, inv: id, timestamp: new Date().toISOString() });
+
+            await tx.unsafe(
+              `UPDATE products
+               SET stock = stock + $1, cogs = $2, price = $3, supplier = $4, date_restocked = $5, invoice_number = $6, updated_at = NOW()
+               WHERE id = $7`,
+              [
+                quantity,
+                String(cogs),
+                String(price),
+                supplier,
+                input.date ? new Date(String(input.date)) : new Date(),
+                JSON.stringify(restockHistory),
+                String(it.productId),
+              ],
+            );
+
+            const snDetail = sns.length > 0 ? ` SN: ${sns.join(", ")}` : "";
+            await tx.unsafe(
+              `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())`,
+              [
+                `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+                staffName,
+                "Stock Addition",
+                `Added ${quantity} unit(s) of ${String(it.model)} from supplier ${supplier}, invoice: ${id}.${snDetail}`,
+                String(it.productId),
+              ],
+            );
+          }
+          await tx.unsafe(
+            `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())`,
+            [
+              `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+              staffName,
+              "Batch Input Created",
+              `BI ${id} — ${items.length} item(s) from ${supplier}`,
+              id,
+            ],
+          );
+          const [header] = await tx.unsafe("SELECT * FROM batch_inputs WHERE id = $1", [id]);
+          const itemRows = await tx.unsafe(
+            "SELECT * FROM batch_input_items WHERE batch_input_id = $1 ORDER BY id",
+            [id],
+          );
+          return { ...(header as Record<string, unknown>), items: itemRows };
+        });
+        return res.status(201).json(result);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to create Batch Input";
+        return res.status(400).json({ error: message });
+      }
+    }
+
+    if (method === "GET" && url?.startsWith("/api/batch-input/")) {
+      const batchId = decodeURIComponent(url.replace("/api/batch-input/", ""));
+      const [header] = await query("SELECT * FROM batch_inputs WHERE id = $1", [batchId]);
+      if (!header) return res.status(404).json({ error: "Batch Input not found" });
+      const itemRows = await query(
+        "SELECT * FROM batch_input_items WHERE batch_input_id = $1 ORDER BY id",
+        [batchId],
+      );
+      return res.status(200).json({ ...header, items: itemRows });
     }
 
     // GET /api/audit-logs with pagination

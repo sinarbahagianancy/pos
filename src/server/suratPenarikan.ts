@@ -1,11 +1,5 @@
 import { client, db } from "../db";
-import {
-  suratPenarikan,
-  suratPenarikanItems,
-  suratPenarikanCounters,
-  auditLogs,
-  products,
-} from "../db/schema";
+import { suratPenarikan, suratPenarikanItems, auditLogs } from "../db/schema";
 import { eq, sql, desc, or, ilike } from "drizzle-orm";
 import { validateCreateSuratPenarikanInput } from "../../app/schemas/document.schema";
 import type { SuratPenarikan, SuratPenarikanItem, PenarikanReason } from "../../app/types";

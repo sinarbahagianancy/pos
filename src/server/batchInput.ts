@@ -1,5 +1,5 @@
 import { client, db } from "../db";
-import { batchInputs, batchInputItems, products, serialNumbers, auditLogs } from "../db/schema";
+import { batchInputs, batchInputItems, auditLogs } from "../db/schema";
 import { eq, sql, desc, or, ilike } from "drizzle-orm";
 import { validateCreateBatchInputInput } from "../../app/schemas/document.schema";
 import type { BatchInput, BatchInputItem } from "../../app/types";
