@@ -34,6 +34,8 @@ interface InventoryProps {
   onPageChange?: (page: number) => void;
   perPage?: number;
   onPerPageChange?: (perPage: number) => void;
+  searchInput?: string;
+  onSearchChange?: (value: string) => void;
 }
 
 const InventoryView: React.FC<InventoryProps> = ({
@@ -56,9 +58,12 @@ const InventoryView: React.FC<InventoryProps> = ({
   onPageChange,
   perPage = 20,
   onPerPageChange,
+  searchInput = "",
+  onSearchChange,
 }) => {
-  console.log("[DEBUG] Pagination props:", { currentPage, totalPages, totalItems, perPage });
-  const [filter, setFilter] = useState("");
+  // Search is now lifted to the route component (server-side via the
+  // React Query key); the local `filter` state and the client-side
+  // `filteredProducts` step have been removed.
   const [sorting, setSorting] = useState<SortingState>([{ id: "createdAt", desc: true }]);
   const [adjustingProduct, setAdjustingProduct] = useState<Product | null>(null);
 
@@ -138,24 +143,19 @@ const InventoryView: React.FC<InventoryProps> = ({
   // Restock history modal
   const [historyProduct, setHistoryProduct] = useState<Product | null>(null);
 
-  const filteredProducts = products.filter(
-    (p) =>
-      p.model.toLowerCase().includes(filter.toLowerCase()) ||
-      p.brand.toLowerCase().includes(filter.toLowerCase()) ||
-      p.id.toLowerCase().includes(filter.toLowerCase()),
-  );
-
+  // The server already filtered `products` by the current search query,
+  // so we sort in place — no client-side substring filter needed.
   const sortedProducts = useMemo(() => {
     if (sorting.length === 0) {
       // Default sort by createdAt DESC (newest first)
-      return [...filteredProducts].sort((a, b) => {
+      return [...products].sort((a, b) => {
         const aVal = a.createdAt || "";
         const bVal = b.createdAt || "";
         return bVal.localeCompare(aVal);
       });
     }
     const { id, desc } = sorting[0];
-    return [...filteredProducts].sort((a, b) => {
+    return [...products].sort((a, b) => {
       // For stock column, use getProductStock for accurate SN-based counts
       let aVal: any = id === "stock" ? getProductStock(a) : a[id as keyof Product];
       let bVal: any = id === "stock" ? getProductStock(b) : b[id as keyof Product];
@@ -170,7 +170,7 @@ const InventoryView: React.FC<InventoryProps> = ({
       if (aVal > bVal) return desc ? -1 : 1;
       return 0;
     });
-  }, [filteredProducts, sorting, sns]);
+  }, [products, sorting, sns]);
 
   const handleAdjustSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -404,7 +404,6 @@ const InventoryView: React.FC<InventoryProps> = ({
     try {
       onAddProduct(productWithSerials, newProductHasSN ? serialList : []);
       // Navigate to page 1 where the new product appears (newest-first sort)
-      setFilter("");
       onPageChange?.(1);
       setShowAddModal(false);
       setConfirmAdd(false);
@@ -490,10 +489,10 @@ const InventoryView: React.FC<InventoryProps> = ({
           <div className="relative flex-1 w-full">
             <input
               type="text"
-              placeholder="Ketik Merk / Model..."
+              placeholder="Cari produk..."
               className="w-full pl-14 pr-6 py-4 rounded-2xl border border-slate-200 bg-white text-slate-900 placeholder-slate-500 text-sm focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all font-bold shadow-sm"
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
+              value={searchInput}
+              onChange={(e) => onSearchChange?.(e.target.value)}
             />
             <svg
               className="w-6 h-6 absolute left-5 top-4 text-slate-400"
@@ -916,6 +915,16 @@ const InventoryView: React.FC<InventoryProps> = ({
                   </tr>
                 );
               })}
+              {sortedProducts.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={canViewSensitive ? 7 : 6}
+                    className="px-8 py-12 text-center text-slate-400 font-bold"
+                  >
+                    Tidak ada produk yang cocok dengan pencarian.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect, lazy, Suspense } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import {
   createRouter,
   RootRoute,
@@ -411,13 +411,31 @@ const InventoryComponent = () => {
   const [productPage, setProductPage] = useState(1);
   const [productsPerPage, setProductsPerPage] = useState(20);
 
+  // Server-side free-text search. `searchInput` is what the controlled
+  // input shows (immediate); `searchQuery` is the debounced value that
+  // flows into the React Query key. The 300ms debounce avoids hammering
+  // the API on every keystroke.
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setSearchQuery(searchInput), 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+  // Reset to page 1 on every search change (including clearing).
+  useEffect(() => {
+    setProductPage(1);
+  }, [searchQuery]);
+
   const user = getCurrentUser();
   const staffName = user?.name || "System";
 
-  // Query for products with pagination
+  // Query for products with pagination + optional search.
+  // keepPreviousData avoids the table flashing empty while the new
+  // result set is in flight.
   const { data: productsData, isLoading: productsLoading } = useQuery({
-    queryKey: ["products", productPage, productsPerPage],
-    queryFn: () => getAllProducts({ page: productPage, limit: productsPerPage }),
+    queryKey: ["products", productPage, productsPerPage, searchQuery],
+    queryFn: () => getAllProducts({ page: productPage, limit: productsPerPage, q: searchQuery }),
+    placeholderData: keepPreviousData,
   });
 
   // Query for serial numbers
@@ -551,6 +569,8 @@ const InventoryComponent = () => {
       onPageChange={setProductPage}
       perPage={productsPerPage}
       onPerPageChange={setProductsPerPage}
+      searchInput={searchInput}
+      onSearchChange={setSearchInput}
     />
   );
 };
