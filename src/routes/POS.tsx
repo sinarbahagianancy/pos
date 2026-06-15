@@ -12,6 +12,7 @@ import { formatIDR, calculateWarrantyExpiry, formatDate } from "../../app/utils/
 import { pdf } from "@react-pdf/renderer";
 import { InvoiceDocument, InvoiceLayout } from "../../app/components/InvoicePDF";
 import { RupiahInput } from "../../app/components/RupiahInput";
+import { createQuotation as apiCreateQuotation } from "../../app/services/quotation.api";
 
 interface POSProps {
   products: Product[];
@@ -49,12 +50,13 @@ const POSView: React.FC<POSProps> = ({
   const [utangAmountPaid, setUtangAmountPaid] = useState(0);
   const [ppnEnabled, setPpnEnabled] = useState(true);
   const [transactionNotes, setTransactionNotes] = useState("");
+  const [transactionPoNumber, setTransactionPoNumber] = useState("");
   const [lastSale, setLastSale] = useState<Sale | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
   const [printPdfUrl, setPrintPdfUrl] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [isQuotation, setIsQuotation] = useState(false);
-  const [invoiceLayout, setInvoiceLayout] = useState<InvoiceLayout>("a4-portrait");
+  const [invoiceLayout] = useState<InvoiceLayout>("a4-portrait");
   const [confirmCheckout, setConfirmCheckout] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processResult, setProcessResult] = useState<{ success: boolean; message: string } | null>(
@@ -399,6 +401,11 @@ const POSView: React.FC<POSProps> = ({
 
   const handleShowQuotation = async () => {
     if (cart.length === 0) return;
+    if (!transactionPoNumber.trim()) {
+      setToast({ message: "Nomor PO wajib diisi", type: "error" });
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
 
     const customer = selectedCustomer || {
       id: "guest",
@@ -410,8 +417,37 @@ const POSView: React.FC<POSProps> = ({
       loyaltyPoints: 0,
     };
 
+    // Persist the Quotation to DB so the SB/dd/mm/yyyy-NNN id is auto-generated server-side.
+    let persistedQuotation;
+    try {
+      persistedQuotation = await apiCreateQuotation({
+        customerId: customer.id === "guest" ? undefined : customer.id,
+        customerName: customer.name,
+        items: cart.map((item) => ({
+          productId: item.productId,
+          brand: item.brand,
+          model: item.model,
+          sn: item.sn,
+          price: item.price,
+          quantity: item.quantity,
+        })),
+        subtotal,
+        tax,
+        taxEnabled: ppnEnabled,
+        total,
+        staffName,
+        notes: transactionNotes,
+        poNumber: transactionPoNumber.trim(),
+      });
+    } catch (error) {
+      setToast({ message: `Gagal menyimpan Quotation: ${String(error)}`, type: "error" });
+      setTimeout(() => setToast(null), 4000);
+      return;
+    }
+
+    // Use the persisted Quotation's auto-generated id (SB/...) as the displayed id
     const quotation: Sale = {
-      id: `QTN-${Date.now()}`,
+      id: persistedQuotation.id,
       customerId: customer.id,
       customerName: customer.name,
       items: cart,
@@ -422,7 +458,8 @@ const POSView: React.FC<POSProps> = ({
       paymentMethod: "Quotation" as PaymentMethod,
       staffName,
       notes: transactionNotes,
-      timestamp: new Date().toISOString(),
+      poNumber: transactionPoNumber.trim(),
+      timestamp: persistedQuotation.createdAt,
     };
 
     setLastSale(quotation);
@@ -432,6 +469,11 @@ const POSView: React.FC<POSProps> = ({
 
   const handleCheckout = async () => {
     if (cart.length === 0) return;
+    if (!transactionPoNumber.trim()) {
+      setToast({ message: "Nomor PO wajib diisi", type: "error" });
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
 
     let customer = selectedCustomer;
 
@@ -465,6 +507,7 @@ const POSView: React.FC<POSProps> = ({
       paymentMethod,
       staffName,
       notes: transactionNotes,
+      poNumber: transactionPoNumber.trim(),
       dueDate: paymentMethod === "Utang" && dueDate ? dueDate : undefined,
       isPaid: paymentMethod !== "Utang" || utangAmountPaid >= total,
       amountPaid: paymentMethod === "Utang" ? utangAmountPaid : total,
@@ -479,6 +522,7 @@ const POSView: React.FC<POSProps> = ({
     setSelectedCustomer(null);
     setIsRegistered(false);
     setTransactionNotes("");
+    setTransactionPoNumber("");
     setUtangAmountPaid(0);
   };
 
@@ -1025,6 +1069,19 @@ const POSView: React.FC<POSProps> = ({
 
           <div className="space-y-3">
             <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest">
+              Nomor PO <span className="text-red-400">*</span>
+            </label>
+            <input
+              type="text"
+              value={transactionPoNumber}
+              onChange={(e) => setTransactionPoNumber(e.target.value)}
+              placeholder="e.g., PO-2026-001 / 4500123456"
+              className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+            />
+          </div>
+
+          <div className="space-y-3">
+            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest">
               Transaction Notes
             </label>
             <input
@@ -1074,10 +1131,10 @@ const POSView: React.FC<POSProps> = ({
           </div>
 
           <button
-            disabled={cart.length === 0 || isPrinting}
+            disabled={cart.length === 0 || isPrinting || !transactionPoNumber.trim()}
             onClick={handleShowQuotation}
             className={`w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all border mt-4 ${
-              cart.length === 0 || isPrinting
+              cart.length === 0 || isPrinting || !transactionPoNumber.trim()
                 ? "bg-slate-800 text-slate-600 cursor-not-allowed border-slate-700"
                 : "bg-slate-800 text-slate-300 hover:bg-slate-700 border-slate-700"
             }`}
@@ -1086,17 +1143,22 @@ const POSView: React.FC<POSProps> = ({
           </button>
 
           <button
-            disabled={cart.length === 0 || !selectedCustomer}
+            disabled={cart.length === 0 || !selectedCustomer || !transactionPoNumber.trim()}
             onClick={() => setConfirmCheckout(true)}
             className={`w-full py-6 rounded-3xl font-black text-sm uppercase tracking-widest transition-all shadow-xl active:scale-95 mt-3 ${
-              cart.length === 0 || !selectedCustomer
+              cart.length === 0 || !selectedCustomer || !transactionPoNumber.trim()
                 ? "bg-slate-800 text-slate-600 cursor-not-allowed border border-slate-700"
                 : "bg-white text-slate-900 hover:bg-slate-50 shadow-white/5"
             }`}
           >
             Selesaikan Transaksi
           </button>
-          {!selectedCustomer && cart.length > 0 && (
+          {cart.length > 0 && !transactionPoNumber.trim() && (
+            <p className="text-[10px] text-amber-400 font-bold text-center mt-2 uppercase tracking-wider">
+              Isi Nomor PO terlebih dahulu
+            </p>
+          )}
+          {!selectedCustomer && cart.length > 0 && transactionPoNumber.trim() && (
             <p className="text-[10px] text-amber-400 font-bold text-center mt-2 uppercase tracking-wider">
               Pilih customer terlebih dahulu
             </p>
@@ -1247,13 +1309,6 @@ const POSView: React.FC<POSProps> = ({
       {printPdfUrl && (
         <PrintModal
           pdfUrl={printPdfUrl}
-          invoiceLayout={invoiceLayout}
-          onLayoutChange={async (layout) => {
-            setInvoiceLayout(layout);
-            if (lastSale) {
-              await generateInvoicePdf(lastSale, isQuotation, layout);
-            }
-          }}
           onClose={() => {
             URL.revokeObjectURL(printPdfUrl);
             setPrintPdfUrl(null);
@@ -1366,17 +1421,10 @@ const POSView: React.FC<POSProps> = ({
 
 interface PrintModalProps {
   pdfUrl: string;
-  invoiceLayout: InvoiceLayout;
-  onLayoutChange: (layout: InvoiceLayout) => void;
   onClose: () => void;
 }
 
-const PrintModal: React.FC<PrintModalProps> = ({
-  pdfUrl,
-  invoiceLayout,
-  onLayoutChange,
-  onClose,
-}) => {
+const PrintModal: React.FC<PrintModalProps> = ({ pdfUrl, onClose }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const handlePrint = () => {
@@ -1400,38 +1448,9 @@ const PrintModal: React.FC<PrintModalProps> = ({
         <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
           <h3 className="font-black text-slate-900 uppercase tracking-tight">Print Invoice</h3>
           <div className="flex items-center gap-2">
-            <div className="flex bg-slate-100 rounded-lg p-0.5">
-              <button
-                onClick={() => onLayoutChange("a5-landscape")}
-                className={`px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${
-                  invoiceLayout === "a5-landscape"
-                    ? "bg-white text-slate-900 shadow-sm"
-                    : "text-slate-400 hover:text-slate-600"
-                }`}
-              >
-                A5 Landscape
-              </button>
-              <button
-                onClick={() => onLayoutChange("a4-portrait")}
-                className={`px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${
-                  invoiceLayout === "a4-portrait"
-                    ? "bg-white text-indigo-600 shadow-sm"
-                    : "text-slate-400 hover:text-slate-600"
-                }`}
-              >
-                A4 Portrait
-              </button>
-              <button
-                onClick={() => onLayoutChange("a4-landscape")}
-                className={`px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${
-                  invoiceLayout === "a4-landscape"
-                    ? "bg-white text-indigo-600 shadow-sm"
-                    : "text-slate-400 hover:text-slate-600"
-                }`}
-              >
-                A4 Landscape
-              </button>
-            </div>
+            <span className="px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-500">
+              A4 Portrait
+            </span>
             <button
               onClick={handlePrint}
               className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold uppercase hover:bg-indigo-700"
