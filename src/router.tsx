@@ -35,6 +35,12 @@ const DashboardView = lazy(() =>
 const SalesLogsView = lazy(() =>
   import("./routes/SalesLogs").then((m) => ({ default: m.default })),
 );
+const SuratJalanView = lazy(() =>
+  import("./routes/SuratJalan").then((m) => ({ default: m.default })),
+);
+const SuratPenarikanView = lazy(() =>
+  import("./routes/SuratPenarikan").then((m) => ({ default: m.default })),
+);
 const LoginView = lazy(() => import("./routes/Login").then((m) => ({ default: m.default })));
 
 // Loading fallback
@@ -74,7 +80,15 @@ import {
   StoreConfig as StoreConfigType,
   getCurrentUser,
 } from "../app/services/auth.service";
-import type { Product, SerialNumber, AuditLog, Customer, Sale, Supplier } from "../app/types";
+import type {
+  Product,
+  SerialNumber,
+  AuditLog,
+  Customer,
+  Sale,
+  Supplier,
+  Quotation,
+} from "../app/types";
 import {
   getAllCustomers,
   createCustomer as apiCreateCustomer,
@@ -87,8 +101,12 @@ import {
   markSaleAsPaid,
   recordInstallment,
 } from "../app/services/sales.api";
+import { getAllQuotations } from "../app/services/quotation.api";
+import { getAllSuratJalan, createSuratJalan } from "../app/services/suratJalan.api";
+import { getAllSuratPenarikan, createSuratPenarikan } from "../app/services/suratPenarikan.api";
+import { getAllBatchInput, createBatchInput } from "../app/services/batchInput.api";
 import { getAllWarrantyClaims } from "../app/services/reports.api";
-import type { WarrantyClaim } from "../app/types";
+import type { WarrantyClaim, SuratJalan, SuratPenarikan, BatchInput } from "../app/types";
 
 const useAuthCheck = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -177,6 +195,18 @@ const AppLayout = () => {
       label: "Sales Logs",
       path: "/sales-logs",
       icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01",
+    },
+    {
+      id: "surat-jalan",
+      label: "Surat Jalan",
+      path: "/surat-jalan",
+      icon: "M9 17v-2a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2a2 2 0 002-2v-2m0-4h.01M19 17v-2a2 2 0 00-2-2h-2a2 2 0 00-2 2v4a2 2 0 002 2h2a2 2 0 002-2v-2m0-4h.01M9 7h6m-6 4h6m-6 4h6M5 7h.01M5 11h.01M5 15h.01",
+    },
+    {
+      id: "surat-penarikan",
+      label: "Penarikan Barang",
+      path: "/surat-penarikan",
+      icon: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4",
     },
     {
       id: "inventory",
@@ -671,6 +701,12 @@ const SalesLogsComponent = () => {
   const queryClient = useQueryClient();
   const [salesPage, setSalesPage] = useState(1);
   const [salesPerPage, setSalesPerPage] = useState(20);
+  const [quotationPage, setQuotationPage] = useState(1);
+  const [quotationPerPage, setQuotationPerPage] = useState(20);
+  const [quotationStatusFilter, setQuotationStatusFilter] = useState<
+    "Pending" | "Approved" | "Rejected" | "Canceled" | "all"
+  >("all");
+  const [activeTab, setActiveTab] = useState<"sales" | "quotations">("sales");
 
   const { data: salesData, isLoading: salesLoading } = useQuery({
     queryKey: ["sales", salesPage, salesPerPage],
@@ -682,20 +718,51 @@ const SalesLogsComponent = () => {
     queryFn: () => getAllCustomers({ page: 1, limit: 1000 }),
   });
 
+  const { data: productsData } = useQuery({
+    queryKey: ["products"],
+    queryFn: () => getAllProducts({ page: 1, limit: 1000 }),
+  });
+
+  const { data: snsData } = useQuery({
+    queryKey: ["serial-numbers"],
+    queryFn: getAllSerialNumbers,
+  });
+
   const { data: storeConfig } = useQuery({
     queryKey: ["storeConfig"],
     queryFn: getStoreConfig,
+  });
+
+  const { data: quotationsData, isLoading: quotationsLoading } = useQuery({
+    queryKey: [
+      "quotations",
+      quotationPage,
+      quotationPerPage,
+      quotationStatusFilter === "all" ? null : quotationStatusFilter,
+    ],
+    queryFn: () =>
+      getAllQuotations({
+        page: quotationPage,
+        limit: quotationPerPage,
+        status: quotationStatusFilter === "all" ? undefined : quotationStatusFilter,
+      }),
   });
 
   const sales = salesData?.sales || [];
   const totalSales = salesData?.total || 0;
   const totalSalesPages = salesData?.totalPages || 0;
   const customers = customersData?.customers || [];
+  const products = productsData?.products || [];
+  const sns = snsData || [];
+  const quotations = quotationsData?.quotations || [];
+  const totalQuotations = quotationsData?.total || 0;
+  const totalQuotationPages = quotationsData?.totalPages || 0;
   const loading = salesLoading;
 
+  const currentUser = getCurrentUser();
+  const staffName = currentUser?.name || "System";
+
   const handleMarkAsPaid = async (saleId: string) => {
-    const user = getCurrentUser();
-    const staffName = user?.name || "System";
     try {
       const updatedSale = await markSaleAsPaid(saleId, staffName);
       await queryClient.invalidateQueries({ queryKey: ["sales"] });
@@ -706,8 +773,6 @@ const SalesLogsComponent = () => {
   };
 
   const handleRecordInstallment = async (saleId: string, amount: number) => {
-    const user = getCurrentUser();
-    const staffName = user?.name || "System";
     try {
       await recordInstallment(saleId, amount, staffName);
       await queryClient.invalidateQueries({ queryKey: ["sales"] });
@@ -727,6 +792,8 @@ const SalesLogsComponent = () => {
 
   return (
     <SalesLogsView
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
       sales={sales}
       customers={customers}
       storeConfig={{
@@ -742,6 +809,22 @@ const SalesLogsComponent = () => {
       onPerPageChange={setSalesPerPage}
       onMarkAsPaid={handleMarkAsPaid}
       onRecordInstallment={handleRecordInstallment}
+      // Quotation tab
+      quotations={quotations}
+      quotationsLoading={quotationsLoading}
+      quotationPage={quotationPage}
+      quotationPerPage={quotationPerPage}
+      quotationTotal={totalQuotations}
+      quotationTotalPages={totalQuotationPages}
+      onQuotationPageChange={setQuotationPage}
+      onQuotationPerPageChange={setQuotationPerPage}
+      quotationStatusFilter={quotationStatusFilter}
+      onQuotationStatusFilterChange={setQuotationStatusFilter}
+      onRefreshQuotations={() => queryClient.invalidateQueries({ queryKey: ["quotations"] })}
+      onRefreshSales={() => queryClient.invalidateQueries({ queryKey: ["sales"] })}
+      products={products}
+      sns={sns}
+      staffName={staffName}
     />
   );
 };
@@ -1108,6 +1191,7 @@ const POSComponent = () => {
         paymentMethod: sale.paymentMethod,
         staffName: sale.staffName,
         notes: sale.notes,
+        poNumber: sale.poNumber ?? "",
         dueDate: sale.dueDate,
         isPaid: sale.paymentMethod !== "Utang" ? true : false,
         amountPaid: sale.amountPaid,
@@ -1180,6 +1264,90 @@ const POSComponent = () => {
   );
 };
 
+// Surat Jalan
+const SuratJalanComponent = () => {
+  const queryClient = useQueryClient();
+
+  const { data: productsData } = useQuery({
+    queryKey: ["products"],
+    queryFn: () => getAllProducts({ page: 1, limit: 1000 }),
+  });
+
+  const { data: snsData } = useQuery({
+    queryKey: ["serial-numbers"],
+    queryFn: getAllSerialNumbers,
+  });
+
+  const { data: customersData } = useQuery({
+    queryKey: ["customers"],
+    queryFn: () => getAllCustomers({ page: 1, limit: 1000 }),
+  });
+
+  const { data: storeConfig } = useQuery({
+    queryKey: ["storeConfig"],
+    queryFn: getStoreConfig,
+  });
+
+  const user = getCurrentUser();
+  const staffName = user?.name || "System";
+
+  if (!storeConfig) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+      </div>
+    );
+  }
+
+  return (
+    <SuratJalanView
+      products={productsData?.products || []}
+      sns={snsData || []}
+      customers={customersData?.customers || []}
+      storeConfig={storeConfig}
+      staffName={staffName}
+    />
+  );
+};
+
+// Surat Penarikan Barang
+const SuratPenarikanComponent = () => {
+  const { data: productsData } = useQuery({
+    queryKey: ["products"],
+    queryFn: () => getAllProducts({ page: 1, limit: 1000 }),
+  });
+
+  const { data: snsData } = useQuery({
+    queryKey: ["serial-numbers"],
+    queryFn: getAllSerialNumbers,
+  });
+
+  const { data: storeConfig } = useQuery({
+    queryKey: ["storeConfig"],
+    queryFn: getStoreConfig,
+  });
+
+  const user = getCurrentUser();
+  const staffName = user?.name || "System";
+
+  if (!storeConfig) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+      </div>
+    );
+  }
+
+  return (
+    <SuratPenarikanView
+      products={productsData?.products || []}
+      sns={snsData || []}
+      storeConfig={storeConfig}
+      staffName={staffName}
+    />
+  );
+};
+
 // Protected route wrapper
 const ProtectedRoute: React.FC<{ component: React.FC }> = ({ component: Component }) => {
   const isAuthenticated = useAuthCheck();
@@ -1213,6 +1381,18 @@ const salesLogsRoute = new Route({
   getParentRoute: () => rootRoute,
   path: "/sales-logs",
   component: () => <ProtectedRoute component={SalesLogsComponent} />,
+});
+
+const suratJalanRoute = new Route({
+  getParentRoute: () => rootRoute,
+  path: "/surat-jalan",
+  component: () => <ProtectedRoute component={SuratJalanComponent} />,
+});
+
+const suratPenarikanRoute = new Route({
+  getParentRoute: () => rootRoute,
+  path: "/surat-penarikan",
+  component: () => <ProtectedRoute component={SuratPenarikanComponent} />,
 });
 
 const dashboardRoute = new Route({
@@ -1274,6 +1454,8 @@ const routeTree = rootRoute.addChildren([
   indexRoute,
   dashboardRoute,
   salesLogsRoute,
+  suratJalanRoute,
+  suratPenarikanRoute,
   inventoryRoute,
   suppliersRoute,
   customersRoute,
