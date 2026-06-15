@@ -1360,6 +1360,10 @@ const SuratPenarikanComponent = () => {
 const BatchInputComponent = () => {
   const user = getCurrentUser();
   const staffName = user?.name || "System";
+  const { data: productsData } = useQuery({
+    queryKey: ["products"],
+    queryFn: () => getAllProducts({ page: 1, limit: 1000 }),
+  });
   const { data: suppliersData } = useQuery({
     queryKey: ["suppliers", 1, 1000],
     queryFn: () => getAllSuppliers({ page: 1, limit: 1000 }),
