@@ -178,6 +178,29 @@ No "edit" or "delete" mode in v1 — batches are terminal on creation (consisten
   - Penarikan only: the customer-section slot on the left is replaced with `Penarik` + `Alasan` block (2 lines, mirroring the customer block's vertical footprint)
   - Penarikan only: the right-side details box drops the `No. PO` row
 
+### Document Item Form Shape (Surat Jalan & Surat Penarikan Barang)
+
+- **Empty rows show all products** (SN and non-SN both) in the dropdown. The user does not have to pre-commit to a row type — they pick the product first, and the row's shape (card vs grid) adapts after the pick based on the product's `hasSerialNumber` flag. The empty row is itself rendered in the grid layout; the card layout only appears _after_ an SN product is picked (because that is when chip-list space is needed).
+- **Product dropdown is grouped with `<optgroup>` by row type**, labeled `Nomor Seri` (SN) and `Tanpa Nomor Seri` (non-SN) in Indonesian to match the rest of the form's voice. Empty optgroups (when a category has no available products) are omitted. The category is shown to the user as part of the dropdown's structure, not just as a label suffix, because the row's behavior diverges significantly after a pick (card+modal+chip list vs plain grid+qty) and the user benefits from seeing the distinction upfront.
+- **SN products with zero "In Stock" SNs are always excluded from the dropdown**, on both routes. The reasoning: an SN row in this form picks _specific_ units, so an SN product with 0 pickable units is un-submittable in any flow (the modal would open with 0 visible SNs, the row would fail per-row validation, and the user would have to delete the row). The rule is universal — it is not a Surat Penarikan-specific concern. The page's `productFilter` is still applied on top, to handle page-specific rules (SJ excludes 0-stock non-SN products; SPB allows them so the form can record a 0-unit claim for accounting).
+
+- **Two row types, rendered differently based on the picked product's `hasSerialNumber` flag.**
+  - **SN row** (`hasSerialNumber = true`): rendered as a **card**. Top line has the product dropdown, a `Pilih SN (N dipilih)` button that opens a modal picker, and a `✕` delete button. Below the top line: a horizontal **chip list** of selected SNs (each chip has its own `X` to remove individually). No qty field — the count of selected SNs _is_ the unit count.
+  - **Non-SN row** (`hasSerialNumber = false`): rendered as a **single 12-column grid row** (the existing layout). Product dropdown, qty input, `✕` delete button. **No SN control at all** (the legacy optional SN text field is removed; the `NOSN-` prefix convention in the server handlers is dead code).
+- **Multi-select SN picker (modal)**: for SN products, the modal lists all "In Stock" SNs of the picked product as checkboxes, with a search input at the top, `Pilih Semua` / `Hapus Semua` buttons, and a footer `Batal` / `Simpan (N dipilih)` action. Scrollable, handles products with 30+ stock.
+- **Form-wide SN dedup**: the form maintains a `Set<string>` of "SNs already picked in this form". When the modal is open, any SN in this Set is **hidden** from the list (not just greyed out — removed from view). Deleting a row that had picked SNs re-adds them to the available pool.
+- **SN removal** is symmetric: clicking the `X` on a chip removes that SN from the row's selection **and** makes it available in other rows' modals. The `+ Tambah Item` button always adds a fresh empty row.
+- **Per-row validation** (inline, red border + red helper text under the offending control):
+  - SN row: at least 1 SN must be selected.
+  - Non-SN row: quantity must be ≥ 1.
+  - Both: a product must be selected (catches the "+ Tambah Item then forget" case inline rather than at submit).
+- **Empty rows on submit are silently skipped** — the form filters out rows with `productId === ""` before sending the request. The `✕` button is always present, so the user can clean up manually.
+- **Toast is the final safety net** — inline errors cover everything the form can predict, but a single toast appears on submit if any row-level or server-side validation fails (e.g., stock changed since the form was loaded, or a duplicate SN slipped through somehow).
+- **Submit shape**: the form expands each SN row into N items (one per selected SN, each with `quantity: 1, sn: <that SN>`) and each non-SN row into one item (with `quantity: <form qty>, sn: ""`). The server-side items array is the same shape as today — no API change. The server's pre-flight stock check and SN-availability check still work because they aggregate by `productId` and check each `sn` independently.
+- **Detail view and PDF are unchanged** — the DB stores one item row per SN (same as today), so the existing detail modal and `InvoicePDF` iterate naturally with no changes.
+
+_Avoid_ showing a qty input for SN rows — the count of selected SNs _is_ the qty. Showing a qty input is misleading and lets the user type a number that decouples from the actual SNs picked. _Avoid_ using a free-text SN input — the modal picker is the only way to pick SNs (prevents typos and out-of-stock selections). _Avoid_ showing any SN control on non-SN rows — if the product is `hasSerialNumber = false`, no SN field is shown.
+
 ### Document UI Placement
 
 - **Surat Jalan**: new top-level sidebar item

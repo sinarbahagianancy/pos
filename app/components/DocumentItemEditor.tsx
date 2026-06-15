@@ -60,8 +60,33 @@ const DocumentItemEditor: React.FC<DocumentItemEditorProps> = ({
 
   const filteredProducts = useMemo(() => {
     const filter = productFilter ?? ((p: Product) => !p.hidden);
-    return products.filter(filter);
-  }, [products, productFilter]);
+    return products.filter((p) => {
+      if (!filter(p)) return false;
+      // Universal rule: an SN product with 0 "In Stock" SNs is
+      // un-submittable in any flow (the picker modal would open with
+      // 0 visible SNs and the row would fail per-row validation), so
+      // we hide it from the dropdown on both SJ and SPB. See CONTEXT.md
+      // -> Document Item Form Shape -> SN products with zero
+      // "In Stock" SNs are always excluded from the dropdown.
+      if (p.hasSerialNumber) {
+        return sns.some((s) => s.productId === p.id && s.status === "In Stock");
+      }
+      return true;
+    });
+  }, [products, sns, productFilter]);
+
+  // Split by hasSerialNumber for the optgrouped product dropdown.
+  // Empty groups (one category has no available products) are omitted
+  // from the rendered dropdown.
+  const { snProducts, nonSNProducts } = useMemo(() => {
+    const sn: Product[] = [];
+    const nonSn: Product[] = [];
+    filteredProducts.forEach((p) => {
+      if (p.hasSerialNumber) sn.push(p);
+      else nonSn.push(p);
+    });
+    return { snProducts: sn, nonSNProducts: nonSn };
+  }, [filteredProducts]);
 
   // ---- Mutators ----
   const updateItem = (idx: number, patch: Partial<DocumentFormItem>) => {
@@ -118,6 +143,40 @@ const DocumentItemEditor: React.FC<DocumentItemEditorProps> = ({
     return sns.filter((s) => s.productId === productId && s.status === "In Stock").map((s) => s.sn);
   };
 
+  /**
+   * Render the product dropdown for a row. Always shows all eligible
+   * products grouped by hasSerialNumber so the user can pick either
+   * type, and the row's shape (card vs grid) adapts after the pick.
+   * Empty optgroups (one category has no available products) are omitted.
+   */
+  const renderProductSelect = (idx: number, productId: string) => (
+    <select
+      value={productId}
+      onChange={(e) => handleProductChange(idx, e.target.value)}
+      className="col-span-5 px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+    >
+      <option value="">-- Pilih Produk --</option>
+      {snProducts.length > 0 && (
+        <optgroup label="Nomor Seri">
+          {snProducts.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.brand} {p.model} (stock: {p.stock})
+            </option>
+          ))}
+        </optgroup>
+      )}
+      {nonSNProducts.length > 0 && (
+        <optgroup label="Tanpa Nomor Seri">
+          {nonSNProducts.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.brand} {p.model} (stock: {p.stock})
+            </option>
+          ))}
+        </optgroup>
+      )}
+    </select>
+  );
+
   // ---- Render ----
   return (
     <div>
@@ -158,20 +217,7 @@ const DocumentItemEditor: React.FC<DocumentItemEditorProps> = ({
                 >
                   {err && <div className="text-xs text-red-600 font-bold">{err}</div>}
                   <div className="grid grid-cols-12 gap-2">
-                    <select
-                      value={item.productId}
-                      onChange={(e) => handleProductChange(idx, e.target.value)}
-                      className="col-span-5 px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
-                    >
-                      <option value="">-- Pilih Produk (SN) --</option>
-                      {filteredProducts
-                        .filter((p) => p.hasSerialNumber)
-                        .map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.brand} {p.model} (stock: {p.stock})
-                          </option>
-                        ))}
-                    </select>
+                    {renderProductSelect(idx, item.productId)}
                     <button
                       type="button"
                       onClick={() => setOpenModalRowIdx(idx)}
@@ -231,20 +277,7 @@ const DocumentItemEditor: React.FC<DocumentItemEditorProps> = ({
                   className="grid grid-cols-12 gap-2 p-3 border border-slate-200 rounded-xl"
                 >
                   {err && <div className="col-span-12 text-xs text-red-600 font-bold">{err}</div>}
-                  <select
-                    value={item.productId}
-                    onChange={(e) => handleProductChange(idx, e.target.value)}
-                    className="col-span-5 px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white"
-                  >
-                    <option value="">-- Pilih Produk --</option>
-                    {filteredProducts
-                      .filter((p) => !p.hasSerialNumber)
-                      .map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.brand} {p.model} (stock: {p.stock})
-                        </option>
-                      ))}
-                  </select>
+                  {renderProductSelect(idx, item.productId)}
                   {isEmpty ? (
                     <span className="col-span-6 text-sm text-slate-400 italic self-center">
                       Pilih produk dulu
