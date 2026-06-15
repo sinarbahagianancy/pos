@@ -52,13 +52,19 @@ export const getBatchInputById = async (id: string): Promise<BatchInput> => {
 };
 
 export interface CreateBatchInputItemInput {
-  productId: string;
   brand?: string;
   model: string;
-  quantity: number;
-  sns: string[];
+  category: string;
+  condition: string;
+  mount?: string;
+  warrantyType: string;
+  warrantyMonths: number;
   cogs: number;
   price: number;
+  hasSerialNumber: boolean;
+  taxEnabled: boolean;
+  quantity: number;
+  sns: string[];
 }
 
 export interface CreateBatchInputInput {
