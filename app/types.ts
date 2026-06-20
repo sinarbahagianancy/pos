@@ -249,11 +249,16 @@ export type PenarikanReason =
 export interface SuratPenarikanItem {
   id: string;
   suratPenarikanId: string;
-  productId: string;
+  // Null for "manual" (free-text) rows — see SuratPenarikan.isManual.
+  productId?: string;
   brand?: string;
   model: string;
   sn: string;
   quantity: number;
+  // True when the row is a free-text item not tied to a product in the
+  // inventory catalog. Manual rows are pure record-keeping; the server
+  // does NOT deduct stock for them.
+  isManual?: boolean;
 }
 
 export interface SuratPenarikan {
@@ -261,6 +266,10 @@ export interface SuratPenarikan {
   recipient: string;
   reason: PenarikanReason;
   alasanLainnya?: string;
+  // Optional header fields — empty string when not applicable (most
+  // Penarikan events are internal write-offs without a customer).
+  customerName?: string;
+  poNumber?: string;
   notes?: string;
   staffName: string;
   items: SuratPenarikanItem[];

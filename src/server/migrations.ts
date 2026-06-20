@@ -60,4 +60,30 @@ export async function runBatchInputMigrations(): Promise<void> {
   } catch (e) {
     console.error("Failed to add batch_input_items.mode:", e);
   }
+
+  // Add surat_penarikan.customer_name / po_number (idempotent).
+  try {
+    await client.unsafe(
+      `ALTER TABLE "surat_penarikan" ADD COLUMN IF NOT EXISTS "customer_name" text NOT NULL DEFAULT ''`,
+    );
+    await client.unsafe(
+      `ALTER TABLE "surat_penarikan" ADD COLUMN IF NOT EXISTS "po_number" text NOT NULL DEFAULT ''`,
+    );
+  } catch (e) {
+    console.error("Failed to add surat_penarikan customer_name/po_number:", e);
+  }
+
+  // Allow NULL product_id and add is_manual flag on surat_penarikan_items
+  // (idempotent: ALTER ... DROP NOT NULL is safe to repeat; column-add is
+  // guarded with IF NOT EXISTS).
+  try {
+    await client.unsafe(
+      `ALTER TABLE "surat_penarikan_items" ALTER COLUMN "product_id" DROP NOT NULL`,
+    );
+    await client.unsafe(
+      `ALTER TABLE "surat_penarikan_items" ADD COLUMN IF NOT EXISTS "is_manual" boolean NOT NULL DEFAULT false`,
+    );
+  } catch (e) {
+    console.error("Failed to alter surat_penarikan_items for manual rows:", e);
+  }
 }

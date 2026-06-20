@@ -320,6 +320,12 @@ export const suratPenarikan = pgTable("surat_penarikan", {
   recipient: text("recipient").notNull(),
   reason: penarikanReasonEnum("reason").notNull(),
   alasanLainnya: text("alasan_lainnya"),
+  // Optional customer/PO fields — both default to '' so existing rows
+  // remain valid after the migration. Most Penarikan events are internal
+  // write-offs with no customer; these fields are filled when the
+  // withdrawal is tied to a customer-side document.
+  customerName: text("customer_name").notNull().default(""),
+  poNumber: text("po_number").notNull().default(""),
   notes: text("notes"),
   staffName: text("staff_name").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
@@ -330,13 +336,15 @@ export const suratPenarikanItems = pgTable("surat_penarikan_items", {
   suratPenarikanId: text("surat_penarikan_id")
     .notNull()
     .references(() => suratPenarikan.id, { onDelete: "cascade" }),
-  productId: text("product_id")
-    .notNull()
-    .references(() => products.id, { onDelete: "restrict" }),
+  // Nullable: manual (free-text) rows leave productId null. They carry
+  // an isManual flag and a model string but are not tied to a product.
+  // No FK on purpose — see migration 0011.
+  productId: text("product_id"),
   brand: text("brand"),
   model: text("model").notNull(),
   sn: text("sn").notNull().default(""),
   quantity: integer("quantity").notNull().default(1),
+  isManual: boolean("is_manual").notNull().default(false),
 });
 
 // ============================================================

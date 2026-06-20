@@ -56,6 +56,7 @@ const parseDbSuratPenarikanItem = (row: Record<string, unknown>): SuratPenarikan
   model: pick(row, "model", "model"),
   sn: pick(row, "sn", "sn"),
   quantity: pick(row, "quantity", "quantity"),
+  isManual: pick(row, "is_manual", "isManual"),
 });
 
 const parseDbSuratPenarikan = (
@@ -66,6 +67,8 @@ const parseDbSuratPenarikan = (
   recipient: pick(row, "recipient", "recipient"),
   reason: pick(row, "reason", "reason"),
   alasanLainnya: pick(row, "alasan_lainnya", "alasanLainnya"),
+  customerName: (pick(row, "customer_name", "customerName") ?? "") as string,
+  poNumber: (pick(row, "po_number", "poNumber") ?? "") as string,
   notes: pick(row, "notes", "notes"),
   staffName: pick(row, "staff_name", "staffName"),
   items,
@@ -102,33 +105,64 @@ export const createSuratPenarikanHandler = async (raw: unknown): Promise<SuratPe
 
     // Insert header
     await tx.unsafe(
-      `INSERT INTO surat_penarikan (id, recipient, reason, alasan_lainnya, notes, staff_name)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+      `INSERT INTO surat_penarikan (id, recipient, reason, alasan_lainnya, customer_name, po_number, notes, staff_name)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         spbId,
         data.recipient,
         data.reason,
         data.alasanLainnya || null,
+        data.customerName || "",
+        data.poNumber || "",
         data.notes || null,
         data.staffName,
       ],
     );
 
-    // Insert items, deduct stock (capped at available), mark SNs Damaged
+    // Insert items, deduct stock (capped at available), mark SNs Damaged.
+    // Manual rows (free-text items not in the catalog) are inserted with
+    // product_id NULL, is_manual = true, and skip the stock/SN side-effects
+    // entirely — they're pure record-keeping lines.
     const reasonLabel =
       data.reason === "Lainnya" && data.alasanLainnya
         ? `Lainnya: ${data.alasanLainnya}`
         : data.reason;
 
     for (const item of data.items) {
+      const isManual = item.isManual === true;
+
+      if (isManual) {
+        // Manual row: no product lookup, no stock deduction, no SN status
+        // change. Just record the free-text line as-is.
+        await tx.unsafe(
+          `INSERT INTO surat_penarikan_items (surat_penarikan_id, product_id, brand, model, sn, quantity, is_manual)
+           VALUES ($1, NULL, $2, $3, '', 1, true)`,
+          [spbId, item.brand || null, item.model],
+        );
+        await tx.unsafe(
+          `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())`,
+          [
+            `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+            data.staffName,
+            "Sales Deduction",
+            `Penarikan (manual): 1 unit of "${item.model}" by ${data.recipient}, reason: ${reasonLabel}`,
+            null,
+          ],
+        );
+        continue;
+      }
+
+      // Catalog branch — validator guarantees productId is set for
+      // non-manual rows, so the `!` is safe.
+      const productId = item.productId!;
       const requestedQty = item.quantity ?? 1;
       // Look up current stock with lock
       const [product] = await tx.unsafe(
         "SELECT stock, model FROM products WHERE id = $1 FOR UPDATE",
-        [item.productId],
+        [productId],
       );
       if (!product) {
-        throw new Error(`Product ${item.productId} not found`);
+        throw new Error(`Product ${productId} not found`);
       }
       const available = Number((product as any).stock);
       const actualQty = Math.min(requestedQty, available);
@@ -138,7 +172,7 @@ export const createSuratPenarikanHandler = async (raw: unknown): Promise<SuratPe
       let brand = item.brand;
       if (!brand) {
         const [prodBrand] = await tx.unsafe("SELECT brand FROM products WHERE id = $1", [
-          item.productId,
+          productId,
         ]);
         brand = (prodBrand as any)?.brand;
       }
@@ -161,16 +195,16 @@ export const createSuratPenarikanHandler = async (raw: unknown): Promise<SuratPe
 
       // Insert line item (record the actual quantity deducted, not the requested)
       await tx.unsafe(
-        `INSERT INTO surat_penarikan_items (surat_penarikan_id, product_id, brand, model, sn, quantity)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [spbId, item.productId, brand || null, item.model, sn, actualQty],
+        `INSERT INTO surat_penarikan_items (surat_penarikan_id, product_id, brand, model, sn, quantity, is_manual)
+         VALUES ($1, $2, $3, $4, $5, $6, false)`,
+        [spbId, productId, brand || null, item.model, sn, actualQty],
       );
 
       // Deduct stock (up to available)
       if (actualQty > 0) {
         await tx.unsafe(
           "UPDATE products SET stock = GREATEST(stock - $1, 0), updated_at = NOW() WHERE id = $2",
-          [actualQty, item.productId],
+          [actualQty, productId],
         );
       }
 
@@ -185,7 +219,7 @@ export const createSuratPenarikanHandler = async (raw: unknown): Promise<SuratPe
           data.staffName,
           "Sales Deduction",
           `Penarikan: ${actualQty} unit(s) of ${item.model} (${snLabel}) by ${data.recipient}, reason: ${reasonLabel}${detailShort}`,
-          item.productId,
+          productId,
         ],
       );
     }

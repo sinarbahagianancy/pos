@@ -1,4 +1,4 @@
-import type { SuratPenarikan, SuratPenarikanItem, PenarikanReason } from "../types";
+import type { SuratPenarikan, PenarikanReason } from "../types";
 
 const API_BASE = "/api";
 
@@ -52,17 +52,20 @@ export const getSuratPenarikanById = async (id: string): Promise<SuratPenarikan>
 };
 
 export interface CreateSuratPenarikanItemInput {
-  productId: string;
+  productId?: string;
   brand?: string;
   model: string;
   sn?: string;
   quantity?: number;
+  isManual?: boolean;
 }
 
 export interface CreateSuratPenarikanInput {
   recipient: string;
   reason: PenarikanReason;
   alasanLainnya?: string;
+  customerName?: string;
+  poNumber?: string;
   notes?: string;
   staffName: string;
   items: CreateSuratPenarikanItemInput[];

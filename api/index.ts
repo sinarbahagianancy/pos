@@ -57,6 +57,26 @@ async function runRuntimeMigrations(c: ReturnType<typeof postgres>): Promise<voi
   } catch (e) {
     console.error("Failed to add batch_input_items.mode:", e);
   }
+  // Add surat_penarikan.customer_name / po_number (idempotent).
+  try {
+    await c.unsafe(
+      `ALTER TABLE "surat_penarikan" ADD COLUMN IF NOT EXISTS "customer_name" text NOT NULL DEFAULT ''`,
+    );
+    await c.unsafe(
+      `ALTER TABLE "surat_penarikan" ADD COLUMN IF NOT EXISTS "po_number" text NOT NULL DEFAULT ''`,
+    );
+  } catch (e) {
+    console.error("Failed to add surat_penarikan customer_name/po_number:", e);
+  }
+  // Allow NULL product_id and add is_manual on surat_penarikan_items.
+  try {
+    await c.unsafe(`ALTER TABLE "surat_penarikan_items" ALTER COLUMN "product_id" DROP NOT NULL`);
+    await c.unsafe(
+      `ALTER TABLE "surat_penarikan_items" ADD COLUMN IF NOT EXISTS "is_manual" boolean NOT NULL DEFAULT false`,
+    );
+  } catch (e) {
+    console.error("Failed to alter surat_penarikan_items for manual rows:", e);
+  }
 }
 
 const connectionString = process.env.DATABASE_URL || "";
@@ -3217,7 +3237,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (method === "POST" && url === "/api/surat-jalan") {
-      const input = body as Record<string, unknown>;
+      const input = (typeof req.body === "string" ? JSON.parse(req.body) : req.body) as Record<
+        string,
+        unknown
+      >;
       const items = Array.isArray(input.items) ? input.items : [];
       if (items.length === 0) {
         return res.status(400).json({ error: "Surat Jalan must have at least 1 item" });
@@ -3399,6 +3422,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           recipient: r.recipient,
           reason: r.reason,
           alasanLainnya: r.alasan_lainnya || undefined,
+          customerName: r.customer_name || "",
+          poNumber: r.po_number || "",
           notes: r.notes || undefined,
           staffName: r.staff_name,
           items: (itemsBySpb[r.id as string] || []).map((it: any) => ({
@@ -3409,6 +3434,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             model: it.model,
             sn: it.sn,
             quantity: it.quantity,
+            isManual: it.is_manual === true,
           })),
           createdAt: String(r.created_at),
         })),
@@ -3420,7 +3446,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (method === "POST" && url === "/api/surat-penarikan") {
-      const input = body as Record<string, unknown>;
+      const input = (typeof req.body === "string" ? JSON.parse(req.body) : req.body) as Record<
+        string,
+        unknown
+      >;
       const items = Array.isArray(input.items) ? input.items : [];
       if (items.length === 0) {
         return res.status(400).json({ error: "Surat Penarikan must have at least 1 item" });
@@ -3467,19 +3496,51 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             reason === "Lainnya" && alasanLainnya ? `Lainnya: ${alasanLainnya}` : reason;
 
           await tx.unsafe(
-            `INSERT INTO surat_penarikan (id, recipient, reason, alasan_lainnya, notes, staff_name)
-             VALUES ($1, $2, $3, $4, $5, $6)`,
+            `INSERT INTO surat_penarikan (id, recipient, reason, alasan_lainnya, customer_name, po_number, notes, staff_name)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
             [
               spbId,
               recipient,
               reason,
               alasanLainnya || null,
+              input.customerName ? String(input.customerName) : "",
+              input.poNumber ? String(input.poNumber) : "",
               input.notes ? String(input.notes) : null,
               staffName,
             ],
           );
 
           for (const it of items as Array<Record<string, unknown>>) {
+            const isManual = it.isManual === true;
+            const model = it.model ? String(it.model) : "";
+            if (!model) {
+              throw new Error("Every item must have a model");
+            }
+
+            if (isManual) {
+              // Manual (free-text) row: no product lookup, no stock
+              // deduction, no SN-status change. Pure record-keeping.
+              await tx.unsafe(
+                `INSERT INTO surat_penarikan_items (surat_penarikan_id, product_id, brand, model, sn, quantity, is_manual)
+                 VALUES ($1, NULL, $2, $3, '', 1, true)`,
+                [spbId, it.brand ? String(it.brand) : null, model],
+              );
+              await tx.unsafe(
+                `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())`,
+                [
+                  `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+                  staffName,
+                  "Sales Deduction",
+                  `Penarikan (manual): 1 unit of "${model}" by ${recipient}, reason: ${reasonLabel}`,
+                  null,
+                ],
+              );
+              continue;
+            }
+
+            if (!it.productId || !String(it.productId)) {
+              throw new Error("Catalog rows must have a productId");
+            }
             const requestedQty = typeof it.quantity === "number" ? it.quantity : 1;
             const [product] = await tx.unsafe(
               "SELECT stock, model FROM products WHERE id = $1 FOR UPDATE",
@@ -3508,9 +3569,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               }
             }
             await tx.unsafe(
-              `INSERT INTO surat_penarikan_items (surat_penarikan_id, product_id, brand, model, sn, quantity)
-               VALUES ($1, $2, $3, $4, $5, $6)`,
-              [spbId, String(it.productId), brand, String(it.model), sn, actualQty],
+              `INSERT INTO surat_penarikan_items (surat_penarikan_id, product_id, brand, model, sn, quantity, is_manual)
+               VALUES ($1, $2, $3, $4, $5, $6, false)`,
+              [spbId, String(it.productId), brand, model, sn, actualQty],
             );
             if (actualQty > 0) {
               await tx.unsafe(
@@ -3529,7 +3590,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
                 staffName,
                 "Sales Deduction",
-                `Penarikan: ${actualQty} unit(s) of ${String(it.model)} (${snLabel}) by ${recipient}, reason: ${reasonLabel}${detailShort}`,
+                `Penarikan: ${actualQty} unit(s) of ${model} (${snLabel}) by ${recipient}, reason: ${reasonLabel}${detailShort}`,
                 String(it.productId),
               ],
             );
@@ -3644,7 +3705,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (method === "POST" && url === "/api/batch-input") {
-      const input = body as Record<string, unknown>;
+      const input = (typeof req.body === "string" ? JSON.parse(req.body) : req.body) as Record<
+        string,
+        unknown
+      >;
       const items = Array.isArray(input.items) ? input.items : [];
       if (items.length === 0) {
         return res.status(400).json({ error: "Batch Input must have at least 1 item" });

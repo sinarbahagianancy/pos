@@ -129,14 +129,25 @@ _Avoid_ for Tambah Stok: Don't call it "Restock" alone — that's ambiguous with
   - **Batch Input Barang**: **free-form text** — the supplier's invoice number (Nomor Invoice Masuk) is the batch's primary key. No counter table, no auto-generation. User-typed, unique per batch.
 - **PO Number field**:
   - **Surat Jalan**: yes, mandatory, custom-typed (matches existing `sales.po_number` rule)
-  - **Surat Penarikan Barang**: **no** — not a customer-facing commercial document
+  - **Surat Penarikan Barang**: yes, but **optional** — defaults to empty string. Filled when the withdrawal is tied to a customer-side document; left empty for pure internal write-offs (the common case).
   - **Batch Input Barang**: **no** — the supplier invoice (Nomor Invoice Masuk) plays a similar role and is the batch's own ID
 
 ### Document Customer / Recipient / Supplier
 
 - **Surat Jalan**: `customer_id` is nullable; `customer_name` is NOT NULL text. Mirrors the Quotation model. If the user picks a customer from the list, address/NPWP auto-fill; if not, just a free-form name.
-- **Surat Penarikan Barang**: `recipient` is free-form text (person or department). No link to `customers` or `staff_members` table. v1 has no autocomplete.
+- **Surat Penarikan Barang**: `recipient` is free-form text (person or department). No link to `customers` or `staff_members` table. v1 has no autocomplete. The header also carries optional `customer_name` and `po_number` (mirroring SJ's shape) for the cases where the withdrawal is tied to a customer-side document.
 - **Batch Input Barang**: `supplier` is a dropdown of existing `suppliers` (must be added via the Suppliers page first; no inline supplier creation in v1).
+
+### Surat Penarikan Manual Items
+
+SPB supports two row kinds in the same form:
+
+- **Catalog row** — picks a product from the inventory dropdown. Behaves like SJ's rows: SN rows pick specific units, non-SN rows pick a qty. Stock is deducted on submit (capped at available). SNs of catalog rows are marked `Damaged`.
+- **Manual row** — free-text item name not in the inventory catalog. No `productId`, no qty (always 1), no SN. The DB stores it as `surat_penarikan_items` with `product_id = NULL` and `is_manual = true`. No stock is deducted (there is no product to deduct from). The PDF prints the row in the items table like any other line.
+
+Manual rows are useful for "removed 1× broken strap (not registered)" or "removed 1× display prop" — paper-trail lines that don't fit the inventory catalog.
+
+The form has two sections: **Items** (catalog, via `DocumentItemEditor`) and **Barang Manual** (free-text rows). Submit merges both into a single `items` array, tagged with `isManual: true|false`. The server branches per-row based on the flag.
 
 ### Inventory Search
 

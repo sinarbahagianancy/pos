@@ -48,8 +48,16 @@ const SuratPenarikanView: React.FC<SuratPenarikanViewProps> = ({
   const [recipient, setRecipient] = useState("");
   const [reason, setReason] = useState<PenarikanReason>("Rusak");
   const [alasanLainnya, setAlasanLainnya] = useState("");
+  // Optional customer/PO fields — mirror Surat Jalan's shape so both
+  // documents look the same on the form. Most Penarikan events are
+  // internal write-offs and leave these empty.
+  const [customerName, setCustomerName] = useState("");
+  const [poNumber, setPoNumber] = useState("");
   const [notes, setNotes] = useState("");
   const [formItems, setFormItems] = useState<DocumentFormItem[]>([]);
+  // Manual items: free-text lines not tied to any inventory product.
+  // Each row is just a name (no qty, no SN) — see agreed design.
+  const [manualItems, setManualItems] = useState<string[]>([]);
   const [rowErrors, setRowErrors] = useState<Record<number, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
@@ -84,8 +92,11 @@ const SuratPenarikanView: React.FC<SuratPenarikanViewProps> = ({
       setRecipient("");
       setReason("Rusak");
       setAlasanLainnya("");
+      setCustomerName("");
+      setPoNumber("");
       setNotes("");
       setFormItems([]);
+      setManualItems([]);
     }
   }, [view]);
 
@@ -106,7 +117,10 @@ const SuratPenarikanView: React.FC<SuratPenarikanViewProps> = ({
 
     // Filter out empty rows (rows with no product picked).
     const filledItems = formItems.filter((it) => it.productId);
-    if (filledItems.length === 0) {
+    // Filter out empty manual rows.
+    const filledManual = manualItems.map((m) => m.trim()).filter(Boolean);
+
+    if (filledItems.length === 0 && filledManual.length === 0) {
       showToast("Surat Penarikan must have at least 1 item", "error");
       return;
     }
@@ -134,7 +148,7 @@ const SuratPenarikanView: React.FC<SuratPenarikanViewProps> = ({
 
     // Expand rows to items: SN row → N items (one per SN, qty 1 each);
     // non-SN row → 1 item with the form's qty.
-    const expandedItems = filledItems.flatMap((it) => {
+    const catalogItems = filledItems.flatMap((it) => {
       const product = products.find((p) => p.id === it.productId)!;
       if (product.hasSerialNumber) {
         return (it.selectedSNs ?? []).map((sn) => ({
@@ -143,6 +157,7 @@ const SuratPenarikanView: React.FC<SuratPenarikanViewProps> = ({
           model: product.model,
           sn,
           quantity: 1,
+          isManual: false as const,
         }));
       } else {
         return [
@@ -152,10 +167,18 @@ const SuratPenarikanView: React.FC<SuratPenarikanViewProps> = ({
             model: product.model,
             sn: "",
             quantity: it.quantity ?? 1,
+            isManual: false as const,
           },
         ];
       }
     });
+
+    // Manual items: free-text rows. No productId, no qty (server
+    // defaults to 1), no SN. Pure record-keeping.
+    const manualPayload = filledManual.map((name) => ({
+      model: name,
+      isManual: true as const,
+    }));
 
     setSubmitting(true);
     try {
@@ -163,9 +186,11 @@ const SuratPenarikanView: React.FC<SuratPenarikanViewProps> = ({
         recipient: recipient.trim(),
         reason,
         alasanLainnya: reason === "Lainnya" ? alasanLainnya.trim() : undefined,
+        customerName: customerName.trim() || undefined,
+        poNumber: poNumber.trim() || undefined,
         notes: notes.trim() || undefined,
         staffName,
-        items: expandedItems,
+        items: [...catalogItems, ...manualPayload],
       };
       const created = await createSuratPenarikan(payload);
       showToast(`Surat Penarikan ${created.id} berhasil dibuat`, "success");
@@ -200,7 +225,8 @@ const SuratPenarikanView: React.FC<SuratPenarikanViewProps> = ({
         socialTiktok: "@TOKOSINARBAHAGIA",
         invoiceNumber: fresh.id,
         date: formatDate(fresh.createdAt),
-        customerName: "",
+        poNumber: fresh.poNumber,
+        customerName: fresh.customerName || "",
         recipient: fresh.recipient,
         reason: reasonLabel,
         items: fresh.items.map((item) => ({
@@ -447,6 +473,37 @@ const SuratPenarikanView: React.FC<SuratPenarikanViewProps> = ({
             </div>
           )}
 
+          {/* Customer + PO — mirrors Surat Jalan's header shape. Both
+              fields are optional because most Penarikan events are
+              internal write-offs without a customer/PO. Filled in when
+              the withdrawal is tied to a customer-side document. */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                Customer Name (opsional)
+              </label>
+              <input
+                type="text"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                placeholder="Kosongkan jika penarikan internal"
+                className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 text-sm font-bold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                No. PO (opsional)
+              </label>
+              <input
+                type="text"
+                value={poNumber}
+                onChange={(e) => setPoNumber(e.target.value)}
+                placeholder="e.g., PO-2026-001"
+                className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 text-sm font-mono font-bold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+              />
+            </div>
+          </div>
+
           <div>
             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
               Notes
@@ -468,6 +525,56 @@ const SuratPenarikanView: React.FC<SuratPenarikanViewProps> = ({
             errors={rowErrors}
             productFilter={(p) => !p.hidden}
           />
+
+          {/* Manual items: free-text lines not tied to any inventory
+              product. Each row is just a name (qty defaults to 1 on the
+              server, no SN, no stock change). For non-existing item
+              names that don't need to be in the catalog. */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">
+                Barang Manual (di luar inventory)
+              </h3>
+              <button
+                onClick={() => setManualItems([...manualItems, ""])}
+                className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase hover:bg-slate-800"
+              >
+                + Tambah Manual
+              </button>
+            </div>
+            {manualItems.length === 0 ? (
+              <div className="text-center py-4 text-sm text-slate-400 border-2 border-dashed border-slate-200 rounded-2xl">
+                Barang yang tidak ada di katalog (mis. barang rusak tanpa SN)
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {manualItems.map((name, idx) => (
+                  <div
+                    key={idx}
+                    className="grid grid-cols-12 gap-2 p-3 border border-slate-200 rounded-xl"
+                  >
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={(e) =>
+                        setManualItems(manualItems.map((n, i) => (i === idx ? e.target.value : n)))
+                      }
+                      placeholder="Nama barang (free-form, qty = 1)"
+                      className="col-span-11 px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setManualItems(manualItems.filter((_, i) => i !== idx))}
+                      className="col-span-1 px-2 text-red-500 hover:bg-red-50 rounded-lg text-lg leading-none"
+                      aria-label="Hapus baris"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
             <button

@@ -68,18 +68,31 @@ export const validateCreateSuratJalanInput = (input: unknown): CreateSuratJalanI
 // ============================================================
 // Surat Penarikan
 // ============================================================
+// Two item kinds, discriminated by isManual:
+//   - isManual: false (default) — a product from the inventory catalog.
+//     productId is required, the row participates in stock deduction
+//     and (for SN items) SN-status changes.
+//   - isManual: true             — a free-text item not in the catalog.
+//     productId is forbidden, the row is pure record-keeping: it
+//     carries a model name and an optional brand but does NOT deduct
+//     stock from any product (there is none).
 export interface CreateSuratPenarikanItemInput {
-  productId: string;
+  productId?: string;
   brand?: string;
   model: string;
   sn?: string;
   quantity?: number;
+  isManual?: boolean;
 }
 
 export interface CreateSuratPenarikanInput {
   recipient: string;
   reason: PenarikanReason;
   alasanLainnya?: string;
+  // Optional header fields — most Penarikan events are internal
+  // write-offs and leave these empty.
+  customerName?: string;
+  poNumber?: string;
   notes?: string;
   staffName: string;
   items: CreateSuratPenarikanItemInput[];
@@ -104,24 +117,53 @@ export const validateCreateSuratPenarikanInput = (input: unknown): CreateSuratPe
   if (!staffName) throw new Error("Staff name is required");
   const items = Array.isArray(data.items) ? data.items : [];
   if (items.length === 0) throw new Error("Surat Penarikan must have at least 1 item");
+  const customerName = data.customerName ? String(data.customerName).trim() : undefined;
+  const poNumber = data.poNumber ? String(data.poNumber).trim() : undefined;
   const notes = data.notes ? String(data.notes) : undefined;
   const validatedItems = items.map((raw: unknown, idx: number) => {
     const it = raw as Record<string, unknown>;
-    if (!it.productId || !String(it.productId)) {
-      throw new Error(`Item #${idx + 1}: productId is required`);
+    const isManual = it.isManual === true;
+    const model = it.model ? String(it.model).trim() : "";
+    if (!model) throw new Error(`Item #${idx + 1}: model is required`);
+    if (isManual) {
+      // Manual row: productId must be absent or empty. No stock
+      // deduction, no SN-status change.
+      const productId = it.productId ? String(it.productId).trim() : "";
+      if (productId) {
+        throw new Error(`Item #${idx + 1}: manual rows must not carry a productId`);
+      }
+      return {
+        productId: undefined,
+        brand: it.brand ? String(it.brand).trim() : undefined,
+        model,
+        sn: "",
+        quantity: 1,
+        isManual: true,
+      };
     }
-    if (!it.model || !String(it.model)) {
-      throw new Error(`Item #${idx + 1}: model is required`);
+    // Catalog row: productId required (existing behaviour).
+    if (!it.productId || !String(it.productId)) {
+      throw new Error(`Item #${idx + 1}: productId is required for catalog rows`);
     }
     return {
       productId: String(it.productId),
       brand: it.brand ? String(it.brand) : undefined,
-      model: String(it.model),
+      model,
       sn: it.sn ? String(it.sn) : "",
       quantity: typeof it.quantity === "number" && it.quantity > 0 ? it.quantity : 1,
+      isManual: false,
     };
   });
-  return { recipient, reason, alasanLainnya, notes, staffName, items: validatedItems };
+  return {
+    recipient,
+    reason,
+    alasanLainnya,
+    customerName,
+    poNumber,
+    notes,
+    staffName,
+    items: validatedItems,
+  };
 };
 
 // ============================================================

@@ -582,7 +582,7 @@ export const InvoiceDocument: React.FC<{
 
       {/* ==================== CUSTOMER + INVOICE DETAILS ==================== */}
       <View style={styles.customerInvoiceRow}>
-        {/* Customer slot OR Penarik+Alasan */}
+        {/* Customer slot OR Penarik+Alasan (+ optional Customer/PO) */}
         {isSuratPenarikan ? (
           <View style={styles.customerSection}>
             <View style={{ flexDirection: "row", marginBottom: 1 }}>
@@ -593,6 +593,21 @@ export const InvoiceDocument: React.FC<{
               <Text style={[styles.customerLabel, { width: 50 }]}>Alasan :</Text>
               <Text style={[styles.customerNik, { flex: 1 }]}>{data.reason || "-"}</Text>
             </View>
+            {/* Optional customer/PO lines: only render when the
+                withdrawal is tied to a customer-side document. Most
+                Penarikan events are internal and leave both empty. */}
+            {data.customerName ? (
+              <View style={{ flexDirection: "row", marginTop: 1 }}>
+                <Text style={[styles.customerLabel, { width: 50 }]}>Customer :</Text>
+                <Text style={[styles.customerNik, { flex: 1 }]}>{data.customerName}</Text>
+              </View>
+            ) : null}
+            {data.poNumber ? (
+              <View style={{ flexDirection: "row" }}>
+                <Text style={[styles.customerLabel, { width: 50 }]}>No. PO :</Text>
+                <Text style={[styles.customerNik, { flex: 1 }]}>{data.poNumber}</Text>
+              </View>
+            ) : null}
           </View>
         ) : (
           !isQuotation && (
@@ -627,8 +642,9 @@ export const InvoiceDocument: React.FC<{
             <Text style={styles.invoiceDetailSeparator}>:</Text>
             <Text style={styles.invoiceDetailValue}>{data.date}</Text>
           </View>
-          {/* PO row: hidden for Surat Penarikan (no PO field) */}
-          {!isSuratPenarikan && (
+          {/* PO row: shown on every kind that carries a PO. For SPB the
+              field is optional and the row is hidden when empty. */}
+          {(data.poNumber || !isSuratPenarikan) && (
             <View style={styles.invoiceDetailRow}>
               <Text style={styles.invoiceDetailLabel}>No. PO</Text>
               <Text style={styles.invoiceDetailSeparator}>:</Text>
