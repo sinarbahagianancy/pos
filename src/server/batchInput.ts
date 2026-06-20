@@ -54,11 +54,16 @@ const parseDbBatchInputItem = (row: Record<string, unknown>): BatchInputItem => 
   }
   const cogsRaw = pick(row, "cogs", "cogs");
   const priceRaw = pick(row, "price", "price");
-  // Heuristic: BRC-{timestamp}-{rand} ids are produced by the server's
-  // newProductId() generator for new-product rows. Anything else is a
-  // restock row pointing at an existing product's id.
+  // Per-item mode is stored in the DB as of migration 0010. For very old
+  // rows (pre-0010) that don't have the column, fall back to the
+  // productId-shape heuristic: BRC-{timestamp}-{rand} ids are produced
+  // by the server's newProductId() generator for new-product rows.
+  // Anything else is a restock row pointing at an existing product.
+  const explicitMode = pick(row, "mode", "mode") as string | undefined;
   const productId = pick(row, "product_id", "productId") as string;
-  const isNew = /^BRC-\d+-[a-z0-9]+$/i.test(productId);
+  const isNew =
+    explicitMode === "new" ||
+    (explicitMode === undefined && /^BRC-\d+-[a-z0-9]+$/i.test(productId));
   return {
     id: pick(row, "id", "id"),
     batchInputId: pick(row, "batch_input_id", "batchInputId"),
@@ -294,7 +299,7 @@ export const createBatchInputHandler = async (raw: unknown): Promise<BatchInput>
       [
         data.id,
         data.supplier,
-        data.date ? new Date(data.date) : new Date(),
+        (data.date ? new Date(data.date) : new Date()).toISOString(),
         data.notes || null,
         data.staffName,
       ],
@@ -335,7 +340,7 @@ export const createBatchInputHandler = async (raw: unknown): Promise<BatchInput>
           stockForNewProduct,
           it.hasSerialNumber,
           data.supplier,
-          data.date ? new Date(data.date) : new Date(),
+          (data.date ? new Date(data.date) : new Date()).toISOString(),
           it.taxEnabled,
           JSON.stringify([
             {
@@ -351,31 +356,21 @@ export const createBatchInputHandler = async (raw: unknown): Promise<BatchInput>
       await tx.unsafe(
         `INSERT INTO batch_input_items (
           batch_input_id, product_id, brand, model,
-          category, condition, mount, warranty_type, warranty_months,
-          cogs, price, has_serial_number, tax_enabled,
-          quantity, sns
+          quantity, sns, cogs, price, mode
         ) VALUES (
           $1, $2, $3, $4,
-          $5, $6, $7, $8, $9,
-          $10, $11, $12, $13,
-          $14, $15
+          $5, $6, $7, $8, $9
         )`,
         [
           data.id,
           productId,
           it.brand || null,
           it.model,
-          it.category,
-          it.condition,
-          it.mount || null,
-          it.warrantyType,
-          it.warrantyMonths,
-          String(it.cogs),
-          String(it.price),
-          it.hasSerialNumber,
-          it.taxEnabled,
           it.quantity,
           JSON.stringify(it.sns),
+          String(it.cogs),
+          String(it.price),
+          "new",
         ],
       );
 
@@ -461,31 +456,21 @@ export const createBatchInputHandler = async (raw: unknown): Promise<BatchInput>
         await tx.unsafe(
           `INSERT INTO batch_input_items (
             batch_input_id, product_id, brand, model,
-            category, condition, mount, warranty_type, warranty_months,
-            cogs, price, has_serial_number, tax_enabled,
-            quantity, sns
+            quantity, sns, cogs, price, mode
           ) VALUES (
             $1, $2, $3, $4,
-            $5, $6, $7, $8, $9,
-            $10, $11, $12, $13,
-            $14, $15
+            $5, $6, $7, $8, $9
           )`,
           [
             data.id,
             group.productId,
             product.brand || null,
             product.model,
-            product.has_serial_number ? "Body" : "Body", // not used; we don't restock on a per-row basis
-            "New", // not used
-            null, // mount not used in restock rows
-            "Distributor", // not used; the product's existing warranty is preserved
-            12, // not used
-            String(product.cogs),
-            String(product.price),
-            product.has_serial_number,
-            true, // not used
             it.quantity,
             JSON.stringify(it.sns),
+            String(product.cogs),
+            String(product.price),
+            "restock",
           ],
         );
       }
@@ -515,6 +500,7 @@ export const createBatchInputHandler = async (raw: unknown): Promise<BatchInput>
       };
       existingHistory.push(newEntry);
 
+      const restockDate = data.date ? new Date(data.date) : new Date();
       await tx.unsafe(
         `UPDATE products
          SET stock = stock + $1,
@@ -524,7 +510,7 @@ export const createBatchInputHandler = async (raw: unknown): Promise<BatchInput>
          WHERE id = $4`,
         [
           stockIncrement,
-          data.date ? new Date(data.date) : new Date(),
+          restockDate.toISOString(),
           JSON.stringify(existingHistory),
           group.productId,
         ],
