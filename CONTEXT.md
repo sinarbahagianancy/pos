@@ -4,19 +4,19 @@
 
 ### Invoice Terms
 
-| Term                 | Definition                                      |
-| -------------------- | ----------------------------------------------- |
-| **Faktur Penjualan** | Sales invoice document issued to customers      |
-| **Quotation**        | Price estimate document, not a proof of payment |
-| **Terbilang**        | Amount in words (Indonesian language)           |
-| **Keterangan**       | Notes/remarks section on the invoice            |
-| **Tanda Terima**     | Receipt acknowledgement / signature area        |
-| **Perhatian**        | Warning/disclaimer section                      |
-| **PPN**              | Pajak Pertambahan Nilai (Value Added Tax)       |
-| **NIK**              | Nomor Induk Kependudukan (National ID Number)   |
-| **NPWP**             | Nomor Pokok Wajib Pajak (Tax ID Number)         |
-| **Seria**            | Serial number of the product                    |
-| **PO**               | Purchase Order                                  |
+| Term                 | Definition                                                                                                                                                                                                                                                                                                  |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Faktur Penjualan** | Sales invoice document issued to customers                                                                                                                                                                                                                                                                  |
+| **Quotation**        | Price estimate document, not a proof of payment                                                                                                                                                                                                                                                             |
+| **Terbilang**        | Amount in words (Indonesian language)                                                                                                                                                                                                                                                                       |
+| **Keterangan**       | Notes/remarks section on the invoice                                                                                                                                                                                                                                                                        |
+| **Tanda Terima**     | Receipt acknowledgement / signature area                                                                                                                                                                                                                                                                    |
+| **Perhatian**        | Warning/disclaimer section                                                                                                                                                                                                                                                                                  |
+| **PPN**              | On the printed invoice, a **display-only decomposition** of the sale total into a pre-tax line + an 11% PPN line. No tax is collected or remitted — `sales.tax` is always 0 for new sales, and `taxEnabled` controls whether the PPN line appears on the invoice, not whether tax is charged. See ADR 0005. |
+| **NIK**              | Nomor Induk Kependudukan (National ID Number)                                                                                                                                                                                                                                                               |
+| **NPWP**             | Nomor Pokok Wajib Pajak (Tax ID Number)                                                                                                                                                                                                                                                                     |
+| **Seria**            | Serial number of the product                                                                                                                                                                                                                                                                                |
+| **PO**               | Purchase Order                                                                                                                                                                                                                                                                                              |
 
 ### Document Types
 
