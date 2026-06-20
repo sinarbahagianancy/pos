@@ -135,7 +135,7 @@ export const products = pgTable("products", {
   hidden: integer("hidden").notNull().default(0),
   taxEnabled: boolean("tax_enabled").notNull().default(true),
   deleted: boolean("deleted").notNull().default(false),
-  invoiceNumber: text("invoice_number"), // stores JSON array of restock entries: [{sn:["SN1"], inv:"INV/001", timestamp:"2024-01-01T00:00:00Z"}]
+  procurementHistory: text("procurement_history"), // stores JSON array of procurement entries: [{sns:["SN1"], inv:"INV/001", supplier:"Sony Indonesia", timestamp:"2024-01-01T00:00:00Z"}]
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });

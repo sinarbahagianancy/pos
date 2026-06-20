@@ -46,35 +46,11 @@ try {
       console.error("Failed to migrate Store Warranty → Toko:", e);
     });
 
-  // Migrate invoice_number to new structured format [{sn:[], inv:"...", timestamp:"..."}]
-  // Step 1: Wrap legacy plain strings into JSON array
-  await client
-    .unsafe(`
-    UPDATE products
-    SET invoice_number = json_build_array(invoice_number)::text
-    WHERE invoice_number IS NOT NULL
-      AND invoice_number != ''
-      AND invoice_number NOT LIKE '[%'
-  `)
-    .catch((e) => {
-      console.error("Failed to migrate invoice_number to array:", e);
-    });
-  // Step 2: Convert array-of-strings format to array-of-objects format
-  // Old: ["INV/001", "INV/002"] → New: [{"sn":[],"inv":"INV/001","timestamp":"..."}, {"sn":[],"inv":"INV/002","timestamp":"..."}]
-  await client
-    .unsafe(`
-    UPDATE products
-    SET invoice_number = (
-      SELECT json_agg(json_build_object('sn', '[]'::json, 'inv', elem, 'timestamp', NOW()::text))::text
-      FROM json_array_elements_text(invoice_number::json) elem
-    )
-    WHERE invoice_number IS NOT NULL
-      AND invoice_number LIKE '[%'
-      AND invoice_number NOT LIKE '%"inv"%'
-  `)
-    .catch((e) => {
-      console.error("Failed to migrate invoice_number to structured format:", e);
-    });
+  // (Legacy invoice_number column has been renamed to procurement_history in
+  // migration 0009. The two-step JSON migration in 0004_data_migrations.sql
+  // and the runtime migration below are no longer needed; the column is
+  // already in the new format and shape. Keeping the column name as a
+  // reference to the runtime migration is intentionally not done here.)
 } catch (e) {
   console.log("Migration check (may be ok):", e);
 }
@@ -150,7 +126,7 @@ export const getAllProducts = async (
       p.id, p.brand, p.model, p.category, p.mount, p.condition,
       p.price, p.cogs, p.warranty_months, p.warranty_type, p.stock,
       p.has_serial_number, p.supplier, p.date_restocked, p.hidden, p.deleted,
-      p.tax_enabled, p.invoice_number, p.created_at,
+      p.tax_enabled, p.procurement_history, p.created_at,
       (SELECT COUNT(*) FROM serial_numbers sn WHERE sn.product_id = p.id) as sn_count
     FROM products p
     WHERE ${whereSql}
@@ -201,11 +177,12 @@ export const createProduct = async (input: unknown) => {
       supplier: validated.supplier || null,
       dateRestocked: validated.dateRestocked ? new Date(validated.dateRestocked) : new Date(),
       taxEnabled: validated.taxEnabled === true,
-      invoiceNumber: validated.invoiceNumber
+      procurementHistory: validated.invoiceNumber
         ? JSON.stringify([
             {
-              sn: validated.serialNumbers || [],
+              sns: validated.serialNumbers || [],
               inv: validated.invoiceNumber,
+              supplier: validated.supplier || undefined,
               timestamp: new Date().toISOString(),
             },
           ])
@@ -374,11 +351,20 @@ export const adjustStock = async (
   if (diff > 0 && dateRestocked) {
     updateData.dateRestocked = new Date(dateRestocked);
   }
+  // Append new procurement entry to existing history. The product's
+  // `supplier` field is the *introducing* supplier (frozen at first
+  // introduction); the per-event supplier is captured in the history
+  // entry instead, even if the passed `supplier` differs from the
+  // product's current `supplier`.
   if (diff > 0 && invoiceNumber) {
-    // Append new restock entry to existing history
-    const existing = parseRestockHistory(product.invoiceNumber);
-    existing.push({ sn: [], inv: invoiceNumber, timestamp: new Date().toISOString() });
-    updateData.invoiceNumber = JSON.stringify(existing);
+    const existing = parseRestockHistory(product.procurementHistory);
+    existing.push({
+      sns: [],
+      inv: invoiceNumber,
+      supplier: supplier || undefined,
+      timestamp: new Date().toISOString(),
+    });
+    updateData.procurementHistory = JSON.stringify(existing);
   }
 
   const [result] = await db
@@ -565,10 +551,15 @@ export const createSerialNumbersBulk = async (
       params.push(new Date(date));
     }
     if (invoiceNumber) {
-      // Append new restock entry to existing history
-      const existing = parseRestockHistory(existingProduct?.invoiceNumber);
-      existing.push({ sn: sns, inv: invoiceNumber, timestamp: new Date().toISOString() });
-      setClauses.push(`invoice_number = $${paramIdx++}`);
+      // Append new procurement entry to existing history.
+      const existing = parseRestockHistory(existingProduct?.procurementHistory);
+      existing.push({
+        sns,
+        inv: invoiceNumber,
+        supplier: supplier || undefined,
+        timestamp: new Date().toISOString(),
+      });
+      setClauses.push(`procurement_history = $${paramIdx++}`);
       params.push(JSON.stringify(existing));
     }
     params.push(productId);

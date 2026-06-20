@@ -70,15 +70,21 @@ export interface Product {
   dateRestocked?: string;
   hidden?: number;
   taxEnabled?: boolean;
-  restockHistory?: RestockEntry[];
+  restockHistory?: ProcurementEntry[]; // DEPRECATED: use procurementHistory. Kept for back-compat during migration; readers should prefer procurementHistory.
+  procurementHistory?: ProcurementEntry[];
   createdAt?: string;
 }
 
-export interface RestockEntry {
-  sn: string[];
+export interface ProcurementEntry {
+  sns: string[];
   inv: string;
+  supplier?: string; // per-event supplier (may differ from products.supplier, which is the introducing supplier)
   timestamp: string;
+  qty?: number; // for non-SN restocks; SN restocks use sns.length
 }
+
+// Legacy alias — kept for code that hasn't migrated yet.
+export type RestockEntry = ProcurementEntry;
 
 export interface SerialNumber {
   sn: string;

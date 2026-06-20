@@ -72,7 +72,20 @@ interface Product {
   dateRestocked?: string;
   hidden?: number;
   taxEnabled?: boolean;
-  restockHistory?: { sn: string[]; inv: string; timestamp: string }[];
+  restockHistory?: {
+    sns: string[];
+    inv: string;
+    supplier?: string;
+    timestamp: string;
+    qty?: number;
+  }[]; // legacy alias
+  procurementHistory?: {
+    sns: string[];
+    inv: string;
+    supplier?: string;
+    timestamp: string;
+    qty?: number;
+  }[];
 }
 
 interface SerialNumber {
@@ -147,12 +160,16 @@ interface SaleItem {
   warrantyExpiry: string;
 }
 
-/** Parse the restock_history / invoice_number column from DB.
- *  Supports: new format [{sn,inv,timestamp}], legacy string array, legacy plain string
+/** Parse the procurement_history column from DB.
+ *  Supports:
+ *  - New format: JSON array of {sns:string[], inv:string, supplier?:string, timestamp:string, qty?:number}
+ *  - Legacy `sn` key: read as `sns` for back-compat with pre-rename databases
+ *  - Legacy JSON array of strings: wrapped into a single-entry array
+ *  - Legacy plain string: wrapped into a single entry
  */
 const parseApiRestockHistory = (
   value: unknown,
-): { sn: string[]; inv: string; timestamp: string }[] => {
+): { sns: string[]; inv: string; supplier?: string; timestamp: string; qty?: number }[] => {
   if (!value) return [];
   if (typeof value !== "string") return [];
   const trimmed = value.trim();
@@ -171,19 +188,32 @@ const parseApiRestockHistory = (
             (e: unknown) =>
               typeof e === "object" && e !== null && "inv" in (e as Record<string, unknown>),
           )
-          .map((e: Record<string, unknown>) => ({
-            sn: Array.isArray(e.sn) ? e.sn.filter((s: unknown) => typeof s === "string") : [],
-            inv: typeof e.inv === "string" ? e.inv : "",
-            timestamp: typeof e.timestamp === "string" ? e.timestamp : new Date().toISOString(),
-          }));
+          .map((e: Record<string, unknown>) => {
+            const sns = Array.isArray(e.sns)
+              ? e.sns.filter((s: unknown) => typeof s === "string")
+              : Array.isArray(e.sn)
+                ? e.sn.filter((s: unknown) => typeof s === "string")
+                : [];
+            return {
+              sns,
+              inv: typeof e.inv === "string" ? e.inv : "",
+              supplier: typeof e.supplier === "string" ? e.supplier : undefined,
+              timestamp: typeof e.timestamp === "string" ? e.timestamp : new Date().toISOString(),
+              qty: typeof e.qty === "number" ? e.qty : undefined,
+            };
+          });
       }
       // Legacy: array of plain strings
       return parsed
         .filter((v: unknown) => typeof v === "string" && v.length > 0)
-        .map((v: string) => ({ sn: [] as string[], inv: v, timestamp: new Date().toISOString() }));
+        .map((v: string) => ({
+          sns: [] as string[],
+          inv: v,
+          timestamp: new Date().toISOString(),
+        }));
     }
   } catch {
-    return [{ sn: [] as string[], inv: trimmed, timestamp: new Date().toISOString() }];
+    return [{ sns: [] as string[], inv: trimmed, timestamp: new Date().toISOString() }];
   }
   return [];
 };
@@ -211,7 +241,8 @@ const parseDbProduct = (row: Record<string, unknown>): Product => {
     dateRestocked: row.date_restocked as string | undefined,
     hidden: row.hidden as number | undefined,
     taxEnabled: row.tax_enabled as boolean,
-    restockHistory: parseApiRestockHistory(row.invoice_number),
+    restockHistory: parseApiRestockHistory(row.procurement_history),
+    procurementHistory: parseApiRestockHistory(row.procurement_history),
   };
 };
 
@@ -783,11 +814,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           supplier: validated.supplier,
           date_restocked: validated.dateRestocked ? new Date(validated.dateRestocked) : new Date(),
           tax_enabled: validated.taxEnabled ?? true,
-          invoice_number: validated.invoiceNumber
+          procurement_history: validated.invoiceNumber
             ? JSON.stringify([
                 {
-                  sn: validated.serialNumbers || [],
+                  sns: validated.serialNumbers || [],
                   inv: validated.invoiceNumber,
+                  supplier: validated.supplier,
                   timestamp: new Date().toISOString(),
                 },
               ])
@@ -952,10 +984,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         updateData.date_restocked = new Date(dateRestocked);
       }
       if (diff > 0 && invoiceNumber) {
-        // Append new restock entry to existing history
-        const existing = parseApiRestockHistory(product.invoice_number);
-        existing.push({ sn: [], inv: invoiceNumber, timestamp: new Date().toISOString() });
-        updateData.invoice_number = JSON.stringify(existing);
+        // Append new procurement entry to existing history. The product's
+        // `supplier` field is the *introducing* supplier (frozen at first
+        // introduction); the per-event supplier is captured in the history
+        // entry instead, even if the passed `supplier` differs.
+        const existing = parseApiRestockHistory(product.procurement_history);
+        existing.push({
+          sns: [],
+          inv: invoiceNumber,
+          supplier: supplier || undefined,
+          timestamp: new Date().toISOString(),
+        });
+        updateData.procurement_history = JSON.stringify(existing);
       }
 
       const [result] = await db.update("products", updateData, { column: "id", value: productId });
@@ -1196,7 +1236,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Batch-fetch ALL product data upfront (eliminates N+1)
       const productRows = await query(
-        `SELECT id, brand, model, invoice_number FROM products WHERE id = ANY($1)`,
+        `SELECT id, brand, model, procurement_history FROM products WHERE id = ANY($1)`,
         [productIds],
       );
       const productsById = new Map<string, Record<string, unknown>>();
@@ -1230,9 +1270,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           params.push(new Date(date));
         }
         if (invoiceNumber) {
-          const existing = parseApiRestockHistory(product.invoice_number);
-          existing.push({ sn: sns, inv: invoiceNumber, timestamp: new Date().toISOString() });
-          setClauses.push(`invoice_number = $${paramIdx++}`);
+          const existing = parseApiRestockHistory(product.procurement_history);
+          existing.push({
+            sns: sns,
+            inv: invoiceNumber,
+            supplier: supplier || undefined,
+            timestamp: new Date().toISOString(),
+          });
+          setClauses.push(`procurement_history = $${paramIdx++}`);
           params.push(JSON.stringify(existing));
         }
         params.push(productId);
@@ -3664,7 +3709,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 price, cogs, warranty_months, warranty_type,
                 stock, has_serial_number, supplier, date_restocked,
                 tax_enabled, deleted, hidden,
-                invoice_number, created_at, updated_at
+                procurement_history, created_at, updated_at
               ) VALUES (
                 $1, $2, $3, $4, $5, $6,
                 $7, $8, $9, $10,

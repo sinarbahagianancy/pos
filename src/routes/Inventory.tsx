@@ -2701,9 +2701,9 @@ const InventoryView: React.FC<InventoryProps> = ({
                               )}
                             </td>
                             <td className="px-4 py-3">
-                              {entry.sn && entry.sn.length > 0 ? (
+                              {entry.sns && entry.sns.length > 0 ? (
                                 <div className="flex flex-wrap gap-1 max-w-[240px]">
-                                  {entry.sn.map((s, snIdx) => (
+                                  {entry.sns.map((s, snIdx) => (
                                     <span
                                       key={snIdx}
                                       className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-mono font-bold"
@@ -2718,7 +2718,7 @@ const InventoryView: React.FC<InventoryProps> = ({
                             </td>
                             <td className="px-4 py-3 text-right">
                               <span className="text-sm font-black text-slate-900">
-                                {entry.sn && entry.sn.length > 0 ? entry.sn.length : "+"}
+                                {entry.sns && entry.sns.length > 0 ? entry.sns.length : "+"}
                               </span>
                             </td>
                             <td className="px-4 py-3">

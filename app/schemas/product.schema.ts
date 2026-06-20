@@ -39,7 +39,20 @@ export interface Product {
   dateRestocked?: string;
   hidden?: number;
   taxEnabled?: boolean;
-  restockHistory?: { sn: string[]; inv: string; timestamp: string }[];
+  restockHistory?: {
+    sns: string[];
+    inv: string;
+    supplier?: string;
+    timestamp: string;
+    qty?: number;
+  }[]; // legacy alias
+  procurementHistory?: {
+    sns: string[];
+    inv: string;
+    supplier?: string;
+    timestamp: string;
+    qty?: number;
+  }[];
 }
 
 export interface CreateProductInput {
@@ -335,15 +348,17 @@ export function validateCreateSerialNumberInput(input: unknown): CreateSerialNum
   };
 }
 
-/** Parse the restock_history / invoice_number column from DB.
+/** Parse the procurement_history column from DB.
  *  Supports:
- *  - New format: JSON array of {sn:string[], inv:string, timestamp:string}
- *  - Legacy JSON array of strings: [{"sn":[],"inv":"INV/001","timestamp":"2024-01-01"}] (auto-migrated)
- *  - Legacy plain string: "INV/001" (wrapped into a single entry)
+ *  - New format: JSON array of {sns:string[], inv:string, supplier?:string, timestamp:string, qty?:number}
+ *  - Legacy `sn` key (pre-rename): JSON array of {sn:string[], inv:string, ...} — the `sn` value
+ *    is read as `sns` for back-compat with databases that haven't run the 0009 migration yet
+ *  - Legacy JSON array of strings: wrapped into a single-entry array
+ *  - Legacy plain string: wrapped into a single entry
  */
 export function parseRestockHistory(
   value: unknown,
-): { sn: string[]; inv: string; timestamp: string }[] {
+): { sns: string[]; inv: string; supplier?: string; timestamp: string; qty?: number }[] {
   if (!value) return [];
   if (typeof value !== "string") return [];
   const trimmed = value.trim();
@@ -351,7 +366,6 @@ export function parseRestockHistory(
   try {
     const parsed = JSON.parse(trimmed);
     if (Array.isArray(parsed)) {
-      // Check if it's the new format (array of objects with sn/inv/timestamp)
       if (
         parsed.length > 0 &&
         typeof parsed[0] === "object" &&
@@ -363,20 +377,37 @@ export function parseRestockHistory(
             (e: unknown) =>
               typeof e === "object" && e !== null && "inv" in (e as Record<string, unknown>),
           )
-          .map((e: Record<string, unknown>) => ({
-            sn: Array.isArray(e.sn) ? e.sn.filter((s: unknown) => typeof s === "string") : [],
-            inv: typeof e.inv === "string" ? e.inv : "",
-            timestamp: typeof e.timestamp === "string" ? e.timestamp : new Date().toISOString(),
-          }));
+          .map((e: Record<string, unknown>) => {
+            const sns = Array.isArray(e.sns)
+              ? e.sns.filter((s: unknown) => typeof s === "string")
+              : Array.isArray(e.sn)
+                ? e.sn.filter((s: unknown) => typeof s === "string")
+                : [];
+            const qty = typeof e.qty === "number" ? e.qty : undefined;
+            const supplier = typeof e.supplier === "string" ? e.supplier : undefined;
+            return {
+              sn: sns,
+              sns,
+              inv: typeof e.inv === "string" ? e.inv : "",
+              supplier,
+              timestamp: typeof e.timestamp === "string" ? e.timestamp : new Date().toISOString(),
+              qty,
+            };
+          });
       }
       // Legacy format: array of plain strings — wrap each into an entry
       return parsed
         .filter((v: unknown) => typeof v === "string" && v.length > 0)
-        .map((v: string) => ({ sn: [] as string[], inv: v, timestamp: new Date().toISOString() }));
+        .map((v: string) => ({
+          sn: [] as string[],
+          sns: [] as string[],
+          inv: v,
+          timestamp: new Date().toISOString(),
+        }));
     }
   } catch {
     // Legacy plain string — wrap into single entry
-    return [{ sn: [], inv: trimmed, timestamp: new Date().toISOString() }];
+    return [{ sn: [], sns: [], inv: trimmed, timestamp: new Date().toISOString() }];
   }
   return [];
 }
@@ -412,7 +443,8 @@ export function parseDbProduct(row: Record<string, unknown>): Product {
     dateRestocked: row.date_restocked as string | undefined,
     hidden: row.hidden as number | undefined,
     taxEnabled,
-    restockHistory: parseRestockHistory(row.invoice_number),
+    restockHistory: parseRestockHistory(row.procurement_history),
+    procurementHistory: parseRestockHistory(row.procurement_history),
   };
 }
 

@@ -248,8 +248,8 @@
           "notNull": true,
           "default": false
         },
-        "invoice_number": {
-          "name": "invoice_number",
+        "procurement_history": {
+          "name": "procurement_history",
           "type": "text",
           "primaryKey": false,
           "notNull": false

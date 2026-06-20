@@ -191,19 +191,13 @@ export const createBatchInputHandler = async (raw: unknown): Promise<BatchInput>
 
       const stockForNewProduct = it.hasSerialNumber ? it.sns.length : it.quantity;
 
-      const restockEntry = {
-        sn: it.sns,
-        inv: data.id,
-        timestamp: new Date().toISOString(),
-      };
-
       await tx.unsafe(
         `INSERT INTO products (
           id, brand, model, category, mount, condition,
           price, cogs, warranty_months, warranty_type,
           stock, has_serial_number, supplier, date_restocked,
           tax_enabled, deleted, hidden,
-          invoice_number, created_at, updated_at
+          procurement_history, created_at, updated_at
         ) VALUES (
           $1, $2, $3, $4, $5, $6,
           $7, $8, $9, $10,
@@ -227,7 +221,14 @@ export const createBatchInputHandler = async (raw: unknown): Promise<BatchInput>
           data.supplier,
           data.date ? new Date(data.date) : new Date(),
           it.taxEnabled,
-          JSON.stringify([restockEntry]),
+          JSON.stringify([
+            {
+              sns: it.sns,
+              inv: data.id,
+              supplier: data.supplier,
+              timestamp: new Date().toISOString(),
+            },
+          ]),
         ],
       );
 
