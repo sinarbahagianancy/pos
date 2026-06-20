@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import type { Quotation, QuotationStatus, Product, SerialNumber, Customer } from "../types";
 import { formatIDR, formatDate } from "../utils/formatters";
+import { applyFakePpnDisplay } from "../utils/ppnDecomposition";
 import { pdf } from "@react-pdf/renderer";
 import { InvoiceDocument, InvoiceLayout } from "./InvoicePDF";
 import { approveQuotation, rejectQuotation, cancelQuotation } from "../services/quotation.api";
@@ -72,6 +73,18 @@ export const QuotationDetailModal: React.FC<QuotationDetailModalProps> = ({
 
   const handleReprint = async () => {
     try {
+      // Apply the fake PPN display decomposition at render time. The
+      // persisted quotation.subtotal / quotation.tax / quotation.total
+      // are canonical (tax = 0, total = subtotal); without this, a
+      // re-issued PDF would show the canonical numbers instead of the
+      // fake breakdown the quotation was originally printed with.
+      // storeConfig.ppnRate is stored as a percentage (e.g. 11), but
+      // applyFakePpnDisplay takes a fraction (e.g. 0.11). See ADR 0005.
+      const breakdown = applyFakePpnDisplay(
+        quotation.total,
+        storeConfig.ppnRate / 100,
+        quotation.taxEnabled,
+      );
       const invoiceData = {
         storeName: storeConfig.storeName,
         address: storeConfig.address,
@@ -86,8 +99,8 @@ export const QuotationDetailModal: React.FC<QuotationDetailModalProps> = ({
           sn: "", // Quotation PDF hides SN
           price: it.price,
         })),
-        subtotal: quotation.subtotal,
-        tax: quotation.tax,
+        subtotal: breakdown.displayedSubtotal,
+        tax: breakdown.displayedTax,
         taxRate: storeConfig.ppnRate,
         taxEnabled: quotation.taxEnabled,
         total: quotation.total,

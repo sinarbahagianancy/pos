@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Sale, Customer, Quotation, QuotationStatus, Product, SerialNumber } from "../../app/types";
 import { formatIDR, formatDate } from "../../app/utils/formatters";
+import { applyFakePpnDisplay } from "../../app/utils/ppnDecomposition";
 import { pdf } from "@react-pdf/renderer";
 import { InvoiceDocument, InvoiceLayout } from "../../app/components/InvoicePDF";
 import { QuotationDetailModal } from "../../app/components/QuotationDetailModal";
@@ -196,6 +197,15 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
   const handlePrint = async (sale: Sale, layoutOverride?: InvoiceLayout) => {
     const layout = layoutOverride || invoiceLayout;
     const customer = customerMap[sale.customerId];
+    // Apply the fake PPN display decomposition at render time. The
+    // persisted sale.subtotal / sale.tax / sale.total are canonical
+    // (tax = 0, total = subtotal); without this, a re-issued PDF would
+    // show the canonical numbers instead of the fake breakdown the sale
+    // was originally printed with. storeConfig.ppnRate is stored as a
+    // percentage (e.g. 11), but applyFakePpnDisplay takes a fraction
+    // (e.g. 0.11). See ADR 0005.
+    const breakdown = applyFakePpnDisplay(sale.total, storeConfig.ppnRate / 100, sale.taxEnabled);
+
     const invoiceData = {
       storeName: storeConfig.storeName || "Sinar Bahagia",
       address:
@@ -224,8 +234,8 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
         price: item.price,
         warrantyExpiry: item.warrantyExpiry,
       })),
-      subtotal: sale.subtotal,
-      tax: sale.tax,
+      subtotal: breakdown.displayedSubtotal,
+      tax: breakdown.displayedTax,
       taxRate: storeConfig.ppnRate,
       taxEnabled: sale.taxEnabled,
       discount: 0,
