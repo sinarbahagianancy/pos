@@ -1,4 +1,7 @@
 import type { BatchInput, BatchInputItem } from "../types";
+import type { CreateBatchInputItemInput, CreateBatchInputInput } from "../schemas/document.schema";
+
+export type { CreateBatchInputItemInput, CreateBatchInputInput };
 
 const API_BASE = "/api";
 
@@ -50,31 +53,6 @@ export const getBatchInputById = async (id: string): Promise<BatchInput> => {
   }
   return response.json();
 };
-
-export interface CreateBatchInputItemInput {
-  brand?: string;
-  model: string;
-  category: string;
-  condition: string;
-  mount?: string;
-  warrantyType: string;
-  warrantyMonths: number;
-  cogs: number;
-  price: number;
-  hasSerialNumber: boolean;
-  taxEnabled: boolean;
-  quantity: number;
-  sns: string[];
-}
-
-export interface CreateBatchInputInput {
-  id: string;
-  supplier: string;
-  date?: string;
-  notes?: string;
-  staffName: string;
-  items: CreateBatchInputItemInput[];
-}
 
 export const createBatchInput = async (input: CreateBatchInputInput): Promise<BatchInput> => {
   const response = await fetch(`${API_BASE}/batch-input`, {

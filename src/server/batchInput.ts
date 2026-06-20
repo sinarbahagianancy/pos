@@ -54,10 +54,16 @@ const parseDbBatchInputItem = (row: Record<string, unknown>): BatchInputItem => 
   }
   const cogsRaw = pick(row, "cogs", "cogs");
   const priceRaw = pick(row, "price", "price");
+  // Heuristic: BRC-{timestamp}-{rand} ids are produced by the server's
+  // newProductId() generator for new-product rows. Anything else is a
+  // restock row pointing at an existing product's id.
+  const productId = pick(row, "product_id", "productId") as string;
+  const isNew = /^BRC-\d+-[a-z0-9]+$/i.test(productId);
   return {
     id: pick(row, "id", "id"),
     batchInputId: pick(row, "batch_input_id", "batchInputId"),
-    productId: pick(row, "product_id", "productId"),
+    productId,
+    mode: isNew ? "new" : "restock",
     brand: pick(row, "brand", "brand"),
     model: pick(row, "model", "model"),
     category: (pick(row, "category", "category") as string) ?? "Body",

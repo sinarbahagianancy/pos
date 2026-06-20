@@ -373,17 +373,25 @@ export const adjustStock = async (
     .where(eq(products.id, productId))
     .returning();
 
-  // Build audit log details with supplier and date info
-  let auditDetails = `Manual adjust ${product.brand} ${product.model}: ${product.stock} -> ${newStock}. Price: ${fmtIDR(product.price)}, COGS: ${fmtIDR(product.cogs)}. Reason: ${reason}`;
+  // Build audit log details. For ad-hoc restocks (positive diff), use the
+  // 'Tambah stok ad-hoc:' prefix to disambiguate from supplier-papered
+  // restocks that go through Batch Input. The supplier/invoiceNumber
+  // fields, if provided, are still recorded in the message for traceability,
+  // but they are NOT written to the product's procurement_history (ad-hoc
+  // restocks have no supplier paper).
+  let auditDetails =
+    diff > 0
+      ? `Tambah stok ad-hoc: ${product.brand} ${product.model} (+${diff} units, stok: ${newStock}). Price: ${fmtIDR(product.price)}, COGS: ${fmtIDR(product.cogs)}. Reason: ${reason}`
+      : `Manual adjust ${product.brand} ${product.model}: ${product.stock} -> ${newStock}. Price: ${fmtIDR(product.price)}, COGS: ${fmtIDR(product.cogs)}. Reason: ${reason}`;
   if (diff > 0) {
     if (supplier) {
-      auditDetails += `. Supplier: ${supplier}`;
+      auditDetails += `. Supplier (notasi saja): ${supplier}`;
     }
     if (dateRestocked) {
       auditDetails += `. Date: ${dateRestocked}`;
     }
     if (invoiceNumber) {
-      auditDetails += `. Invoice: ${invoiceNumber}`;
+      auditDetails += `. Invoice (notasi saja): ${invoiceNumber}`;
     }
   }
 

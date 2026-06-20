@@ -1,8 +1,11 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { BatchInput, Product, Supplier, BatchInputItem } from "../../app/types";
 import { formatIDR, formatDate } from "../../app/utils/formatters";
 import { RupiahInput } from "../../app/components/RupiahInput";
 import Pagination from "../../app/components/Pagination";
+import SearchableCombobox, {
+  SearchableComboboxItem,
+} from "../../app/components/SearchableCombobox";
 import {
   getAllBatchInput,
   getBatchInputById,
@@ -20,8 +23,14 @@ const WARRANTY_TYPES = ["Distributor", "Toko", "No Warranty"];
 const CATEGORIES = ["Body", "Lens", "Accessory"];
 const CONDITIONS = ["New", "Used"];
 
-interface FormRow {
-  key: string; // local React key, not sent to server
+// Per-row mode. The two variants have different field sets and are
+// rendered differently. See ADR 0004 + CONTEXT.md 'Batch Input Form
+// Design' for the spec.
+type RowMode = "new" | "restock";
+
+interface NewFormRow {
+  key: string;
+  mode: "new";
   brand: string;
   model: string;
   category: string;
@@ -34,11 +43,28 @@ interface FormRow {
   price: number;
   quantity: number;
   hasSerialNumber: boolean;
-  snsText: string; // textarea string, parsed to string[] on submit
+  snsText: string;
 }
 
-const emptyRow = (): FormRow => ({
+interface RestockFormRow {
+  key: string;
+  mode: "restock";
+  // Picked product's id (BRC-...); empty string when not yet picked.
+  // The product's brand/model/COGS/price/tax/warranty/category/condition
+  // are read-only and inherited from the catalog.
+  existingProductId: string;
+  quantity: number;
+  snsText: string; // required when picked product is SN; hidden when not
+}
+
+type FormRow = NewFormRow | RestockFormRow;
+
+const isNewRow = (r: FormRow): r is NewFormRow => r.mode === "new";
+const isRestockRow = (r: FormRow): r is RestockFormRow => r.mode === "restock";
+
+const emptyNewRow = (): NewFormRow => ({
   key: `row-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  mode: "new",
   brand: "",
   model: "",
   category: "Body",
@@ -53,6 +79,17 @@ const emptyRow = (): FormRow => ({
   hasSerialNumber: false,
   snsText: "",
 });
+
+const emptyRestockRow = (): RestockFormRow => ({
+  key: `row-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  mode: "restock",
+  existingProductId: "",
+  quantity: 1,
+  snsText: "",
+});
+
+// New row is the default for the '+ Tambah Baris' button.
+const emptyRow = (): FormRow => emptyNewRow();
 
 interface BatchInputViewProps {
   products: Product[];
@@ -121,6 +158,15 @@ const BatchInputView: React.FC<BatchInputViewProps> = ({ products, suppliers, st
   const totalUnitsForBatch = (b: BatchInput) =>
     b.items.reduce((sum, it) => sum + (it.quantity || 0), 0);
 
+  // Per-item mode is set by the server-side parser. Items with a
+  // freshly-minted BRC-{ts}-{rand} productId are 'new'; anything else
+  // (a pre-existing catalog productId) is 'restock'.
+  const newUnitsForBatch = (b: BatchInput) =>
+    b.items.filter((it) => it.mode === "new").reduce((sum, it) => sum + (it.quantity || 0), 0);
+
+  const restockUnitsForBatch = (b: BatchInput) =>
+    b.items.filter((it) => it.mode === "restock").reduce((sum, it) => sum + (it.quantity || 0), 0);
+
   // ============================================================
   // Detail modal
   // ============================================================
@@ -159,11 +205,13 @@ const BatchInputView: React.FC<BatchInputViewProps> = ({ products, suppliers, st
     loadList();
   };
 
-  // Recompute per-row duplicate-SKU errors whenever rows or products change
+  // Recompute per-row duplicate-SKU errors for NEW rows only (restock
+  // rows target existing products by design).
   useEffect(() => {
     if (view !== "create") return;
     const errors: Record<string, string> = {};
     rows.forEach((r) => {
+      if (!isNewRow(r)) return; // restock rows don't have brand+model
       if (!r.brand.trim() && !r.model.trim()) return; // empty row, no error
       const clash = products.find(
         (p) =>
@@ -173,7 +221,8 @@ const BatchInputView: React.FC<BatchInputViewProps> = ({ products, suppliers, st
       );
       if (clash) {
         errors[r.key] =
-          `Konflik dengan "${clash.brand} ${clash.model}" yang sudah ada di katalog (stok: ${clash.stock}). Hapus baris ini atau perbaiki SKU.`;
+          `Konflik dengan "${clash.brand} ${clash.model}" yang sudah ada di katalog (stok: ${clash.stock}). ` +
+          `Hapus baris ini, perbaiki SKU, atau ganti Tipe ke "Restock" untuk menambah stok.`;
       }
     });
     setRowErrors(errors);
@@ -187,13 +236,62 @@ const BatchInputView: React.FC<BatchInputViewProps> = ({ products, suppliers, st
     setRows((rs) => (rs.length === 1 ? rs : rs.filter((r) => r.key !== key)));
   };
 
+  // Replace a row wholesale (used for mode-toggle, which wipes the row).
+  const replaceRow = (key: string, next: FormRow) => {
+    setRows((rs) => rs.map((r) => (r.key === key ? next : r)));
+  };
+
+  // True if the row has any user-typed data. Used by the mode toggle to
+  // decide whether to show a destructive-action confirm.
+  const isRowNonEmpty = (r: FormRow): boolean => {
+    if (isNewRow(r)) {
+      return Boolean(
+        r.brand.trim() ||
+        r.model.trim() ||
+        r.mount.trim() ||
+        r.cogs > 0 ||
+        r.price > 0 ||
+        r.snsText.trim() ||
+        r.quantity !== 1,
+      );
+    }
+    return Boolean(r.existingProductId || r.snsText.trim() || r.quantity !== 1);
+  };
+
+  // Switch a row's mode. Wipes the row's content (the two modes have
+  // non-overlapping field sets; carrying data across would either
+  // silently mask typos or require expensive state-merging). Shows
+  // a confirm if the row is non-empty.
+  const handleSwitchMode = (key: string, target: RowMode) => {
+    const row = rows.find((r) => r.key === key);
+    if (!row) return;
+    if (row.mode === target) return;
+    if (isRowNonEmpty(row)) {
+      const ok = window.confirm(
+        `Baris ini berisi data yang akan hilang jika diganti ke mode "${target === "new" ? "Baru" : "Restock"}". Lanjutkan?`,
+      );
+      if (!ok) return;
+    }
+    const next: FormRow = target === "new" ? emptyNewRow() : emptyRestockRow();
+    // Preserve the React key so React can track the same row across the toggle
+    next.key = key;
+    replaceRow(key, next);
+  };
+
+  // The updateRow function preserves the union's mode: we cast the patch
+  // to `Partial<FormRow>` so the call site can pass any subset, but
+  // TypeScript will catch attempts to set, e.g., `existingProductId` on
+  // a `mode: "new"` row at the call-site level.
   const updateRow = (key: string, patch: Partial<FormRow>) => {
-    setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+    setRows((rs) => rs.map((r) => (r.key === key ? ({ ...r, ...patch } as FormRow) : r)));
   };
 
   const handleSubmit = async () => {
     // Client-side: filter out completely empty rows
-    const filledRows = rows.filter((r) => r.brand.trim() || r.model.trim());
+    const filledRows = rows.filter((r) => {
+      if (isNewRow(r)) return r.brand.trim() || r.model.trim();
+      return r.existingProductId !== ""; // restock row needs a product picked
+    });
     if (filledRows.length === 0) {
       showToast("Minimal satu baris produk harus diisi", "error");
       return;
@@ -206,7 +304,7 @@ const BatchInputView: React.FC<BatchInputViewProps> = ({ products, suppliers, st
       showToast("Supplier wajib dipilih", "error");
       return;
     }
-    // Per-row duplicate-SKU check
+    // Per-row duplicate-SKU check (only relevant for new rows)
     if (Object.keys(rowErrors).length > 0) {
       showToast(
         "Ada baris yang konflik dengan katalog. Perbaiki atau hapus baris tersebut.",
@@ -215,26 +313,42 @@ const BatchInputView: React.FC<BatchInputViewProps> = ({ products, suppliers, st
       return;
     }
 
-    const itemsPayload = filledRows.map((r) => ({
-      brand: r.brand.trim() || undefined,
-      model: r.model.trim(),
-      category: r.category,
-      condition: r.condition,
-      mount: r.mount.trim() || undefined,
-      warrantyType: r.warrantyType,
-      warrantyMonths: r.warrantyMonths,
-      cogs: r.cogs,
-      price: r.price,
-      hasSerialNumber: r.hasSerialNumber,
-      taxEnabled: r.taxEnabled,
-      quantity: r.quantity,
-      sns: r.hasSerialNumber
-        ? r.snsText
-            .split("\n")
-            .map((s) => s.trim())
-            .filter(Boolean)
-        : [],
-    }));
+    // Build the per-row payload based on each row's mode.
+    const itemsPayload = filledRows.map((r) => {
+      if (isNewRow(r)) {
+        return {
+          mode: "new" as const,
+          brand: r.brand.trim() || undefined,
+          model: r.model.trim(),
+          category: r.category,
+          condition: r.condition,
+          mount: r.mount.trim() || undefined,
+          warrantyType: r.warrantyType,
+          warrantyMonths: r.warrantyMonths,
+          cogs: r.cogs,
+          price: r.price,
+          hasSerialNumber: r.hasSerialNumber,
+          taxEnabled: r.taxEnabled,
+          quantity: r.quantity,
+          sns: r.hasSerialNumber
+            ? r.snsText
+                .split("\n")
+                .map((s) => s.trim())
+                .filter(Boolean)
+            : [],
+        };
+      }
+      // restock row
+      return {
+        mode: "restock" as const,
+        existingProductId: r.existingProductId,
+        quantity: r.quantity,
+        sns: r.snsText
+          .split("\n")
+          .map((s) => s.trim())
+          .filter(Boolean),
+      };
+    });
 
     const payload: CreateBatchInputInput = {
       id: invoiceMasuk.trim(),
@@ -242,7 +356,7 @@ const BatchInputView: React.FC<BatchInputViewProps> = ({ products, suppliers, st
       date,
       notes: notes.trim() || undefined,
       staffName,
-      items: itemsPayload,
+      items: itemsPayload as unknown as CreateBatchInputInput["items"],
     };
 
     setSubmitting(true);
@@ -333,7 +447,8 @@ const BatchInputView: React.FC<BatchInputViewProps> = ({ products, suppliers, st
                       <th className="px-6 py-5">No. Invoice Masuk</th>
                       <th className="px-6 py-5">Tanggal</th>
                       <th className="px-6 py-5">Supplier</th>
-                      <th className="px-6 py-5 text-center">Total Unit</th>
+                      <th className="px-6 py-5 text-center">Baru</th>
+                      <th className="px-6 py-5 text-center">Restock</th>
                       <th className="px-6 py-5">Staff</th>
                       <th className="px-6 py-5 text-center">Aksi</th>
                     </tr>
@@ -347,9 +462,22 @@ const BatchInputView: React.FC<BatchInputViewProps> = ({ products, suppliers, st
                         <td className="px-6 py-4 text-sm text-slate-600">{formatDate(b.date)}</td>
                         <td className="px-6 py-4 text-sm font-bold text-slate-900">{b.supplier}</td>
                         <td className="px-6 py-4 text-center">
-                          <span className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-black">
-                            {totalUnitsForBatch(b)}
-                          </span>
+                          {newUnitsForBatch(b) > 0 ? (
+                            <span className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-black">
+                              {newUnitsForBatch(b)}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-slate-300">—</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          {restockUnitsForBatch(b) > 0 ? (
+                            <span className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-black">
+                              {restockUnitsForBatch(b)}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-slate-300">—</span>
+                          )}
                         </td>
                         <td className="px-6 py-4 text-sm text-slate-600">{b.staffName}</td>
                         <td className="px-6 py-4 text-center">
@@ -474,12 +602,42 @@ const BatchInputView: React.FC<BatchInputViewProps> = ({ products, suppliers, st
             {rows.map((r, idx) => (
               <div
                 key={r.key}
-                className="bg-white rounded-[32px] border border-slate-200 shadow-sm p-6 space-y-4"
+                className={`bg-white rounded-[32px] border shadow-sm p-6 space-y-4 ${
+                  r.mode === "restock" ? "border-indigo-200" : "border-slate-200"
+                }`}
               >
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest">
-                    Produk #{idx + 1}
-                  </h3>
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest">
+                      Produk #{idx + 1}
+                    </h3>
+                    {/* Tipe segmented control: switch between 'new' and 'restock' modes.
+                        Wipes the row's content on switch (with confirm if non-empty). */}
+                    <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+                      <button
+                        type="button"
+                        onClick={() => handleSwitchMode(r.key, "new")}
+                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                          r.mode === "new"
+                            ? "bg-emerald-600 text-white shadow-sm"
+                            : "text-slate-500 hover:text-slate-700"
+                        }`}
+                      >
+                        Baru
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSwitchMode(r.key, "restock")}
+                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                          r.mode === "restock"
+                            ? "bg-indigo-600 text-white shadow-sm"
+                            : "text-slate-500 hover:text-slate-700"
+                        }`}
+                      >
+                        Restock
+                      </button>
+                    </div>
+                  </div>
                   {rows.length > 1 && (
                     <button
                       onClick={() => handleRemoveRow(r.key)}
@@ -496,185 +654,18 @@ const BatchInputView: React.FC<BatchInputViewProps> = ({ products, suppliers, st
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
-                      Brand
-                    </label>
-                    <input
-                      type="text"
-                      value={r.brand}
-                      onChange={(e) => updateRow(r.key, { brand: e.target.value })}
-                      placeholder="e.g., Sony"
-                      className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 text-sm font-bold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
-                      Model *
-                    </label>
-                    <input
-                      type="text"
-                      value={r.model}
-                      onChange={(e) => updateRow(r.key, { model: e.target.value })}
-                      placeholder="e.g., A7 IV"
-                      className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 text-sm font-bold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
-                      Kategori
-                    </label>
-                    <select
-                      value={r.category}
-                      onChange={(e) => updateRow(r.key, { category: e.target.value })}
-                      className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 text-sm font-bold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 bg-white"
-                    >
-                      {CATEGORIES.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
-                      Kondisi
-                    </label>
-                    <select
-                      value={r.condition}
-                      onChange={(e) => updateRow(r.key, { condition: e.target.value })}
-                      className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 text-sm font-bold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 bg-white"
-                    >
-                      {CONDITIONS.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
-                      Mount (opsional)
-                    </label>
-                    <input
-                      type="text"
-                      value={r.mount}
-                      onChange={(e) => updateRow(r.key, { mount: e.target.value })}
-                      placeholder="e.g., E-mount"
-                      className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 text-sm font-bold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
-                      Tipe Garansi
-                    </label>
-                    <select
-                      value={r.warrantyType}
-                      onChange={(e) => updateRow(r.key, { warrantyType: e.target.value })}
-                      className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 text-sm font-bold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 bg-white"
-                    >
-                      {WARRANTY_TYPES.map((w) => (
-                        <option key={w} value={w}>
-                          {w}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
-                      Masa Garansi (bulan)
-                    </label>
-                    <input
-                      type="number"
-                      min={0}
-                      value={r.warrantyMonths}
-                      onChange={(e) =>
-                        updateRow(r.key, { warrantyMonths: parseInt(e.target.value) || 0 })
-                      }
-                      className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 text-sm font-bold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-                    />
-                  </div>
-                  <div className="flex items-end">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={r.taxEnabled}
-                        onChange={(e) => updateRow(r.key, { taxEnabled: e.target.checked })}
-                        className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                      />
-                      <span className="text-xs font-bold text-slate-700 uppercase tracking-widest">
-                        Kena PPN
-                      </span>
-                    </label>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
-                      COGS (Modal)
-                    </label>
-                    <RupiahInput
-                      value={r.cogs}
-                      onChange={(v) => updateRow(r.key, { cogs: v })}
-                      className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 text-sm font-bold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
-                      Harga Jual
-                    </label>
-                    <RupiahInput
-                      value={r.price}
-                      onChange={(v) => updateRow(r.key, { price: v })}
-                      className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 text-sm font-bold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
-                      Qty *
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={r.quantity}
-                      onChange={(e) =>
-                        updateRow(r.key, { quantity: parseInt(e.target.value) || 0 })
-                      }
-                      className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 text-sm font-bold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-                    />
-                  </div>
-                  <div className="flex items-end">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={r.hasSerialNumber}
-                        onChange={(e) =>
-                          updateRow(r.key, { hasSerialNumber: e.target.checked, snsText: "" })
-                        }
-                        className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                      />
-                      <span className="text-xs font-bold text-slate-700 uppercase tracking-widest">
-                        Punya Serial Number
-                      </span>
-                    </label>
-                  </div>
-                </div>
+                {/* RESTOCK row: product picker + qty + (SNs if product is SN) */}
+                {r.mode === "restock" && (
+                  <RestockRowFields
+                    row={r}
+                    products={products}
+                    onChange={(patch) => updateRow(r.key, patch)}
+                  />
+                )}
 
-                {r.hasSerialNumber && (
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
-                      Serial Numbers ({r.quantity} baris, satu SN per baris)
-                    </label>
-                    <textarea
-                      value={r.snsText}
-                      onChange={(e) => updateRow(r.key, { snsText: e.target.value })}
-                      rows={Math.min(8, Math.max(3, r.quantity))}
-                      placeholder={"SN1\nSN2\nSN3"}
-                      className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 text-sm font-mono focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-                    />
-                    <p className="text-[10px] text-slate-400 mt-1">
-                      Baris kosong diabaikan. Total SN harus sama dengan Qty.
-                    </p>
-                  </div>
+                {/* NEW-product row: full attribute set (existing UI) */}
+                {r.mode === "new" && (
+                  <NewRowFields row={r} onChange={(patch) => updateRow(r.key, patch)} />
                 )}
               </div>
             ))}
@@ -724,48 +715,97 @@ const BatchInputView: React.FC<BatchInputViewProps> = ({ products, suppliers, st
               Batch Berhasil Dibuat
             </h2>
             <p className="text-sm text-emerald-700 mt-2 font-medium">
-              {summaryBatch.items.length} produk baru ditambahkan ke katalog
+              {newUnitsForBatch(summaryBatch)} barang baru, {restockUnitsForBatch(summaryBatch)}{" "}
+              restock
             </p>
             <p className="text-xs text-emerald-600 mt-1 font-mono">
               Invoice: {summaryBatch.id} • Supplier: {summaryBatch.supplier}
             </p>
           </div>
 
-          <div className="bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-hidden">
-            <div className="p-6 lg:p-8 border-b border-slate-100 bg-slate-50/50">
-              <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">
-                Produk yang Baru Dibuat
-              </h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead className="bg-slate-900 text-slate-400 uppercase text-[10px] font-black tracking-widest">
-                  <tr>
-                    <th className="px-6 py-4">Product ID</th>
-                    <th className="px-6 py-4">Brand</th>
-                    <th className="px-6 py-4">Model</th>
-                    <th className="px-6 py-4 text-center">Qty</th>
-                    <th className="px-6 py-4 text-right">Harga</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {summaryBatch.items.map((it) => (
-                    <tr key={it.id} className="hover:bg-slate-50">
-                      <td className="px-6 py-3 font-mono text-xs font-bold text-slate-900">
-                        {it.productId}
-                      </td>
-                      <td className="px-6 py-3 text-sm text-slate-700">{it.brand || "—"}</td>
-                      <td className="px-6 py-3 text-sm font-bold text-slate-900">{it.model}</td>
-                      <td className="px-6 py-3 text-center text-sm font-bold">{it.quantity}</td>
-                      <td className="px-6 py-3 text-right text-sm font-bold text-slate-900">
-                        {formatIDR(it.price)}
-                      </td>
+          {/* Barang Baru sub-table — hidden when empty */}
+          {newUnitsForBatch(summaryBatch) > 0 && (
+            <div className="bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-hidden">
+              <div className="p-6 lg:p-8 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">
+                  Barang Baru ({newUnitsForBatch(summaryBatch)})
+                </h3>
+                <span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest bg-emerald-50 px-3 py-1 rounded-full">
+                  Produk baru
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead className="bg-slate-900 text-slate-400 uppercase text-[10px] font-black tracking-widest">
+                    <tr>
+                      <th className="px-6 py-4">Product ID</th>
+                      <th className="px-6 py-4">Brand</th>
+                      <th className="px-6 py-4">Model</th>
+                      <th className="px-6 py-4 text-center">Qty</th>
+                      <th className="px-6 py-4 text-right">Harga</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {summaryBatch.items
+                      .filter((it) => it.mode === "new")
+                      .map((it) => (
+                        <tr key={it.id} className="hover:bg-slate-50">
+                          <td className="px-6 py-3 font-mono text-xs font-bold text-slate-900">
+                            {it.productId}
+                          </td>
+                          <td className="px-6 py-3 text-sm text-slate-700">{it.brand || "—"}</td>
+                          <td className="px-6 py-3 text-sm font-bold text-slate-900">{it.model}</td>
+                          <td className="px-6 py-3 text-center text-sm font-bold">{it.quantity}</td>
+                          <td className="px-6 py-3 text-right text-sm font-bold text-slate-900">
+                            {formatIDR(it.price)}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* Restock sub-table — hidden when empty */}
+          {restockUnitsForBatch(summaryBatch) > 0 && (
+            <div className="bg-white rounded-[40px] border border-indigo-200 shadow-sm overflow-hidden">
+              <div className="p-6 lg:p-8 border-b border-indigo-100 bg-indigo-50/50 flex items-center justify-between">
+                <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">
+                  Restock ({restockUnitsForBatch(summaryBatch)})
+                </h3>
+                <span className="text-[10px] font-black text-indigo-700 uppercase tracking-widest bg-indigo-100 px-3 py-1 rounded-full">
+                  Stok ditambah
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead className="bg-slate-900 text-slate-400 uppercase text-[10px] font-black tracking-widest">
+                    <tr>
+                      <th className="px-6 py-4">Product</th>
+                      <th className="px-6 py-4 text-center">Qty</th>
+                      <th className="px-6 py-4">SNs</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {summaryBatch.items
+                      .filter((it) => it.mode === "restock")
+                      .map((it) => (
+                        <tr key={it.id} className="hover:bg-slate-50">
+                          <td className="px-6 py-3 text-sm font-bold text-slate-900">
+                            {it.brand || ""} {it.model}
+                          </td>
+                          <td className="px-6 py-3 text-center text-sm font-bold">{it.quantity}</td>
+                          <td className="px-6 py-3 text-xs font-mono text-slate-500">
+                            {it.sns.length > 0 ? it.sns.join(", ") : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -810,35 +850,78 @@ const BatchInputView: React.FC<BatchInputViewProps> = ({ products, suppliers, st
                     </svg>
                   </button>
                 </div>
-                <div className="overflow-y-auto custom-scrollbar p-6 lg:p-8">
-                  <table className="w-full text-left">
-                    <thead className="bg-slate-50 text-slate-400 uppercase text-[10px] font-black tracking-widest">
-                      <tr>
-                        <th className="px-4 py-3">Brand</th>
-                        <th className="px-4 py-3">Model</th>
-                        <th className="px-4 py-3">Kategori</th>
-                        <th className="px-4 py-3 text-center">Qty</th>
-                        <th className="px-4 py-3">SNs</th>
-                        <th className="px-4 py-3 text-right">Harga</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {detailBatch.items.map((it: BatchInputItem) => (
-                        <tr key={it.id}>
-                          <td className="px-4 py-3 text-sm">{it.brand || "—"}</td>
-                          <td className="px-4 py-3 text-sm font-bold">{it.model}</td>
-                          <td className="px-4 py-3 text-xs text-slate-500">{it.category}</td>
-                          <td className="px-4 py-3 text-center text-sm font-bold">{it.quantity}</td>
-                          <td className="px-4 py-3 text-xs font-mono text-slate-500">
-                            {it.sns.length > 0 ? it.sns.join(", ") : "—"}
-                          </td>
-                          <td className="px-4 py-3 text-right text-sm font-bold">
-                            {formatIDR(it.price)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="overflow-y-auto custom-scrollbar p-6 lg:p-8 space-y-6">
+                  {/* Barang Baru sub-table — hidden when empty */}
+                  {newUnitsForBatch(detailBatch) > 0 && (
+                    <div>
+                      <h3 className="text-xs font-black text-slate-700 uppercase tracking-widest mb-3">
+                        Barang Baru ({newUnitsForBatch(detailBatch)})
+                      </h3>
+                      <table className="w-full text-left">
+                        <thead className="bg-slate-50 text-slate-400 uppercase text-[10px] font-black tracking-widest">
+                          <tr>
+                            <th className="px-4 py-3">Product ID</th>
+                            <th className="px-4 py-3">Brand</th>
+                            <th className="px-4 py-3">Model</th>
+                            <th className="px-4 py-3 text-center">Qty</th>
+                            <th className="px-4 py-3 text-right">Harga</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {detailBatch.items
+                            .filter((it) => it.mode === "new")
+                            .map((it: BatchInputItem) => (
+                              <tr key={it.id}>
+                                <td className="px-4 py-3 font-mono text-xs">{it.productId}</td>
+                                <td className="px-4 py-3 text-sm">{it.brand || "—"}</td>
+                                <td className="px-4 py-3 text-sm font-bold">{it.model}</td>
+                                <td className="px-4 py-3 text-center text-sm font-bold">
+                                  {it.quantity}
+                                </td>
+                                <td className="px-4 py-3 text-right text-sm font-bold">
+                                  {formatIDR(it.price)}
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* Restock sub-table — hidden when empty */}
+                  {restockUnitsForBatch(detailBatch) > 0 && (
+                    <div>
+                      <h3 className="text-xs font-black text-indigo-700 uppercase tracking-widest mb-3">
+                        Restock ({restockUnitsForBatch(detailBatch)})
+                      </h3>
+                      <table className="w-full text-left">
+                        <thead className="bg-indigo-50 text-indigo-700 uppercase text-[10px] font-black tracking-widest">
+                          <tr>
+                            <th className="px-4 py-3">Product</th>
+                            <th className="px-4 py-3 text-center">Qty</th>
+                            <th className="px-4 py-3">SNs</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {detailBatch.items
+                            .filter((it) => it.mode === "restock")
+                            .map((it: BatchInputItem) => (
+                              <tr key={it.id}>
+                                <td className="px-4 py-3 text-sm font-bold">
+                                  {it.brand || ""} {it.model}
+                                </td>
+                                <td className="px-4 py-3 text-center text-sm font-bold">
+                                  {it.quantity}
+                                </td>
+                                <td className="px-4 py-3 text-xs font-mono text-slate-500">
+                                  {it.sns.length > 0 ? it.sns.join(", ") : "—"}
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               </>
             ) : null}
@@ -854,6 +937,296 @@ const BatchInputView: React.FC<BatchInputViewProps> = ({ products, suppliers, st
           }`}
         >
           {toast.message}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ============================================================
+// Per-mode row sub-components
+// ============================================================
+
+interface NewRowFieldsProps {
+  row: NewFormRow;
+  onChange: (patch: Partial<NewFormRow>) => void;
+}
+
+const NewRowFields: React.FC<NewRowFieldsProps> = ({ row, onChange }) => {
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+            Brand
+          </label>
+          <input
+            type="text"
+            value={row.brand}
+            onChange={(e) => onChange({ brand: e.target.value })}
+            placeholder="e.g., Sony"
+            className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 text-sm font-bold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+            Model *
+          </label>
+          <input
+            type="text"
+            value={row.model}
+            onChange={(e) => onChange({ model: e.target.value })}
+            placeholder="e.g., A7 IV"
+            className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 text-sm font-bold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+            Kategori
+          </label>
+          <select
+            value={row.category}
+            onChange={(e) => onChange({ category: e.target.value })}
+            className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 text-sm font-bold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 bg-white"
+          >
+            {CATEGORIES.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+            Kondisi
+          </label>
+          <select
+            value={row.condition}
+            onChange={(e) => onChange({ condition: e.target.value })}
+            className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 text-sm font-bold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 bg-white"
+          >
+            {CONDITIONS.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+            Mount (opsional)
+          </label>
+          <input
+            type="text"
+            value={row.mount}
+            onChange={(e) => onChange({ mount: e.target.value })}
+            placeholder="e.g., E-mount"
+            className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 text-sm font-bold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+            Tipe Garansi
+          </label>
+          <select
+            value={row.warrantyType}
+            onChange={(e) => onChange({ warrantyType: e.target.value })}
+            className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 text-sm font-bold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 bg-white"
+          >
+            {WARRANTY_TYPES.map((w) => (
+              <option key={w} value={w}>
+                {w}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+            Masa Garansi (bulan)
+          </label>
+          <input
+            type="number"
+            min={0}
+            value={row.warrantyMonths}
+            onChange={(e) => onChange({ warrantyMonths: parseInt(e.target.value) || 0 })}
+            className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 text-sm font-bold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+          />
+        </div>
+        <div className="flex items-end">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={row.taxEnabled}
+              onChange={(e) => onChange({ taxEnabled: e.target.checked })}
+              className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+            />
+            <span className="text-xs font-bold text-slate-700 uppercase tracking-widest">
+              Kena PPN
+            </span>
+          </label>
+        </div>
+        <div>
+          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+            COGS (Modal)
+          </label>
+          <RupiahInput
+            value={row.cogs}
+            onChange={(v) => onChange({ cogs: v })}
+            className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 text-sm font-bold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+            Harga Jual
+          </label>
+          <RupiahInput
+            value={row.price}
+            onChange={(v) => onChange({ price: v })}
+            className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 text-sm font-bold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+            Qty *
+          </label>
+          <input
+            type="number"
+            min={1}
+            value={row.quantity}
+            onChange={(e) => onChange({ quantity: parseInt(e.target.value) || 0 })}
+            className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 text-sm font-bold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+          />
+        </div>
+        <div className="flex items-end">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={row.hasSerialNumber}
+              onChange={(e) => onChange({ hasSerialNumber: e.target.checked, snsText: "" })}
+              className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+            />
+            <span className="text-xs font-bold text-slate-700 uppercase tracking-widest">
+              Punya Serial Number
+            </span>
+          </label>
+        </div>
+      </div>
+
+      {row.hasSerialNumber && (
+        <div>
+          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+            Serial Numbers ({row.quantity} baris, satu SN per baris)
+          </label>
+          <textarea
+            value={row.snsText}
+            onChange={(e) => onChange({ snsText: e.target.value })}
+            rows={Math.min(8, Math.max(3, row.quantity))}
+            placeholder={"SN1\nSN2\nSN3"}
+            className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 text-sm font-mono focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+          />
+          <p className="text-[10px] text-slate-400 mt-1">
+            Baris kosong diabaikan. Total SN harus sama dengan Qty.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+interface RestockRowFieldsProps {
+  row: RestockFormRow;
+  products: Product[];
+  onChange: (patch: Partial<RestockFormRow>) => void;
+}
+
+const RestockRowFields: React.FC<RestockRowFieldsProps> = ({ row, products, onChange }) => {
+  // Build the searchable-combobox items from the catalog. Group SN
+  // and non-SN products separately so the user can see the distinction
+  // upfront. Soft-deleted products are excluded.
+  const productItems: SearchableComboboxItem[] = useMemo(() => {
+    const items: SearchableComboboxItem[] = [];
+    for (const p of products) {
+      if (p.deleted) continue;
+      items.push({
+        id: p.id,
+        label: `${p.brand || ""} ${p.model}`.trim(),
+        group: p.hasSerialNumber ? "Nomor Seri" : "Tanpa Nomor Seri",
+      });
+    }
+    return items;
+  }, [products]);
+
+  const picked = row.existingProductId
+    ? products.find((p) => p.id === row.existingProductId) || null
+    : null;
+  const pickedIsSN = picked?.hasSerialNumber === true;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+            Produk *
+          </label>
+          <SearchableCombobox
+            items={productItems}
+            value={row.existingProductId}
+            onChange={(id) => onChange({ existingProductId: id, snsText: "" })}
+            placeholder="Cari produk..."
+            emptyMessage="Tidak ada produk"
+          />
+        </div>
+        <div>
+          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+            Qty *
+          </label>
+          <input
+            type="number"
+            min={1}
+            value={row.quantity}
+            onChange={(e) => onChange({ quantity: parseInt(e.target.value) || 0 })}
+            className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 text-sm font-bold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+          />
+        </div>
+      </div>
+
+      {picked && (
+        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-xs text-slate-600">
+          <span className="font-black text-slate-700">
+            {picked.brand} {picked.model}
+          </span>
+          {" • "}
+          <span>
+            Stok saat ini: <b>{picked.stock}</b>
+          </span>
+          {" • "}
+          <span>
+            Supplier perkenalan: <b>{picked.supplier || "—"}</b>
+          </span>
+          {pickedIsSN && (
+            <div className="mt-1 text-amber-700">
+              Produk ini punya Serial Number. Satu SN per unit akan ditambahkan.
+            </div>
+          )}
+        </div>
+      )}
+
+      {pickedIsSN && (
+        <div>
+          <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+            Serial Numbers ({row.quantity} baris, satu SN per baris)
+          </label>
+          <textarea
+            value={row.snsText}
+            onChange={(e) => onChange({ snsText: e.target.value })}
+            rows={Math.min(8, Math.max(3, row.quantity))}
+            placeholder={"SN1\nSN2\nSN3"}
+            className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 text-sm font-mono focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+          />
+          <p className="text-[10px] text-slate-400 mt-1">
+            Baris kosong diabaikan. Total SN harus sama dengan Qty. SN yang sudah ada di sistem akan
+            ditolak.
+          </p>
         </div>
       )}
     </div>

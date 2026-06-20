@@ -69,6 +69,7 @@ export interface Product {
   supplier?: string;
   dateRestocked?: string;
   hidden?: number;
+  deleted?: boolean;
   taxEnabled?: boolean;
   restockHistory?: ProcurementEntry[]; // DEPRECATED: use procurementHistory. Kept for back-compat during migration; readers should prefer procurementHistory.
   procurementHistory?: ProcurementEntry[];
@@ -273,6 +274,10 @@ export interface BatchInputItem {
   id: string;
   batchInputId: string;
   productId: string; // generated server-side (BRC-{timestamp}) when the row creates a new product
+  // Per-row mode. Inferred server-side from the productId shape (BRC-{ts}-{rand}
+  // for new-product rows, any other id for restock rows). The DB doesn't store
+  // this; it's a parser-time heuristic. See ADR 0004.
+  mode: "new" | "restock";
   // Snapshot of the new product's attributes at creation time. Stored as plain
   // strings (not enum types) so a future enum rename doesn't break old logs.
   brand?: string;
