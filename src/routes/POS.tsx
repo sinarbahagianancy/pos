@@ -9,6 +9,7 @@ import {
   StoreConfig,
 } from "../../app/types";
 import { formatIDR, calculateWarrantyExpiry, formatDate } from "../../app/utils/formatters";
+import { applyFakePpnDisplay } from "../../app/utils/ppnDecomposition";
 import { pdf } from "@react-pdf/renderer";
 import { InvoiceDocument, InvoiceLayout } from "../../app/components/InvoicePDF";
 import { RupiahInput } from "../../app/components/RupiahInput";
@@ -346,8 +347,14 @@ const POSView: React.FC<POSProps> = ({
   };
 
   const subtotal = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
-  const tax = ppnEnabled ? subtotal * taxRate : 0;
-  const total = subtotal + tax;
+  // Persisted values are canonical: `tax = 0` always (PPN is now a fake
+  // display decomposition, not a real tax event — see ADR 0005 + glossary
+  // PPN entry). The cashier-facing breakdown is the fake decomposition
+  // derived at render time. `total` is the sum of line items regardless
+  // of `ppnEnabled`.
+  const tax = 0;
+  const total = subtotal;
+  const ppnDisplay = applyFakePpnDisplay(total, taxRate, ppnEnabled);
 
   const generateInvoicePdf = async (
     sale: Sale,
@@ -359,6 +366,12 @@ const POSView: React.FC<POSProps> = ({
     setIsPrinting(true);
     try {
       const saleCustomer = customers.find((c) => c.id === sale.customerId) || customers[0];
+      // Apply the fake PPN display decomposition at render time so the
+      // printed invoice matches what the cashier saw on screen. The
+      // persisted `sale.subtotal / sale.tax / sale.total` are canonical
+      // (tax = 0, total = subtotal); the decomposition is purely a render
+      // concern.
+      const pdfBreakdown = applyFakePpnDisplay(sale.total, taxRate, sale.taxEnabled);
       const pdfBlob = await pdf(
         <InvoiceDocument
           layout={layout}
@@ -378,11 +391,11 @@ const POSView: React.FC<POSProps> = ({
               price: item.price,
               warrantyExpiry: item.warrantyExpiry,
             })),
-            subtotal: sale.subtotal,
-            tax: sale.tax,
+            subtotal: pdfBreakdown.displayedSubtotal,
+            tax: pdfBreakdown.displayedTax,
             taxRate: taxRate * 100,
             taxEnabled: sale.taxEnabled,
-            total: sale.total,
+            total: pdfBreakdown.displayedTotal,
             staffName: sale.staffName,
             paymentMethod: quotation ? "Menunggu Pembayaran" : sale.paymentMethod,
             notes: sale.notes,
@@ -431,6 +444,8 @@ const POSView: React.FC<POSProps> = ({
           price: item.price,
           quantity: item.quantity,
         })),
+        // Canonical values — the fake PPN decomposition is applied at
+        // render time in `generateInvoicePdf` below. See ADR 0005.
         subtotal,
         tax,
         taxEnabled: ppnEnabled,
@@ -500,6 +515,8 @@ const POSView: React.FC<POSProps> = ({
       customerId: customer!.id,
       customerName: customer!.name,
       items: cart,
+      // Canonical persisted values — `tax = 0`, `total = subtotal`. The
+      // fake PPN decomposition is applied at render time. See ADR 0005.
       subtotal,
       tax,
       taxEnabled: ppnEnabled,
@@ -1110,11 +1127,15 @@ const POSView: React.FC<POSProps> = ({
               <>
                 <div className="flex justify-between text-xs text-slate-500 font-bold">
                   <span>Subtotal</span>
-                  <span className="tabular-nums text-slate-300">{formatIDR(subtotal)}</span>
+                  <span className="tabular-nums text-slate-300">
+                    {formatIDR(ppnDisplay.displayedSubtotal)}
+                  </span>
                 </div>
                 <div className="flex justify-between text-xs text-slate-500 font-bold">
                   <span>Gov Tax ({(taxRate * 100).toFixed(0)}% PPN)</span>
-                  <span className="tabular-nums text-slate-300">{formatIDR(tax)}</span>
+                  <span className="tabular-nums text-slate-300">
+                    {formatIDR(ppnDisplay.displayedTax)}
+                  </span>
                 </div>
               </>
             )}
