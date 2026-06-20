@@ -5,6 +5,59 @@ import postgres from "postgres";
 // All schema changes are in supabase/drizzle/ SQL migration files.
 // Migrations MUST be applied to the production DB BEFORE deploying this code.
 // See: 0003_runtime_migrations.sql and 0004_data_migrations.sql
+//
+// EXCEPTION: the restock feature (ADR 0004) ships with an idempotent runtime
+// migration in src/server/migrations.ts that auto-applies the
+// procurement_history rename and the batch_input_items.mode column on cold
+// start. This is the safety net for "I just deployed and the DB is still
+// on the old shape" cases. The canonical Drizzle migrations in
+// supabase/drizzle/0009_*.sql and 0010_*.sql are still the source of truth
+// and should be applied via `drizzle-kit migrate` for new database setups.
+
+// ============================================================
+// Idempotent runtime migrations for the restock feature.
+// Mirrors the canonical Drizzle migrations in supabase/drizzle/0009
+// and 0010. Safe to run on every cold start.
+// ============================================================
+let _migrationsRun = false;
+async function runRuntimeMigrations(c: ReturnType<typeof postgres>): Promise<void> {
+  if (_migrationsRun) return;
+  _migrationsRun = true;
+  // Rename products.invoice_number to products.procurement_history
+  try {
+    await c.unsafe(
+      `DO $$
+       BEGIN
+         IF EXISTS (
+           SELECT 1 FROM information_schema.columns
+           WHERE table_schema = 'public' AND table_name = 'products' AND column_name = 'invoice_number'
+         ) THEN
+           ALTER TABLE "products" RENAME COLUMN "invoice_number" TO "procurement_history";
+         END IF;
+       END $$`,
+    );
+  } catch (e) {
+    console.error("Failed to rename invoice_number → procurement_history:", e);
+  }
+  // Migrate legacy JSON entries' `sn` key to `sns`
+  try {
+    await c.unsafe(
+      `UPDATE "products"
+       SET "procurement_history" = REPLACE("procurement_history", '"sn":[', '"sns":[')
+       WHERE "procurement_history" LIKE '%"sn":[%'`,
+    );
+  } catch (e) {
+    console.error("Failed to migrate procurement_history sn→sns:", e);
+  }
+  // Add the `mode` column to batch_input_items
+  try {
+    await c.unsafe(
+      `ALTER TABLE "batch_input_items" ADD COLUMN IF NOT EXISTS "mode" text NOT NULL DEFAULT 'new'`,
+    );
+  } catch (e) {
+    console.error("Failed to add batch_input_items.mode:", e);
+  }
+}
 
 const connectionString = process.env.DATABASE_URL || "";
 
@@ -26,6 +79,9 @@ function getClient() {
 // Wrapper that retries queries on connection errors (common during cold starts)
 async function query<T = Record<string, unknown>[]>(sql: string, params?: unknown[]): Promise<T> {
   const c = getClient();
+  // Run the restock-feature migrations once per cold start, before the
+  // first user query. Idempotent; safe to call repeatedly.
+  await runRuntimeMigrations(c);
   try {
     return (await c.unsafe(sql, params as any[])) as T;
   } catch (err: any) {

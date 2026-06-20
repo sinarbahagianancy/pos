@@ -3,7 +3,21 @@ export default function apiServerPlugin() {
 
   return {
     name: "api-server",
-    configureServer(server) {
+    async configureServer(server) {
+      // Run idempotent runtime migrations for the restock feature (the
+      // procurement_history rename + the batch_input_items.mode column).
+      // These mirror the canonical Drizzle migrations in supabase/drizzle/
+      // and act as a safety net for "I just deployed and the DB is still
+      // on the old shape" cases. The migration function swallows per-step
+      // errors so a partial failure doesn't prevent the dev server from
+      // starting.
+      try {
+        const { runBatchInputMigrations } = await import("./migrations.js");
+        await runBatchInputMigrations();
+      } catch (e) {
+        console.error("[api-server] Failed to run batch input migrations:", e);
+      }
+
       // Remind developers to apply migrations before using the dev server.
       // Runtime migrations were removed — all schema changes are now in
       // supabase/drizzle/0003_runtime_migrations.sql and 0004_data_migrations.sql

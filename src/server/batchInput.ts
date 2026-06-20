@@ -5,66 +5,6 @@ import { validateCreateBatchInputInput } from "../../app/schemas/document.schema
 import type { BatchInput, BatchInputItem } from "../../app/types";
 
 // ============================================================
-// Runtime migrations
-//
-// These run on cold start to bring the DB schema in line with what
-// the rest of this module assumes. Each is idempotent (IF NOT EXISTS
-// or a guarded check) and runs in a try/catch so a partial-failure
-// on one migration doesn't break the whole server.
-//
-// They mirror the canonical Drizzle migrations in supabase/drizzle/
-// (0009_procurement_history_rename.sql, 0010_batch_input_items_mode.sql)
-// but don't depend on the operator having run `drizzle-kit migrate`
-// after pulling new code. Production databases will get the
-// canonical migrations too, but the runtime versions are the
-// safety net for "I just deployed and the DB is still on the old
-// shape" cases.
-// ============================================================
-try {
-  // Rename products.invoice_number to products.procurement_history
-  // (idempotent: skipped if the column is already renamed).
-  await client
-    .unsafe(
-      `DO $$
-       BEGIN
-         IF EXISTS (
-           SELECT 1 FROM information_schema.columns
-           WHERE table_schema = 'public' AND table_name = 'products' AND column_name = 'invoice_number'
-         ) THEN
-           ALTER TABLE "products" RENAME COLUMN "invoice_number" TO "procurement_history";
-         END IF;
-       END $$`,
-    )
-    .catch((e) => {
-      console.error("Failed to rename invoice_number → procurement_history:", e);
-    });
-
-  // Migrate legacy JSON entries' `sn` key to `sns` (matches the new schema
-  // spec). The legacy `sn` value was always an array, so the pattern
-  // `"sn":[` only matches the legacy key.
-  await client
-    .unsafe(
-      `UPDATE "products"
-       SET "procurement_history" = REPLACE("procurement_history", '"sn":[', '"sns":[')
-       WHERE "procurement_history" LIKE '%"sn":[%'`,
-    )
-    .catch((e) => {
-      console.error("Failed to migrate procurement_history sn→sns:", e);
-    });
-
-  // Add the `mode` column to batch_input_items (idempotent).
-  await client
-    .unsafe(
-      `ALTER TABLE "batch_input_items" ADD COLUMN IF NOT EXISTS "mode" text NOT NULL DEFAULT 'new'`,
-    )
-    .catch((e) => {
-      console.error("Failed to add batch_input_items.mode:", e);
-    });
-} catch (e) {
-  console.log("Batch input runtime migrations (may be ok):", e);
-}
-
-// ============================================================
 // Types
 // ============================================================
 
