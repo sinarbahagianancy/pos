@@ -67,6 +67,7 @@ const POSView: React.FC<POSProps> = ({
   const [editingPriceValue, setEditingPriceValue] = useState<string>("");
   const [snPickerProduct, setSnPickerProduct] = useState<Product | null>(null);
   const [snSwapIdx, setSnSwapIdx] = useState<number | null>(null);
+  const checkoutBtnRef = useRef<HTMLButtonElement>(null);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -83,10 +84,19 @@ const POSView: React.FC<POSProps> = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Global keyboard listener for barcode scanning (works even when search input is not focused)
+  // Global keyboard listener: barcode scanning + checkout shortcut
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      // Only handle Enter key for barcode scanning
+      // Ctrl+Enter / Cmd+Enter → trigger checkout if eligible
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+        if (cart.length > 0 && selectedCustomer && transactionPoNumber.trim()) {
+          e.preventDefault();
+          setConfirmCheckout(true);
+        }
+        return;
+      }
+
+      // Only handle bare Enter for barcode scanning
       if (e.key !== "Enter") return;
 
       // Don't trigger if user is typing in an input or textarea
@@ -99,7 +109,7 @@ const POSView: React.FC<POSProps> = ({
         return;
       }
 
-      // If there's a search query, process it (only if not already handled by the input's onKeyDown)
+      // If there's a search query, process it
       if (search.trim()) {
         handleBarcodeSearch(e as unknown as React.KeyboardEvent<HTMLInputElement>);
       }
@@ -107,7 +117,7 @@ const POSView: React.FC<POSProps> = ({
 
     document.addEventListener("keydown", handleGlobalKeyDown);
     return () => document.removeEventListener("keydown", handleGlobalKeyDown);
-  }, [search, products, sns, cart]);
+  }, [search, products, sns, cart, selectedCustomer, transactionPoNumber]);
 
   // Filter out hidden products
 
@@ -419,6 +429,9 @@ const POSView: React.FC<POSProps> = ({
       setTimeout(() => setToast(null), 3000);
       return;
     }
+    // Guardrail: lock the button immediately so double-tap can't create
+    // duplicate quotations or PDFs. Resets in the finally block below.
+    setIsPrinting(true);
 
     const customer = selectedCustomer || {
       id: "guest",
@@ -433,6 +446,7 @@ const POSView: React.FC<POSProps> = ({
     // Persist the Quotation to DB so the SB/dd/mm/yyyy-NNN id is auto-generated server-side.
     let persistedQuotation;
     try {
+      setToast({ message: "Menyimpan Quotation...", type: "success" });
       persistedQuotation = await apiCreateQuotation({
         customerId: customer.id === "guest" ? undefined : customer.id,
         customerName: customer.name,
@@ -455,6 +469,7 @@ const POSView: React.FC<POSProps> = ({
         poNumber: transactionPoNumber.trim(),
       });
     } catch (error) {
+      setIsPrinting(false);
       setToast({ message: `Gagal menyimpan Quotation: ${String(error)}`, type: "error" });
       setTimeout(() => setToast(null), 4000);
       return;
@@ -479,7 +494,9 @@ const POSView: React.FC<POSProps> = ({
 
     setLastSale(quotation);
     setIsQuotation(true);
+    setToast({ message: "Membuat PDF...", type: "success" });
     await generateInvoicePdf(quotation, true, invoiceLayout);
+    setToast(null);
   };
 
   const handleCheckout = async () => {
@@ -820,7 +837,7 @@ const POSView: React.FC<POSProps> = ({
                                       <button
                                         key={altSn.sn}
                                         onClick={() => swapSn(idx, altSn)}
-                                        className="w-full px-3 py-2 text-left text-sm font-mono text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors border-b border-slate-50 last:border-0"
+                                        className="w-full px-3 py-2 text-left text-sm font-mono text-slate-800 hover:bg-indigo-50 hover:text-indigo-700 transition-colors border-b border-slate-50 last:border-0"
                                       >
                                         {altSn.sn}
                                       </button>
@@ -872,10 +889,24 @@ const POSView: React.FC<POSProps> = ({
                             onKeyDown={(e) => {
                               if (e.key === "Enter") {
                                 const parsed = parseInt(editingPriceValue, 10);
-                                if (!isNaN(parsed) && parsed > 0) {
-                                  updateCartPrice(idx, parsed);
+                                if (!isNaN(parsed) && parsed >= 100) {
+                                  if (parsed !== item.price) {
+                                    const oldPrice = item.price;
+                                    updateCartPrice(idx, parsed);
+                                    setToast({
+                                      message: `Harga berubah: ${formatIDR(oldPrice)} → ${formatIDR(parsed)}`,
+                                      type: "success",
+                                    });
+                                    setTimeout(() => setToast(null), 2500);
+                                  }
+                                  setEditingPriceIdx(null);
+                                } else {
+                                  setToast({
+                                    message: "Harga minimal Rp 100",
+                                    type: "error",
+                                  });
+                                  setTimeout(() => setToast(null), 2000);
                                 }
-                                setEditingPriceIdx(null);
                               } else if (e.key === "Escape") {
                                 setEditingPriceIdx(null);
                               }
@@ -888,15 +919,31 @@ const POSView: React.FC<POSProps> = ({
                             setEditingPriceIdx(idx);
                             setEditingPriceValue(String(item.price));
                           }}
-                          className="font-black text-slate-900 text-sm tracking-tighter hover:text-indigo-600 transition-colors cursor-pointer tabular-nums"
+                          className="font-black text-slate-900 text-sm tracking-tighter hover:text-indigo-600 transition-colors cursor-pointer tabular-nums group/edit"
                           title="Klik untuk ubah harga"
                         >
-                          {formatIDR(item.price * item.quantity)}
+                          <span className="tabular-nums">
+                            {formatIDR(item.price * item.quantity)}
+                          </span>
+                          <svg
+                            className="w-3.5 h-3.5 inline-block ml-1 text-slate-300 group-hover/edit:text-indigo-400 transition-colors"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                            />
+                          </svg>
                         </button>
                       )}
                       <button
                         onClick={() => removeFromCart(idx)}
                         className="text-slate-300 hover:text-red-500 transition-all active:scale-90 p-2"
+                        title="Hapus item dari keranjang"
                       >
                         <svg
                           className="w-5 h-5"
@@ -1076,6 +1123,11 @@ const POSView: React.FC<POSProps> = ({
                 onChange={(val) => setUtangAmountPaid(val)}
                 placeholder={`Total: ${formatIDR(total)}`}
               />
+              <p className="text-[10px] text-slate-400 font-medium">
+                Total tagihan: {formatIDR(total)}
+                {ppnEnabled ? ` (termasuk PPN ${(taxRate * 100).toFixed(0)}%)` : ""}. Sisanya akan
+                dicatat sebagai utang.
+              </p>
               {utangAmountPaid > 0 && utangAmountPaid < total && (
                 <p className="text-[10px] text-amber-400 font-bold">
                   Sisa: {formatIDR(total - utangAmountPaid)}
@@ -1093,8 +1145,12 @@ const POSView: React.FC<POSProps> = ({
               value={transactionPoNumber}
               onChange={(e) => setTransactionPoNumber(e.target.value)}
               placeholder="e.g., PO-2026-001 / 4500123456"
+              maxLength={100}
               className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
             />
+            <p className="text-[10px] text-slate-500 font-medium">
+              Nomor referensi dari pembeli atau nomor internal. Wajib diisi untuk setiap transaksi.
+            </p>
           </div>
 
           <div className="space-y-3">
@@ -1106,8 +1162,13 @@ const POSView: React.FC<POSProps> = ({
               value={transactionNotes}
               onChange={(e) => setTransactionNotes(e.target.value)}
               placeholder="e.g., New Buy, Addon, Tukar Tambah"
+              maxLength={500}
               className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
             />
+            <div className="flex justify-between text-[10px] text-slate-500 font-medium">
+              <span>Opsional: jenis transaksi, referensi tambahan</span>
+              <span>{transactionNotes.length}/500</span>
+            </div>
           </div>
 
           <div className="mt-auto space-y-4 pt-8 border-t border-slate-800">
@@ -1431,7 +1492,7 @@ const POSView: React.FC<POSProps> = ({
                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                 />
               </svg>
-              <span className="font-bold text-slate-700">Generating PDF...</span>
+              <span className="font-bold text-slate-700">Mohon tunggu...</span>
             </div>
           </div>
         </div>
