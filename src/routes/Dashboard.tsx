@@ -28,7 +28,10 @@ const DashboardView: React.FC<DashboardProps> = ({
       item.price > 0 && item.price < SANITY_PRICE_CEILING && activeProductIds.has(item.productId),
   );
 
-  const revenueToday = sales
+  // Filter out sales with corrupted totals for revenue calculations.
+  const cleanSales = sales.filter((s) => s.total > 0 && s.total < SANITY_PRICE_CEILING);
+
+  const revenueToday = cleanSales
     .filter((s) => {
       const d = new Date(s.timestamp);
       const today = new Date();
@@ -36,7 +39,7 @@ const DashboardView: React.FC<DashboardProps> = ({
     })
     .reduce((acc, s) => acc + s.total, 0);
 
-  const revenueThisMonth = sales
+  const revenueThisMonth = cleanSales
     .filter((s) => {
       const d = new Date(s.timestamp);
       const now = new Date();
@@ -54,14 +57,14 @@ const DashboardView: React.FC<DashboardProps> = ({
       day: "numeric",
       month: "short",
     });
-    const dayRevenue = sales
+    const dayRevenue = cleanSales
       .filter((s) => {
         const saleDate = new Date(s.timestamp);
         return saleDate.toDateString() === d.toDateString();
       })
       .reduce((acc, s) => acc + s.total, 0);
 
-    const dayProfit = allItems
+    const dayProfit = cleanItems
       .filter((item) => {
         const sale = sales.find((s) => s.items.includes(item));
         if (!sale) return false;

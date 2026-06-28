@@ -367,6 +367,7 @@ export const createSaleHandler = async (data: {
   paymentMethod: string;
   staffName: string;
   notes?: string;
+  poNumber?: string;
   dueDate?: string;
   isPaid?: boolean;
   amountPaid?: number;
@@ -422,8 +423,9 @@ export const createSaleHandler = async (data: {
 
     // --- All checks passed — proceed with writes ---
     const paidAtValue = data.isPaid ? new Date().toISOString() : null;
+    const trimmedPo = typeof data.poNumber === "string" ? data.poNumber.trim() : "";
     await tx.unsafe(
-      "INSERT INTO sales (id, customer_id, customer_name, subtotal, tax, tax_enabled, total, payment_method, staff_name, notes, due_date, is_paid, paid_at, amount_paid, installments) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)",
+      "INSERT INTO sales (id, customer_id, customer_name, subtotal, tax, tax_enabled, total, payment_method, staff_name, notes, po_number, due_date, is_paid, paid_at, amount_paid, installments) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)",
       [
         data.id,
         data.customerId,
@@ -435,6 +437,7 @@ export const createSaleHandler = async (data: {
         data.paymentMethod,
         data.staffName,
         data.notes || null,
+        trimmedPo,
         data.dueDate || null,
         data.isPaid ?? false,
         paidAtValue,
