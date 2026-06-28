@@ -44,7 +44,7 @@ const DashboardView: React.FC<DashboardProps> = ({
     })
     .reduce((acc, s) => acc + s.total, 0);
 
-  const lowStockItems = products.filter((p) => p.stock <= 2);
+  const lowStockItems = products.filter((p) => p.stock <= 2 && !p.hidden && !p.deleted);
 
   const last7DaysSales = [...Array(7)].map((_, i) => {
     const d = new Date();
@@ -387,7 +387,7 @@ const DashboardView: React.FC<DashboardProps> = ({
                   Total Products
                 </p>
                 <p className="text-lg sm:text-xl font-black text-amber-700 tabular-nums tracking-tighter leading-none break-words">
-                  {products.length} SKUs
+                  {valuationProducts.length} SKUs
                 </p>
               </div>
             </div>

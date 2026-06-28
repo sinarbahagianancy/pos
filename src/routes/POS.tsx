@@ -1239,7 +1239,7 @@ const POSView: React.FC<POSProps> = ({
           </button>
           {cart.length > 0 && !transactionPoNumber.trim() && (
             <p className="text-[10px] text-amber-400 font-bold text-center mt-2 uppercase tracking-wider">
-              Isi Nomor PO terlebih dahulu
+              Nomor PO wajib diisi
             </p>
           )}
           {!selectedCustomer && cart.length > 0 && transactionPoNumber.trim() && (
