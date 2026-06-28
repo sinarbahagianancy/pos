@@ -17,6 +17,17 @@ const DashboardView: React.FC<DashboardProps> = ({
 }) => {
   const allItems = sales.flatMap((s) => s.items);
 
+  // Filter out items with corrupted prices (> Rp 500M is clearly data corruption
+  // for a camera store) and items from hidden/deleted products.
+  const SANITY_PRICE_CEILING = 500_000_000;
+  const activeProductIds = new Set(
+    products.filter((p) => !p.hidden && !p.deleted).map((p) => p.id),
+  );
+  const cleanItems = allItems.filter(
+    (item) =>
+      item.price > 0 && item.price < SANITY_PRICE_CEILING && activeProductIds.has(item.productId),
+  );
+
   const revenueToday = sales
     .filter((s) => {
       const d = new Date(s.timestamp);
@@ -58,7 +69,7 @@ const DashboardView: React.FC<DashboardProps> = ({
     return { label: dayStr, revenue: dayRevenue, profit: dayProfit };
   });
 
-  const productPerformance = allItems.reduce(
+  const productPerformance = cleanItems.reduce(
     (acc: Record<string, { count: number; revenue: number; profit: number }>, item) => {
       if (!acc[item.model]) acc[item.model] = { count: 0, revenue: 0, profit: 0 };
       acc[item.model].count += 1;
@@ -73,10 +84,16 @@ const DashboardView: React.FC<DashboardProps> = ({
     .sort((a, b) => b[1].revenue - a[1].revenue)
     .slice(0, 5);
 
-  const lowStockProducts = products.filter((p) => p.stock <= 5).sort((a, b) => a.stock - b.stock);
+  const lowStockProducts = products
+    .filter((p) => p.stock <= 5 && !p.hidden && !p.deleted)
+    .sort((a, b) => a.stock - b.stock);
 
-  const inventoryCost = products.reduce((acc, p) => acc + p.stock * p.cogs, 0);
-  const retailValue = products.reduce((acc, p) => acc + p.stock * p.price, 0);
+  // Only include products with valid price/cogs in inventory valuations
+  const valuationProducts = products.filter(
+    (p) => !p.hidden && !p.deleted && p.price > 0 && p.cogs > 0,
+  );
+  const inventoryCost = valuationProducts.reduce((acc, p) => acc + p.stock * p.cogs, 0);
+  const retailValue = valuationProducts.reduce((acc, p) => acc + p.stock * p.price, 0);
   const potentialProfit = retailValue - inventoryCost;
 
   const targetProgress = Math.min((revenueThisMonth / monthlyTarget) * 100, 100);

@@ -93,7 +93,7 @@ const buildProductSearchWhere = (tokens: string[]): { whereSql: string; params: 
       p.supplier ILIKE $${i}
     )`;
   });
-  const whereSql = `p.deleted = false${tokenClauses.length > 0 ? ` AND ${tokenClauses.join(" AND ")}` : ""}`;
+  const whereSql = `p.deleted = false AND p.hidden = 0${tokenClauses.length > 0 ? ` AND ${tokenClauses.join(" AND ")}` : ""}`;
   return { whereSql, params };
 };
 

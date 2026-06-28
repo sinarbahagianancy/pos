@@ -771,7 +771,7 @@ const buildProductSearchWhere = (tokens: string[]): { whereSql: string; params: 
       supplier ILIKE $${i}
     )`;
   });
-  const whereSql = `deleted = false${tokenClauses.length > 0 ? ` AND ${tokenClauses.join(" AND ")}` : ""}`;
+  const whereSql = `deleted = false AND hidden = 0${tokenClauses.length > 0 ? ` AND ${tokenClauses.join(" AND ")}` : ""}`;
   return { whereSql, params };
 };
 
@@ -823,7 +823,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Fast path: no search filter, identical to the pre-search behavior.
         const { data, total, totalPages } = await getPaginatedResults(
           "products",
-          "deleted = false",
+          "deleted = false AND hidden = 0",
           "created_at DESC",
           page,
           limit,
