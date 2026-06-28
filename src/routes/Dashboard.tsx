@@ -18,15 +18,10 @@ const DashboardView: React.FC<DashboardProps> = ({
   const allItems = sales.flatMap((s) => s.items);
 
   // Filter out items with corrupted prices (> Rp 500M is clearly data corruption
-  // for a camera store) and items from hidden/deleted products.
+  // for a camera store). Does NOT filter by product visibility — a sale of a
+  // product that was later hidden/deleted is still a real transaction.
   const SANITY_PRICE_CEILING = 500_000_000;
-  const activeProductIds = new Set(
-    products.filter((p) => !p.hidden && !p.deleted).map((p) => p.id),
-  );
-  const cleanItems = allItems.filter(
-    (item) =>
-      item.price > 0 && item.price < SANITY_PRICE_CEILING && activeProductIds.has(item.productId),
-  );
+  const cleanItems = allItems.filter((item) => item.price > 0 && item.price < SANITY_PRICE_CEILING);
 
   // Filter out sales with corrupted totals for revenue calculations.
   const cleanSales = sales.filter((s) => s.total > 0 && s.total < SANITY_PRICE_CEILING);
@@ -127,8 +122,14 @@ const DashboardView: React.FC<DashboardProps> = ({
             {formatIDR(revenueToday)}
           </p>
           <div className="mt-4 flex items-center space-x-1.5">
-            <span className="text-[9px] font-black text-green-600 bg-green-50 px-2 py-0.5 rounded-full uppercase tracking-tighter">
-              +{((revenueToday / 10000000) * 100).toFixed(1)}%
+            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+              {
+                cleanSales.filter((s) => {
+                  const d = new Date(s.timestamp);
+                  return d.toDateString() === new Date().toDateString();
+                }).length
+              }{" "}
+              transaksi hari ini
             </span>
           </div>
         </div>
