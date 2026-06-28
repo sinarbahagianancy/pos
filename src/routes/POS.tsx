@@ -145,6 +145,9 @@ const POSView: React.FC<POSProps> = ({
   const getEffectiveStock = (p: Product) =>
     p.hasSerialNumber ? availableSNs.filter((sn) => sn.productId === p.id).length : p.stock;
 
+  // Negative or zero stock = out of stock
+  const isOutOfStock = (p: Product) => getEffectiveStock(p) <= 0;
+
   const fuzzyMatch = (text: string, query: string): boolean => {
     const textLower = text.toLowerCase();
     const queryLower = query.toLowerCase();
@@ -275,8 +278,7 @@ const POSView: React.FC<POSProps> = ({
     }
 
     if (matchedProduct) {
-      const effectiveStock = getEffectiveStock(matchedProduct);
-      if (effectiveStock === 0) {
+      if (isOutOfStock(matchedProduct)) {
         setToast({ message: "Stok produk ini habis", type: "error" });
         setSearch("");
         return;
@@ -670,13 +672,13 @@ const POSView: React.FC<POSProps> = ({
                     const hasNoSN =
                       !product.hasSerialNumber && product.stock > 0 && availableCount === 0;
                     const effectiveStock = getEffectiveStock(product);
-                    const isOutOfStock = effectiveStock === 0;
+                    const outOfStock = isOutOfStock(product);
                     return (
                       <button
                         key={product.id}
                         onClick={() => addToCartByProduct(product)}
-                        disabled={isOutOfStock}
-                        className={`w-full p-4 flex items-center justify-between text-left transition-colors group ${isOutOfStock ? "opacity-50 cursor-not-allowed bg-slate-50" : "hover:bg-indigo-50"}`}
+                        disabled={outOfStock}
+                        className={`w-full p-4 flex items-center justify-between text-left transition-colors group ${outOfStock ? "opacity-50 cursor-not-allowed bg-slate-50" : "hover:bg-indigo-50"}`}
                       >
                         <div>
                           <div className="flex items-center space-x-2">
@@ -695,9 +697,9 @@ const POSView: React.FC<POSProps> = ({
                           <p className="text-[10px] text-slate-500 mt-1 font-mono uppercase tracking-tighter">
                             ID: {product.id} •{" "}
                             <span
-                              className={`${isOutOfStock ? "text-red-500" : hasNoSN ? "text-amber-600" : "text-green-600"} font-bold`}
+                              className={`${outOfStock ? "text-red-500" : hasNoSN ? "text-amber-600" : "text-green-600"} font-bold`}
                             >
-                              {isOutOfStock
+                              {outOfStock
                                 ? "OUT OF STOCK"
                                 : hasNoSN
                                   ? `${product.stock} unit (tanpa SN)`

@@ -2217,12 +2217,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: "PO Number is required" });
       }
 
-      const saleAmountPaid = amountPaid || 0;
-      const installmentsJson =
-        saleAmountPaid > 0
-          ? JSON.stringify([{ amount: saleAmountPaid, timestamp: new Date().toISOString() }])
-          : "[]";
-
       try {
         const result = await getClient().begin(async (tx) => {
           // Aggregate quantities by product
@@ -2267,8 +2261,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }
           }
           // Insert sale
+          const saleAmountPaid = amountPaid || 0;
+          const paidAtValue = isPaid ? new Date().toISOString() : null;
+          const installmentsJson =
+            saleAmountPaid > 0
+              ? JSON.stringify([{ amount: saleAmountPaid, timestamp: new Date().toISOString() }])
+              : "[]";
+
           await tx.unsafe(
-            `INSERT INTO sales (id, customer_id, customer_name, subtotal, tax, tax_enabled, total, payment_method, staff_name, notes, po_number, due_date, is_paid, amount_paid, installments) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+            `INSERT INTO sales (id, customer_id, customer_name, subtotal, tax, tax_enabled, total, payment_method, staff_name, notes, po_number, due_date, is_paid, paid_at, amount_paid, installments) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
             [
               id,
               customerId,
@@ -2283,6 +2284,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               trimmedPo,
               dueDate || null,
               isPaid ?? false,
+              paidAtValue,
               String(saleAmountPaid),
               installmentsJson,
             ],
