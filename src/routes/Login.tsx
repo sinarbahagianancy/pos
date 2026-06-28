@@ -6,7 +6,7 @@ interface LoginProps {
 }
 
 const LoginView: React.FC<LoginProps> = ({ staffList, onLogin }) => {
-  const [selectedStaff, setSelectedStaff] = useState(staffList[0] || "");
+  const [selectedStaff, setSelectedStaff] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");

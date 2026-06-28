@@ -49,7 +49,11 @@ const DashboardView: React.FC<DashboardProps> = ({
   const last7DaysSales = [...Array(7)].map((_, i) => {
     const d = new Date();
     d.setDate(d.getDate() - (6 - i));
-    const dayStr = d.toLocaleDateString("id-ID", { weekday: "short", day: "numeric" });
+    const dayStr = d.toLocaleDateString("id-ID", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    });
     const dayRevenue = sales
       .filter((s) => {
         const saleDate = new Date(s.timestamp);
@@ -203,7 +207,11 @@ const DashboardView: React.FC<DashboardProps> = ({
                   axisLine={false}
                   tickLine={false}
                   tick={{ fill: "#94a3b8", fontSize: 10, fontWeight: 800 }}
-                  tickFormatter={(value) => `${(value / 1000000).toFixed(0)}M`}
+                  tickFormatter={(value) => {
+                    if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(0)}M`;
+                    if (value >= 1_000) return `${(value / 1_000).toFixed(0)}K`;
+                    return String(value);
+                  }}
                   dx={-10}
                 />
                 <Tooltip
