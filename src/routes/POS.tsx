@@ -1138,7 +1138,7 @@ const POSView: React.FC<POSProps> = ({
               type="text"
               value={transactionPoNumber}
               onChange={(e) => setTransactionPoNumber(e.target.value)}
-              placeholder="e.g., PO-2026-001 / 4500123456"
+              placeholder="e.g., SB/01/07/2026-001 atau PO-2026-001"
               maxLength={100}
               className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
             />
