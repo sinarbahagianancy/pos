@@ -57,7 +57,6 @@ const POSView: React.FC<POSProps> = ({
   const [printPdfUrl, setPrintPdfUrl] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [isQuotation, setIsQuotation] = useState(false);
-  const [invoiceLayout] = useState<InvoiceLayout>("a4-portrait");
   const [confirmCheckout, setConfirmCheckout] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processResult, setProcessResult] = useState<{ success: boolean; message: string } | null>(
@@ -368,11 +367,7 @@ const POSView: React.FC<POSProps> = ({
   const total = subtotal;
   const ppnDisplay = applyFakePpnDisplay(total, taxRate, ppnEnabled);
 
-  const generateInvoicePdf = async (
-    sale: Sale,
-    quotation: boolean,
-    layout: InvoiceLayout = "a4-portrait",
-  ) => {
+  const generateInvoicePdf = async (sale: Sale, quotation: boolean) => {
     // Revoke previous blob URL to prevent memory leak
     if (printPdfUrl) URL.revokeObjectURL(printPdfUrl);
     setIsPrinting(true);
@@ -386,7 +381,7 @@ const POSView: React.FC<POSProps> = ({
       const pdfBreakdown = applyFakePpnDisplay(sale.total, taxRate, sale.taxEnabled);
       const pdfBlob = await pdf(
         <InvoiceDocument
-          layout={layout}
+          layout={"a4-portrait" as InvoiceLayout}
           data={{
             storeName: storeConfig.storeName,
             address: storeConfig.address,
@@ -494,7 +489,7 @@ const POSView: React.FC<POSProps> = ({
     setLastSale(quotation);
     setIsQuotation(true);
     setToast({ message: "Membuat PDF...", type: "success" });
-    await generateInvoicePdf(quotation, true, invoiceLayout);
+    await generateInvoicePdf(quotation, true);
     setToast(null);
   };
 
@@ -1379,7 +1374,7 @@ const POSView: React.FC<POSProps> = ({
                 onClick={async () => {
                   if (processResult.success && lastSale) {
                     setProcessResult(null);
-                    await generateInvoicePdf(lastSale, isQuotation, invoiceLayout);
+                    await generateInvoicePdf(lastSale, isQuotation);
                   } else {
                     setProcessResult(null);
                   }

@@ -77,7 +77,7 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
   const [customerMap, setCustomerMap] = useState<Record<string, Customer>>({});
   const [printPdfUrl, setPrintPdfUrl] = useState<string | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
-  const [invoiceLayout] = useState<InvoiceLayout>("a4-portrait");
+
   const [activeTab, setActiveTab] = useState<"sales" | "quotations">(
     controlledActiveTab ?? "sales",
   );
@@ -205,8 +205,8 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
     }
   };
 
-  const handlePrint = async (sale: Sale, layoutOverride?: InvoiceLayout) => {
-    const layout = layoutOverride || invoiceLayout;
+  const handlePrint = async (sale: Sale) => {
+    const layout: InvoiceLayout = "a4-portrait";
     const customer = customerMap[sale.customerId];
     // Apply the fake PPN display decomposition at render time. The
     // persisted sale.subtotal / sale.tax / sale.total are canonical
@@ -752,47 +752,6 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
                 Print Invoice - {selectedSale?.id}
               </h3>
               <div className="flex items-center gap-2">
-                <div className="flex bg-slate-100 rounded-lg p-0.5">
-                  <button
-                    onClick={() => {
-                      setInvoiceLayout("a5-landscape");
-                      if (selectedSale) handlePrint(selectedSale, "a5-landscape");
-                    }}
-                    className={`px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${
-                      invoiceLayout === "a5-landscape"
-                        ? "bg-white text-slate-900 shadow-sm"
-                        : "text-slate-400 hover:text-slate-600"
-                    }`}
-                  >
-                    A5 Landscape
-                  </button>
-                  <button
-                    onClick={() => {
-                      setInvoiceLayout("a4-portrait");
-                      if (selectedSale) handlePrint(selectedSale, "a4-portrait");
-                    }}
-                    className={`px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${
-                      invoiceLayout === "a4-portrait"
-                        ? "bg-white text-indigo-600 shadow-sm"
-                        : "text-slate-400 hover:text-slate-600"
-                    }`}
-                  >
-                    A4 Portrait
-                  </button>
-                  <button
-                    onClick={() => {
-                      setInvoiceLayout("a4-landscape");
-                      if (selectedSale) handlePrint(selectedSale, "a4-landscape");
-                    }}
-                    className={`px-3 py-1.5 rounded-md text-[10px] font-black uppercase tracking-wider transition-all ${
-                      invoiceLayout === "a4-landscape"
-                        ? "bg-white text-indigo-600 shadow-sm"
-                        : "text-slate-400 hover:text-slate-600"
-                    }`}
-                  >
-                    A4 Landscape
-                  </button>
-                </div>
                 <button
                   onClick={() => {
                     const iframe = document.querySelector("iframe") as HTMLIFrameElement;

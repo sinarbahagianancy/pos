@@ -295,8 +295,7 @@ _Avoid_ showing a qty input for SN rows — the count of selected SNs _is_ the q
 ### Invoice Layout Variants
 
 - Only **A4 Portrait** is offered to users
-- The PDF component still defines A5 Landscape and A4 Landscape `<Page>` blocks as inert fallbacks
-- Switcher UI removed from `POS.tsx` and `SalesLogs.tsx` print modals
+- The PDF component renders A4 Portrait only
 
 ### PO Number (Nomor PO)
 

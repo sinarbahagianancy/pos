@@ -8,26 +8,12 @@ import { terbilang } from "../utils/terbilang";
 
 const styles = StyleSheet.create({
   // Page
-  pageA5Landscape: {
-    padding: 6,
-    fontFamily: "Helvetica",
-    fontSize: 8,
-    color: "#000000",
-    lineHeight: 1.2,
-  },
   pageA4Portrait: {
     fontFamily: "Helvetica",
     fontSize: 8,
     color: "#000000",
     lineHeight: 1.3,
     padding: 0,
-  },
-  pageA4Landscape: {
-    padding: 16,
-    fontFamily: "Helvetica",
-    fontSize: 9,
-    color: "#000000",
-    lineHeight: 1.3,
   },
 
   // A4 Portrait layout (blank top half, invoice on bottom)
@@ -467,7 +453,7 @@ interface InvoiceData {
   isQuotation?: boolean;
 }
 
-export type InvoiceLayout = "a5-landscape" | "a4-portrait" | "a4-landscape";
+export type InvoiceLayout = "a4-portrait";
 
 // ============================================================
 // Helpers
@@ -515,7 +501,7 @@ export const InvoiceDocument: React.FC<{
   data: InvoiceData;
   layout?: InvoiceLayout;
   kind?: InvoiceDocumentKind;
-}> = ({ data, layout = "a5-landscape", kind }) => {
+}> = ({ data, layout = "a4-portrait", kind }) => {
   // Derive flags from `kind`, falling back to legacy `isQuotation` on data
   const resolvedKind: InvoiceDocumentKind = kind ?? (data.isQuotation ? "quotation" : "invoice");
   const isInvoice = resolvedKind === "invoice";
@@ -802,24 +788,10 @@ export const InvoiceDocument: React.FC<{
 
   return (
     <Document>
-      {layout === "a5-landscape" && (
-        <Page size={[595, 420]} style={styles.pageA5Landscape}>
-          {pageContent}
-        </Page>
-      )}
-
-      {layout === "a4-portrait" && (
-        <Page size="A4" style={[styles.pageA4Portrait, styles.a4PortraitPage]}>
-          <View style={styles.a4PortraitTopHalf} />
-          <View style={styles.a4PortraitBottomHalf}>{pageContent}</View>
-        </Page>
-      )}
-
-      {layout === "a4-landscape" && (
-        <Page size={[842, 595]} style={styles.pageA4Landscape}>
-          {pageContent}
-        </Page>
-      )}
+      <Page size="A4" style={[styles.pageA4Portrait, styles.a4PortraitPage]}>
+        <View style={styles.a4PortraitTopHalf} />
+        <View style={styles.a4PortraitBottomHalf}>{pageContent}</View>
+      </Page>
     </Document>
   );
 };
