@@ -1147,7 +1147,7 @@ const POSView: React.FC<POSProps> = ({
             />
             <p className="text-[10px] text-slate-500 font-medium">
               Nomor referensi dari pembeli atau nomor internal. Wajib diisi untuk transaksi
-              penjualan.
+              penjualan (bukan Quotation).
             </p>
           </div>
 

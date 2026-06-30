@@ -2664,9 +2664,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: "Missing staffName" });
       }
       const trimmedPo = typeof poNumber === "string" ? poNumber.trim() : "";
-      if (!trimmedPo) {
-        return res.status(400).json({ error: "PO Number is required" });
-      }
 
       try {
         const result = await getClient().begin(async (tx) => {
