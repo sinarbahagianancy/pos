@@ -1,5 +1,5 @@
-import { client, db } from "../db";
-import { suppliers, auditLogs } from "../db/schema";
+import { client, db } from "../db/index.js";
+import { suppliers, auditLogs } from "../db/schema.js";
 import { eq, sql } from "drizzle-orm";
 
 const parseDbSupplier = (row: Record<string, unknown>) => ({

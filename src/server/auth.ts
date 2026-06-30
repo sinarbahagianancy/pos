@@ -1,4 +1,4 @@
-import { client } from "../db";
+import { client } from "../db/index.js";
 
 // Staff and Store Config types
 interface StaffMember {

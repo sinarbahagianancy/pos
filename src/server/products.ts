@@ -1,5 +1,5 @@
-import { client, db } from "../db";
-import { products, serialNumbers, auditLogs } from "../db/schema";
+import { client, db } from "../db/index.js";
+import { products, serialNumbers, auditLogs } from "../db/schema.js";
 import { eq, desc, sql } from "drizzle-orm";
 import {
   validateCreateProductInput,
@@ -10,7 +10,7 @@ import {
   parseDbSerialNumber,
   parseRestockHistory,
   Product,
-} from "../../app/schemas/product.schema";
+} from "../../app/schemas/product.schema.js";
 
 const fmtIDR = (n: number | string) => `Rp ${new Intl.NumberFormat("id-ID").format(Number(n))}`;
 

@@ -1,7 +1,7 @@
-import { client, db } from "../db";
-import { batchInputs, batchInputItems, auditLogs, products, serialNumbers } from "../db/schema";
+import { client, db } from "../db/index.js";
+import { batchInputs, batchInputItems, auditLogs, products, serialNumbers } from "../db/schema.js";
 import { eq, sql, desc, or, ilike, inArray } from "drizzle-orm";
-import { validateCreateBatchInputInput } from "../../app/schemas/document.schema";
+import { validateCreateBatchInputInput } from "../../app/schemas/document.schema.js";
 import type { BatchInput, BatchInputItem } from "../../app/types";
 
 // ============================================================

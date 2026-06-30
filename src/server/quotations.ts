@@ -1,5 +1,5 @@
-import { client } from "../db";
-import { calculateWarrantyExpiry } from "../../app/utils/formatters";
+import { client } from "../db/index.js";
+import { calculateWarrantyExpiry } from "../../app/utils/formatters.js";
 
 // ============================================================
 // Types

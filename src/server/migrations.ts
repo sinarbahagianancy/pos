@@ -18,7 +18,7 @@
 // top-level await in this module would be re-evaluated on every
 // dynamic import of the handler.
 
-import { client } from "../db";
+import { client } from "../db/index.js";
 
 export async function runBatchInputMigrations(): Promise<void> {
   // Rename products.invoice_number to products.procurement_history
