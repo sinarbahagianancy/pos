@@ -3637,73 +3637,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // ============================================================
     if (method === "GET" && (url === "/api/batch-input" || url?.startsWith("/api/batch-input?"))) {
       const { page, limit } = getPageLimit(req);
-      const offset = (page - 1) * limit;
       const search = (req.query?.search as string | undefined) || "";
-      const whereClause = search ? `WHERE id ILIKE $3 OR supplier ILIKE $3` : "";
-      const params: (string | number)[] = search ? [limit, offset, `%${search}%`] : [limit, offset];
-      const result = await query(
-        `SELECT * FROM batch_inputs ${whereClause} ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
-        params,
-      );
-      const countResult = await query(
-        `SELECT COUNT(*) as count FROM batch_inputs ${whereClause}`,
-        search ? [`%${search}%`] : [],
-      );
-      const total = Number(countResult[0]?.count) || 0;
-      const batchIds = result.map((r: Record<string, unknown>) => r.id as string);
-      let itemsByBatch: Record<string, unknown[]> = {};
-      if (batchIds.length > 0) {
-        const placeholders = batchIds.map((_, i) => `$${i + 1}`).join(",");
-        const itemsResult = await query(
-          `SELECT * FROM batch_input_items WHERE batch_input_id IN (${placeholders}) ORDER BY id`,
-          batchIds,
-        );
-        for (const it of itemsResult) {
-          const bid = it.batch_input_id as string;
-          if (!itemsByBatch[bid]) itemsByBatch[bid] = [];
-          itemsByBatch[bid].push(it);
-        }
+      try {
+        const { getAllBatchInputHandler } = await import("../src/server/batchInput.js");
+        const result = await getAllBatchInputHandler(page, limit, search);
+        return res.status(200).json(result);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to get Batch Inputs";
+        return res.status(500).json({ error: message });
       }
-      return res.status(200).json({
-        batchInputs: result.map((r: Record<string, unknown>) => ({
-          id: r.id,
-          supplier: r.supplier,
-          date: String(r.date),
-          notes: r.notes || undefined,
-          staffName: r.staff_name,
-          items: (itemsByBatch[r.id as string] || []).map((it: any) => {
-            let sns: string[] = [];
-            try {
-              sns = JSON.parse((it.sns as string) || "[]");
-            } catch {
-              sns = [];
-            }
-            return {
-              id: it.id,
-              batchInputId: it.batch_input_id,
-              productId: it.product_id,
-              brand: it.brand || undefined,
-              model: it.model,
-              category: (it.category as string) || "Body",
-              condition: (it.condition as string) || "New",
-              mount: it.mount || undefined,
-              warrantyType: (it.warranty_type as string) || "Official Sony Indonesia",
-              warrantyMonths: (it.warranty_months as number) || 12,
-              cogs: typeof it.cogs === "string" ? parseFloat(it.cogs) : it.cogs,
-              price: typeof it.price === "string" ? parseFloat(it.price) : it.price,
-              hasSerialNumber: Boolean(it.has_serial_number),
-              taxEnabled: it.tax_enabled === undefined ? true : Boolean(it.tax_enabled),
-              quantity: it.quantity,
-              sns,
-            };
-          }),
-          createdAt: String(r.created_at),
-        })),
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      });
     }
 
     if (method === "POST" && url === "/api/batch-input") {
@@ -3723,39 +3665,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (method === "GET" && url?.startsWith("/api/batch-input/")) {
       const batchId = decodeURIComponent(url.replace("/api/batch-input/", ""));
-      const [header] = await query("SELECT * FROM batch_inputs WHERE id = $1", [batchId]);
-      if (!header) return res.status(404).json({ error: "Batch Input not found" });
-      const itemRows = await query(
-        "SELECT * FROM batch_input_items WHERE batch_input_id = $1 ORDER BY id",
-        [batchId],
-      );
-      const items = (itemRows as Array<Record<string, unknown>>).map((it) => {
-        let sns: string[] = [];
-        try {
-          sns = JSON.parse((it.sns as string) || "[]");
-        } catch {
-          sns = [];
-        }
-        return {
-          id: it.id,
-          batchInputId: it.batch_input_id,
-          productId: it.product_id,
-          brand: it.brand || undefined,
-          model: it.model,
-          category: (it.category as string) || "Body",
-          condition: (it.condition as string) || "New",
-          mount: it.mount || undefined,
-          warrantyType: (it.warranty_type as string) || "Official Sony Indonesia",
-          warrantyMonths: (it.warranty_months as number) || 12,
-          cogs: typeof it.cogs === "string" ? parseFloat(it.cogs) : it.cogs,
-          price: typeof it.price === "string" ? parseFloat(it.price) : it.price,
-          hasSerialNumber: Boolean(it.has_serial_number),
-          taxEnabled: it.tax_enabled === undefined ? true : Boolean(it.tax_enabled),
-          quantity: it.quantity,
-          sns,
-        };
-      });
-      return res.status(200).json({ ...header, items });
+      try {
+        const { getBatchInputByIdHandler } = await import("../src/server/batchInput.js");
+        const result = await getBatchInputByIdHandler(batchId);
+        if (!result) return res.status(404).json({ error: "Batch Input not found" });
+        return res.status(200).json(result);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to get Batch Input";
+        return res.status(500).json({ error: message });
+      }
     }
 
     // GET /api/audit-logs with pagination
