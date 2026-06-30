@@ -411,6 +411,7 @@ const POSView: React.FC<POSProps> = ({
             staffName: sale.staffName,
             paymentMethod: quotation ? "Menunggu Pembayaran" : sale.paymentMethod,
             notes: sale.notes,
+            poNumber: sale.poNumber,
             isQuotation: quotation,
           }}
         />,
@@ -473,6 +474,7 @@ const POSView: React.FC<POSProps> = ({
     }
 
     // Use the persisted Quotation's auto-generated id (SB/...) as the displayed id
+    // Use the server-returned poNumber (which may be auto-generated SB/dd/mm/yyyy-NNN)
     const quotation: Sale = {
       id: persistedQuotation.id,
       customerId: customer.id,
@@ -485,7 +487,7 @@ const POSView: React.FC<POSProps> = ({
       paymentMethod: "Quotation" as PaymentMethod,
       staffName,
       notes: transactionNotes,
-      poNumber: transactionPoNumber.trim(),
+      poNumber: persistedQuotation.poNumber || transactionPoNumber.trim(),
       timestamp: persistedQuotation.createdAt,
     };
 

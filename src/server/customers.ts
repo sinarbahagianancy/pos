@@ -38,6 +38,7 @@ const parseDbSale = (row: Record<string, unknown>) => {
     paymentMethod: row.payment_method as string,
     staffName: row.staff_name as string,
     notes: row.notes as string | undefined,
+    poNumber: (row.po_number as string) || "",
     dueDate: row.due_date as string | undefined,
     isPaid: row.is_paid as boolean,
     paidAt: row.paid_at as string | undefined,

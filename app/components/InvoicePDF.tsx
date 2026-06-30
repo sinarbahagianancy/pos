@@ -624,19 +624,20 @@ export const InvoiceDocument: React.FC<{
 
         {/* Invoice Details Box - Right */}
         <View style={styles.invoiceDetailsBox}>
-          <View style={styles.invoiceDetailRow}>
-            <Text style={styles.invoiceDetailLabel}>
-              {isQuotation
-                ? "No. Quotation"
-                : isSuratJalan
+          {/* Invoice/Surat Jalan/Penarikan number - hidden for quotations (they only have PO Number) */}
+          {!isQuotation && (
+            <View style={styles.invoiceDetailRow}>
+              <Text style={styles.invoiceDetailLabel}>
+                {isSuratJalan
                   ? "No. Surat Jalan"
                   : isSuratPenarikan
                     ? "No. Penarikan"
                     : "No. Invoice"}
-            </Text>
-            <Text style={styles.invoiceDetailSeparator}>:</Text>
-            <Text style={styles.invoiceDetailValue}>{data.invoiceNumber}</Text>
-          </View>
+              </Text>
+              <Text style={styles.invoiceDetailSeparator}>:</Text>
+              <Text style={styles.invoiceDetailValue}>{data.invoiceNumber}</Text>
+            </View>
+          )}
           <View style={styles.invoiceDetailRow}>
             <Text style={styles.invoiceDetailLabel}>Tanggal</Text>
             <Text style={styles.invoiceDetailSeparator}>:</Text>
