@@ -116,17 +116,34 @@ const parseDbQuotation = (
  * requests.
  */
 const allocateQuotationNumber = async (tx: any): Promise<string> => {
+  // Get or create today's counter
   const result = await tx.unsafe(
-    `INSERT INTO quotation_counters (date, last_number) VALUES (CURRENT_DATE, 1)
-     ON CONFLICT (date) DO UPDATE SET last_number = quotation_counters.last_number + 1
+    `INSERT INTO quotation_counters (date, last_number) VALUES (CURRENT_DATE, 0)
+     ON CONFLICT (date) DO UPDATE SET last_number = quotation_counters.last_number
      RETURNING last_number`,
   );
-  const seq = result[0].last_number as number;
+  let seq = result[0].last_number as number;
   const now = new Date();
   const dd = String(now.getDate()).padStart(2, "0");
   const mm = String(now.getMonth() + 1).padStart(2, "0");
   const yyyy = now.getFullYear();
-  return `SB/${dd}/${mm}/${yyyy}-${String(seq).padStart(3, "0")}`;
+
+  // Loop-and-skip: find next available PO number
+  while (true) {
+    seq++;
+    const candidate = `SB/${dd}/${mm}/${yyyy}-${String(seq).padStart(3, "0")}`;
+    const exists = await tx.unsafe(`SELECT 1 FROM quotations WHERE po_number = $1 LIMIT 1`, [
+      candidate,
+    ]);
+    if (exists.length === 0) {
+      // Update counter to reflect the used number
+      await tx.unsafe(`UPDATE quotation_counters SET last_number = $1 WHERE date = CURRENT_DATE`, [
+        seq,
+      ]);
+      return candidate;
+    }
+    // Otherwise, loop and try next number
+  }
 };
 
 // ============================================================
@@ -217,11 +234,28 @@ export const createQuotationHandler = async (data: CreateQuotationInput): Promis
   if (!data.staffName) {
     throw new Error("Staff name is required");
   }
-  const trimmedPo = (data.poNumber || "").trim();
+  const trimmedPoRaw = (data.poNumber || "").trim();
 
   return await client.begin(async (tx) => {
-    // Atomically allocate a Quotation number
+    // If user provided a PO number, validate it's not a duplicate
+    if (trimmedPoRaw) {
+      const existingInQuotations = await tx.unsafe(
+        `SELECT 1 FROM quotations WHERE po_number = $1 LIMIT 1`,
+        [trimmedPoRaw],
+      );
+      const existingInSales = await tx.unsafe(`SELECT 1 FROM sales WHERE po_number = $1 LIMIT 1`, [
+        trimmedPoRaw,
+      ]);
+      if (existingInQuotations.length > 0 || existingInSales.length > 0) {
+        throw new Error(`PO Number "${trimmedPoRaw}" sudah digunakan`);
+      }
+    }
+
+    // Atomically allocate a PO number (auto-generation with loop-and-skip)
     const quotationId = await allocateQuotationNumber(tx);
+
+    // If no PO number was provided, default to the auto-generated SB number
+    const trimmedPo = trimmedPoRaw || quotationId;
 
     await tx.unsafe(
       `INSERT INTO quotations (id, customer_id, customer_name, subtotal, tax, tax_enabled, total, staff_name, notes, po_number, status)
