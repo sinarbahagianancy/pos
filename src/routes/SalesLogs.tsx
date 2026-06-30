@@ -176,6 +176,17 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
     );
   }, [logEntries, search]);
 
+  const filteredQuotations = useMemo(() => {
+    if (!search.trim()) return quotations;
+    const q = search.toLowerCase();
+    return quotations.filter(
+      (qt) =>
+        qt.id.toLowerCase().includes(q) ||
+        qt.customerName.toLowerCase().includes(q) ||
+        qt.staffName.toLowerCase().includes(q),
+    );
+  }, [quotations, search]);
+
   const handleRecordInstallment = async () => {
     if (!installmentPopover || !onRecordInstallment) return;
     const amount = parseInt(installmentAmount, 10);
@@ -546,7 +557,29 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
           </>
         ) : (
           <>
-            <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="p-6 border-b border-slate-100 space-y-3">
+              <div className="relative max-w-md">
+                <input
+                  type="text"
+                  placeholder="Cari nomor quotation, customer, atau staff..."
+                  className="w-full px-6 py-4 pl-14 rounded-2xl border border-slate-200 bg-slate-50 text-slate-900 placeholder-slate-400 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all text-sm font-bold"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+                <svg
+                  className="w-6 h-6 absolute left-5 top-4 text-slate-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
+                </svg>
+              </div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-2">
                   Status:
@@ -588,14 +621,14 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
                         Loading...
                       </td>
                     </tr>
-                  ) : quotations.length === 0 ? (
+                  ) : filteredQuotations.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="px-6 py-12 text-center text-slate-400">
-                        Belum ada Quotation
+                        {search ? "Tidak ada hasil pencarian" : "Belum ada Quotation"}
                       </td>
                     </tr>
                   ) : (
-                    quotations.map((q) => {
+                    filteredQuotations.map((q) => {
                       const statusStyle: Record<QuotationStatus, string> = {
                         Pending: "bg-amber-50 text-amber-700 border-amber-200",
                         Approved: "bg-green-50 text-green-700 border-green-200",
