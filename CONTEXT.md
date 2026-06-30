@@ -300,22 +300,25 @@ _Avoid_ showing a qty input for SN rows — the count of selected SNs _is_ the q
 
 ### PO Number (Nomor PO)
 
+- **The only identifier for Quotations** — there is no separate "Quotation Number" concept. See ADR 0006.
 - Mandatory on every **Sale** (checkout). Validated in both client (POS form) and server (POST `/api/sales` rejects empty).
-- **Optional on Quotations** — the buyer has not committed yet, so there may be no PO to reference. The field is visible on the POS form but carries no `*` marker and no validation guard. Stored as empty string when omitted.
-- Custom input — not auto-generated, not auto-incremented
+- **Optional on Quotations** — when omitted, the system auto-generates one using the `SB/dd/mm/yyyy-NNN` format (e.g., `SB/14/06/2026-001`). See "Auto-generation" below.
+- Custom input — user can type any format (e.g., `PO-2026-XYZ`, `SB/01/07/2026-005`)
 - Stored in `sales.po_number` / `quotations.po_number` (`text`, nullable; empty string treated as missing)
+- **Carries to Invoice** — when a Quotation is approved and converted to a Sale, the PO Number is copied to `sales.po_number`
 
-### Quotation Numbering
+**Auto-generation (when no PO provided):**
 
-- Auto-generated ID format: `SB/dd/mm/yyyy-NNN` (e.g., `SB/14/06/2026-001`)
-- Counter resets at midnight (per-day)
+- Format: `SB/dd/mm/yyyy-NNN` (daily counter, 3-digit minimum padding)
 - Generated server-side via atomic UPSERT on `quotation_counters(date, last_number)` table
-- Quotation number is the primary key (`quotations.id`)
-- Padding: 3 digits minimum (`001`, `012`, `123`); grows as needed (e.g., `1234` after day 1000)
+- **Loop-and-skip algorithm**: increment counter → build candidate → check `quotations.po_number` for existence → if exists, loop; if available, use it and update counter
+- **Counter only moves forward** — never decrements, even if manually entered PO numbers create gaps
+- Counter resets at midnight (per-day)
 
 ### Quotation Storage
 
 - Stored in dedicated `quotations` + `quotation_items` tables (not in `sales` table)
+- `quotations.id` stores the auto-generated PO Number (when no PO provided) or a placeholder; the `po_number` field is the canonical PO Number
 - Quotation has its own lifecycle (Pending → Approved/Rejected/Canceled), independent of Sale
 - `sales.quotation_id` (nullable FK) links a converted Sale back to its source Quotation
 - `quotations.converted_sale_id` (nullable FK) is set on Approve, linking the Quotation to the resulting Sale
