@@ -300,10 +300,10 @@ _Avoid_ showing a qty input for SN rows — the count of selected SNs _is_ the q
 
 ### PO Number (Nomor PO)
 
-- Mandatory on every sale (Sale and Quotation)
+- Mandatory on every **Sale** (checkout). Validated in both client (POS form) and server (POST `/api/sales` rejects empty).
+- **Optional on Quotations** — the buyer has not committed yet, so there may be no PO to reference. The field is visible on the POS form but carries no `*` marker and no validation guard. Stored as empty string when omitted.
 - Custom input — not auto-generated, not auto-incremented
-- Stored in `sales.po_number` (new column, `text`, nullable; empty string treated as missing)
-- Validated in both client (POS form) and server (POST `/api/sales` rejects empty)
+- Stored in `sales.po_number` / `quotations.po_number` (`text`, nullable; empty string treated as missing)
 
 ### Quotation Numbering
 

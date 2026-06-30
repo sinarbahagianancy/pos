@@ -89,7 +89,7 @@ const POSView: React.FC<POSProps> = ({
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       // Ctrl+Enter / Cmd+Enter → trigger checkout if eligible
       if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-        if (cart.length > 0 && selectedCustomer && transactionPoNumber.trim()) {
+        if (cart.length > 0 && selectedCustomer) {
           e.preventDefault();
           setConfirmCheckout(true);
         }
@@ -426,11 +426,6 @@ const POSView: React.FC<POSProps> = ({
 
   const handleShowQuotation = async () => {
     if (cart.length === 0) return;
-    if (!transactionPoNumber.trim()) {
-      setToast({ message: "Nomor PO wajib diisi", type: "error" });
-      setTimeout(() => setToast(null), 3000);
-      return;
-    }
     // Guardrail: lock the button immediately so double-tap can't create
     // duplicate quotations or PDFs. Resets in the finally block below.
     setIsPrinting(true);
@@ -1140,7 +1135,7 @@ const POSView: React.FC<POSProps> = ({
 
           <div className="space-y-3">
             <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest">
-              Nomor PO <span className="text-red-400">*</span>
+              Nomor PO
             </label>
             <input
               type="text"
@@ -1151,7 +1146,8 @@ const POSView: React.FC<POSProps> = ({
               className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
             />
             <p className="text-[10px] text-slate-500 font-medium">
-              Nomor referensi dari pembeli atau nomor internal. Wajib diisi untuk setiap transaksi.
+              Nomor referensi dari pembeli atau nomor internal. Wajib diisi untuk transaksi
+              penjualan.
             </p>
           </div>
 
@@ -1215,10 +1211,10 @@ const POSView: React.FC<POSProps> = ({
           </div>
 
           <button
-            disabled={cart.length === 0 || isPrinting || !transactionPoNumber.trim()}
+            disabled={cart.length === 0 || isPrinting}
             onClick={handleShowQuotation}
             className={`w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all border mt-4 ${
-              cart.length === 0 || isPrinting || !transactionPoNumber.trim()
+              cart.length === 0 || isPrinting
                 ? "bg-slate-800 text-slate-600 cursor-not-allowed border-slate-700"
                 : "bg-slate-800 text-slate-300 hover:bg-slate-700 border-slate-700"
             }`}
@@ -1237,9 +1233,14 @@ const POSView: React.FC<POSProps> = ({
           >
             Selesaikan Transaksi
           </button>
-          {cart.length > 0 && !transactionPoNumber.trim() && (
+          {cart.length > 0 && !transactionPoNumber.trim() && !selectedCustomer && (
             <p className="text-[10px] text-amber-400 font-bold text-center mt-2 uppercase tracking-wider">
-              Nomor PO wajib diisi
+              Pilih customer dan isi Nomor PO untuk selesaikan transaksi
+            </p>
+          )}
+          {cart.length > 0 && !transactionPoNumber.trim() && selectedCustomer && (
+            <p className="text-[10px] text-amber-400 font-bold text-center mt-2 uppercase tracking-wider">
+              Nomor PO wajib diisi untuk selesaikan transaksi
             </p>
           )}
           {!selectedCustomer && cart.length > 0 && transactionPoNumber.trim() && (

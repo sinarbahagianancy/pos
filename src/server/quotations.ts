@@ -218,9 +218,6 @@ export const createQuotationHandler = async (data: CreateQuotationInput): Promis
     throw new Error("Staff name is required");
   }
   const trimmedPo = (data.poNumber || "").trim();
-  if (!trimmedPo) {
-    throw new Error("PO Number is required");
-  }
 
   return await client.begin(async (tx) => {
     // Atomically allocate a Quotation number
