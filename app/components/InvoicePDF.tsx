@@ -686,7 +686,7 @@ export const InvoiceDocument: React.FC<{
               </View>
               <View style={[styles.tableCellView, styles.colQty]}>
                 <Text style={[styles.tableCell, { textAlign: "center" }]}>
-                  {showQuantityPerRow && item.quantity ? item.quantity : 1}
+                  {item.quantity || 1}
                 </Text>
               </View>
               {hidePrices ? null : (
@@ -701,7 +701,7 @@ export const InvoiceDocument: React.FC<{
                   </View>
                   <View style={[styles.tableCellView, styles.colTotalHarga]}>
                     <Text style={[styles.tableCell, { textAlign: "right" }]}>
-                      {formatNumber(item.price)}
+                      {formatNumber(item.price * (item.quantity || 1))}
                     </Text>
                   </View>
                 </>

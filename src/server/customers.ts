@@ -276,7 +276,7 @@ export const getAllSalesHandler = async (
   const joinedRows = await client.unsafe(
     `SELECT s.*, si.id as si_id, si.product_id as si_product_id, si.brand as si_brand,
             si.model as si_model, si.sn as si_sn, si.price as si_price,
-            si.cogs as si_cogs, si.warranty_expiry as si_warranty_expiry
+            si.cogs as si_cogs, si.warranty_expiry as si_warranty_expiry, si.quantity as si_quantity
      FROM sales s
      LEFT JOIN sale_items si ON s.id = si.sale_id
      WHERE s.id IN (${placeholders})
@@ -305,6 +305,7 @@ export const getAllSalesHandler = async (
         price: row.si_price,
         cogs: row.si_cogs,
         warranty_expiry: row.si_warranty_expiry,
+        quantity: row.si_quantity,
       });
     }
   }
@@ -322,6 +323,8 @@ export const getAllSalesHandler = async (
         price: typeof r.price === "string" ? parseFloat(r.price) : (r.price as number),
         cogs: typeof r.cogs === "string" ? parseFloat(r.cogs) : (r.cogs as number),
         warrantyExpiry: r.warranty_expiry as string,
+        quantity:
+          typeof r.quantity === "string" ? parseInt(r.quantity) : (r.quantity as number) || 1,
       };
     });
 
@@ -536,6 +539,8 @@ export const getAllSaleItemsHandler = async () => {
     price: typeof row.price === "string" ? parseFloat(row.price) : (row.price as number),
     cogs: typeof row.cogs === "string" ? parseFloat(row.cogs) : (row.cogs as number),
     warrantyExpiry: row.warranty_expiry as string,
+    quantity:
+      typeof row.quantity === "string" ? parseInt(row.quantity) : (row.quantity as number) || 1,
   }));
 };
 
@@ -551,6 +556,8 @@ export const getSaleItemsBySaleIdHandler = async (saleId: string) => {
     price: typeof row.price === "string" ? parseFloat(row.price) : (row.price as number),
     cogs: typeof row.cogs === "string" ? parseFloat(row.cogs) : (row.cogs as number),
     warrantyExpiry: row.warranty_expiry as string,
+    quantity:
+      typeof row.quantity === "string" ? parseInt(row.quantity) : (row.quantity as number) || 1,
   }));
 };
 

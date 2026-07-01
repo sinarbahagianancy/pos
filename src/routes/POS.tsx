@@ -396,6 +396,7 @@ const POSView: React.FC<POSProps> = ({
               model: item.model,
               sn: quotation ? "" : item.sn,
               price: item.price,
+              quantity: item.quantity,
               warrantyExpiry: item.warrantyExpiry,
             })),
             subtotal: pdfBreakdown.displayedSubtotal,

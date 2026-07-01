@@ -216,6 +216,7 @@ const SuratJalanView: React.FC<SuratJalanViewProps> = ({
           model: item.model,
           sn: item.sn,
           price: 0,
+          quantity: item.quantity,
         })),
         subtotal: 0,
         tax: 0,

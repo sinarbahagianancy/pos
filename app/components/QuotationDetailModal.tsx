@@ -95,6 +95,7 @@ export const QuotationDetailModal: React.FC<QuotationDetailModalProps> = ({
           model: it.model,
           sn: "", // Quotation PDF hides SN
           price: it.price,
+          quantity: it.quantity,
         })),
         subtotal: breakdown.displayedSubtotal,
         tax: breakdown.displayedTax,

@@ -243,6 +243,7 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
         model: item.model,
         sn: item.sn,
         price: item.price,
+        quantity: item.quantity,
         warrantyExpiry: item.warrantyExpiry,
       })),
       subtotal: breakdown.displayedSubtotal,
