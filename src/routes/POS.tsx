@@ -460,6 +460,7 @@ const POSView: React.FC<POSProps> = ({
         staffName,
         notes: transactionNotes,
         poNumber: transactionPoNumber.trim(),
+        paymentMethod,
       });
     } catch (error) {
       setIsPrinting(false);

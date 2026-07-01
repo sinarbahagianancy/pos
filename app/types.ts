@@ -163,6 +163,7 @@ export interface Quotation {
   staffName: string;
   notes?: string;
   poNumber?: string;
+  paymentMethod: string;
   status: QuotationStatus;
   rejectionReason?: string;
   convertedSaleId?: string;

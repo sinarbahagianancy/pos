@@ -87,6 +87,14 @@ async function runRuntimeMigrations(c: ReturnType<typeof postgres>): Promise<voi
   } catch (e) {
     console.error("Failed to alter surat_penarikan_items for manual rows:", e);
   }
+  // Add payment_method to quotations (for storing chosen method at creation).
+  try {
+    await c.unsafe(
+      `ALTER TABLE "quotations" ADD COLUMN IF NOT EXISTS "payment_method" text NOT NULL DEFAULT 'Cash'`,
+    );
+  } catch (e) {
+    console.error("Failed to add quotations.payment_method:", e);
+  }
 }
 
 const connectionString = process.env.DATABASE_URL || "";
@@ -437,6 +445,7 @@ interface Quotation {
   staffName: string;
   notes?: string;
   poNumber?: string;
+  paymentMethod: string;
   status: QuotationStatus;
   rejectionReason?: string;
   convertedSaleId?: string;
@@ -471,6 +480,7 @@ const parseDbQuotation = (
   staffName: row.staff_name as string,
   notes: (row.notes as string | undefined) ?? undefined,
   poNumber: ((row.po_number as string | undefined) ?? "") as string,
+  paymentMethod: ((row.payment_method as string | undefined) ?? "Cash") as string,
   status: (row.status as QuotationStatus) ?? "Pending",
   rejectionReason: (row.rejection_reason as string | undefined) ?? undefined,
   convertedSaleId: (row.converted_sale_id as string | undefined) ?? undefined,

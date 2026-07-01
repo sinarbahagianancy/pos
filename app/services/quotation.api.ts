@@ -69,6 +69,7 @@ export const createQuotation = async (input: {
   staffName: string;
   notes?: string;
   poNumber: string;
+  paymentMethod: string;
 }): Promise<Quotation> => {
   const response = await fetch(`${API_BASE}/quotations`, {
     method: "POST",
@@ -87,7 +88,7 @@ export interface ApproveQuotationInput {
    * for SN items per Quotation→Invoice conversion flow. Optional non-SN items.
    */
   itemSns?: Array<{ itemId: string; sn: string }>;
-  paymentMethod: string;
+  paymentMethod?: string; // Now optional - uses saved method from quotation
   staffName: string;
   dueDate?: string;
   amountPaid?: number;

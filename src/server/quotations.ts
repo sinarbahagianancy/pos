@@ -30,6 +30,7 @@ export interface Quotation {
   staffName: string;
   notes?: string;
   poNumber?: string;
+  paymentMethod: string;
   status: QuotationStatus;
   rejectionReason?: string;
   convertedSaleId?: string;
@@ -56,11 +57,12 @@ export interface CreateQuotationInput {
   staffName: string;
   notes?: string;
   poNumber: string;
+  paymentMethod: string;
 }
 
 export interface ApproveQuotationInput {
   itemSns?: Array<{ itemId: string; sn: string }>;
-  paymentMethod: string;
+  paymentMethod?: string; // Now optional - uses saved method from quotation
   staffName: string;
   dueDate?: string;
   amountPaid?: number;
@@ -97,6 +99,7 @@ const parseDbQuotation = (
   staffName: row.staff_name as string,
   notes: (row.notes as string | undefined) ?? undefined,
   poNumber: ((row.po_number as string | undefined) ?? "") as string,
+  paymentMethod: ((row.payment_method as string | undefined) ?? "Cash") as string,
   status: (row.status as QuotationStatus) ?? "Pending",
   rejectionReason: (row.rejection_reason as string | undefined) ?? undefined,
   convertedSaleId: (row.converted_sale_id as string | undefined) ?? undefined,
@@ -258,8 +261,8 @@ export const createQuotationHandler = async (data: CreateQuotationInput): Promis
     const trimmedPo = trimmedPoRaw || quotationId;
 
     await tx.unsafe(
-      `INSERT INTO quotations (id, customer_id, customer_name, subtotal, tax, tax_enabled, total, staff_name, notes, po_number, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'Pending')`,
+      `INSERT INTO quotations (id, customer_id, customer_name, subtotal, tax, tax_enabled, total, staff_name, notes, po_number, payment_method, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'Pending')`,
       [
         quotationId,
         data.customerId || null,
@@ -271,6 +274,7 @@ export const createQuotationHandler = async (data: CreateQuotationInput): Promis
         data.staffName,
         data.notes || null,
         trimmedPo,
+        data.paymentMethod || "Cash",
       ],
     );
 
@@ -322,9 +326,6 @@ export const approveQuotationHandler = async (
   id: string,
   input: ApproveQuotationInput,
 ): Promise<{ quotation: Quotation; sale: any }> => {
-  if (!input.paymentMethod) {
-    throw new Error("Payment method is required");
-  }
   if (!input.staffName) {
     throw new Error("Staff name is required");
   }
@@ -339,6 +340,8 @@ export const approveQuotationHandler = async (
     if (quotation.status !== "Pending") {
       throw new Error(`Quotation is already ${quotation.status}`);
     }
+    // Use the payment method saved at quotation creation
+    const paymentMethod = quotation.payment_method || "Cash";
 
     // 2) Fetch all Quotation items
     const itemRows = await tx.unsafe(
@@ -421,13 +424,13 @@ export const approveQuotationHandler = async (
         String(tax),
         quotation.tax_enabled,
         String(total),
-        input.paymentMethod,
+        paymentMethod,
         input.staffName,
         quotation.notes || null,
         quotation.po_number || "",
         id, // quotation_id link
         input.dueDate || null,
-        input.paymentMethod !== "Utang" || saleAmountPaid >= total,
+        paymentMethod !== "Utang" || saleAmountPaid >= total,
         String(saleAmountPaid),
         installmentsJson,
       ],
@@ -494,7 +497,7 @@ export const approveQuotationHandler = async (
     );
 
     // 9) Award loyalty points if paid
-    if (input.paymentMethod !== "Utang" || saleAmountPaid >= total) {
+    if (paymentMethod !== "Utang" || saleAmountPaid >= total) {
       const pointsEarned = Math.floor(total / 1000);
       if (pointsEarned > 0 && quotation.customer_id) {
         await tx.unsafe(

@@ -125,7 +125,6 @@ export const QuotationDetailModal: React.FC<QuotationDetailModalProps> = ({
       const itemSns = Object.entries(snOverrides).map(([itemId, sn]) => ({ itemId, sn }));
       const result = await approveQuotation(quotation.id, {
         itemSns,
-        paymentMethod: "Cash",
         staffName,
         amountPaid: quotation.total,
       });
@@ -258,6 +257,12 @@ export const QuotationDetailModal: React.FC<QuotationDetailModalProps> = ({
                   <p className="text-sm text-slate-700">{quotation.notes}</p>
                 </>
               )}
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 mt-3">
+                Metode Pembayaran
+              </p>
+              <p className="font-black text-slate-900 uppercase">
+                {quotation.paymentMethod === "Utang" ? "Paylater" : quotation.paymentMethod}
+              </p>
             </div>
           </div>
 
