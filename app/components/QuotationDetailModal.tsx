@@ -40,9 +40,6 @@ export const QuotationDetailModal: React.FC<QuotationDetailModalProps> = ({
 }) => {
   const [mode, setMode] = useState<ActionMode>("view");
   const [reason, setReason] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<
-    "Cash" | "Debit" | "QRIS" | "Transfer" | "Utang"
-  >("Cash");
   // SN override: map of quotation_item.id → chosen SN. Initialised from Quotation's SN.
   const [snOverrides, setSnOverrides] = useState<Record<string, string>>(() =>
     Object.fromEntries(quotation.items.map((it) => [it.id, it.sn])),
@@ -128,9 +125,9 @@ export const QuotationDetailModal: React.FC<QuotationDetailModalProps> = ({
       const itemSns = Object.entries(snOverrides).map(([itemId, sn]) => ({ itemId, sn }));
       const result = await approveQuotation(quotation.id, {
         itemSns,
-        paymentMethod,
+        paymentMethod: "Cash",
         staffName,
-        amountPaid: paymentMethod === "Utang" ? 0 : quotation.total,
+        amountPaid: quotation.total,
       });
       onChanged();
       if (onConvertedToSale && result.sale?.id) {
@@ -370,29 +367,6 @@ export const QuotationDetailModal: React.FC<QuotationDetailModalProps> = ({
           )}
 
           {/* Mode-specific input */}
-          {mode === "approve" && (
-            <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
-                Metode Pembayaran
-              </label>
-              <div className="grid grid-cols-5 gap-2">
-                {(["Cash", "Debit", "QRIS", "Transfer", "Utang"] as const).map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => setPaymentMethod(m)}
-                    className={`py-2 rounded-xl text-[10px] font-black uppercase border transition-all ${
-                      paymentMethod === m
-                        ? "bg-indigo-600 text-white border-indigo-500"
-                        : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-                    }`}
-                  >
-                    {m}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
           {(mode === "reject" || mode === "cancel") && (
             <div>
               <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
