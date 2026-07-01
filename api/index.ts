@@ -1,5 +1,15 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import postgres from "postgres";
+import {
+  createQuotationHandler,
+  approveQuotationHandler,
+  getAllQuotationsHandler,
+  getQuotationByIdHandler,
+  rejectQuotationHandler,
+  cancelQuotationHandler,
+  type CreateQuotationInput,
+  type ApproveQuotationInput,
+} from "../src/server/quotations.js";
 
 // ⚠️ DEPLOYMENT NOTE: Runtime migrations have been removed from this handler.
 // All schema changes are in supabase/drizzle/ SQL migration files.
@@ -2558,53 +2568,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       try {
         const page = parseInt((req.query as Record<string, string>)?.page || "1", 10) || 1;
         const limit = parseInt((req.query as Record<string, string>)?.limit || "20", 10) || 20;
-        const status = (req.query as Record<string, string>)?.status as QuotationStatus | undefined;
-        const offset = (page - 1) * limit;
-
-        const hasStatus =
-          status && ["Pending", "Approved", "Rejected", "Canceled"].includes(status);
-        const filterClause = hasStatus ? "WHERE status = $3" : "";
-        const countParams: unknown[] = [];
-        if (hasStatus) countParams.push(status);
-
-        const countResult = await query(
-          `SELECT COUNT(*) as count FROM quotations ${filterClause}`,
-          countParams,
-        );
-        const total = Number(countResult[0]?.count) || 0;
-
-        const dataParams: unknown[] = [limit, offset];
-        if (hasStatus) dataParams.push(status);
-        const result = await query(
-          `SELECT * FROM quotations ${filterClause} ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
-          dataParams,
-        );
-
-        // Fetch items for all returned quotations
-        const ids: string[] = result.map((r: Record<string, unknown>) => r.id as string);
-        const itemsMap = new Map<string, QuotationItem[]>();
-        if (ids.length > 0) {
-          const placeholders = ids.map((_, i) => `$${i + 1}`).join(", ");
-          const itemRows = await query(
-            `SELECT * FROM quotation_items WHERE quotation_id IN (${placeholders}) ORDER BY id`,
-            ids,
-          );
-          for (const row of itemRows) {
-            const item = parseDbQuotationItem(row);
-            if (!itemsMap.has(item.quotationId)) itemsMap.set(item.quotationId, []);
-            itemsMap.get(item.quotationId)!.push(item);
-          }
-        }
-
-        return res.status(200).json({
-          quotations: result.map((r: Record<string, unknown>) =>
-            parseDbQuotation(r, itemsMap.get(r.id as string) || []),
-          ),
-          total,
-          page,
-          limit,
-          totalPages: Math.ceil(total / limit),
-        });
+        const status = (req.query as Record<string, string>)?.status as string | undefined;
+        const result = await getAllQuotationsHandler(page, limit, status);
+        return res.status(200).json(result);
       } catch (err) {
         console.error("Get quotations error:", err);
         return res.status(500).json({ error: "Failed to fetch quotations" });
@@ -2621,17 +2587,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ) {
       const quotationId = decodeURIComponent(url.replace("/api/quotations/", ""));
       try {
-        const result = await query("SELECT * FROM quotations WHERE id = $1", [quotationId]);
-        if (result.length === 0) {
+        const result = await getQuotationByIdHandler(quotationId);
+        if (!result) {
           return res.status(404).json({ error: "Quotation not found" });
         }
-        const itemRows = await query(
-          "SELECT * FROM quotation_items WHERE quotation_id = $1 ORDER BY id",
-          [quotationId],
-        );
-        return res
-          .status(200)
-          .json(parseDbQuotation(result[0], itemRows.map(parseDbQuotationItem)));
+        return res.status(200).json(result);
       } catch (err) {
         console.error("Get quotation error:", err);
         return res.status(500).json({ error: "Failed to fetch quotation" });
@@ -2641,96 +2601,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // POST /api/quotations - Create new quotation
     if (method === "POST" && url === "/api/quotations") {
       const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
-      const {
-        customerId,
-        customerName,
-        items,
-        subtotal,
-        tax,
-        taxEnabled,
-        total,
-        staffName,
-        notes,
-        poNumber,
-      } = input;
-
-      if (!items || items.length === 0) {
-        return res.status(400).json({ error: "Quotation must have at least 1 item" });
-      }
-      if (!customerName || !String(customerName).trim()) {
-        return res.status(400).json({ error: "Customer name is required" });
-      }
-      if (!staffName) {
-        return res.status(400).json({ error: "Missing staffName" });
-      }
-      const trimmedPo = typeof poNumber === "string" ? poNumber.trim() : "";
-
       try {
-        const result = await getClient().begin(async (tx) => {
-          // Atomically allocate the next Quotation number for today
-          const counterResult = await tx.unsafe(
-            `INSERT INTO quotation_counters (date, last_number) VALUES (CURRENT_DATE, 1)
-             ON CONFLICT (date) DO UPDATE SET last_number = quotation_counters.last_number + 1
-             RETURNING last_number`,
-          );
-          const seq = counterResult[0].last_number as number;
-          const now = new Date();
-          const dd = String(now.getDate()).padStart(2, "0");
-          const mm = String(now.getMonth() + 1).padStart(2, "0");
-          const yyyy = now.getFullYear();
-          const quotationId = `SB/${dd}/${mm}/${yyyy}-${String(seq).padStart(3, "0")}`;
-
-          await tx.unsafe(
-            `INSERT INTO quotations (id, customer_id, customer_name, subtotal, tax, tax_enabled, total, staff_name, notes, po_number, status)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'Pending')`,
-            [
-              quotationId,
-              customerId || null,
-              customerName,
-              String(subtotal),
-              String(tax),
-              taxEnabled ?? true,
-              String(total),
-              staffName,
-              notes || null,
-              trimmedPo,
-            ],
-          );
-
-          for (const item of items) {
-            await tx.unsafe(
-              `INSERT INTO quotation_items (quotation_id, product_id, brand, model, sn, price, quantity)
-               VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-              [
-                quotationId,
-                item.productId,
-                item.brand || null,
-                item.model,
-                item.sn || "",
-                String(item.price),
-                item.quantity || 1,
-              ],
-            );
-          }
-
-          await tx.unsafe(
-            `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())`,
-            [
-              `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
-              staffName,
-              "Quotation Created",
-              `Quotation ${quotationId} created - ${items.length} item(s), Total: Rp ${new Intl.NumberFormat("id-ID").format(total)}, Customer: ${customerName}`,
-              quotationId,
-            ],
-          );
-
-          const created = await tx.unsafe("SELECT * FROM quotations WHERE id = $1", [quotationId]);
-          const createdItems = await tx.unsafe(
-            "SELECT * FROM quotation_items WHERE quotation_id = $1 ORDER BY id",
-            [quotationId],
-          );
-          return parseDbQuotation(created[0], createdItems.map(parseDbQuotationItem));
-        });
+        const result = await createQuotationHandler(input as CreateQuotationInput);
         return res.status(201).json(result);
       } catch (err) {
         console.error("Quotation create error:", err);
@@ -2745,226 +2617,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         url.replace("/api/quotations/", "").replace("/approve", ""),
       );
       const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
-      const { itemSns, paymentMethod, staffName, dueDate, amountPaid, itemPrices } = input || {};
-
-      if (!paymentMethod) return res.status(400).json({ error: "Payment method is required" });
-      if (!staffName) return res.status(400).json({ error: "Missing staffName" });
-
       try {
-        const result = await getClient().begin(async (tx) => {
-          // 1) Lock the Quotation row
-          const qRows = await tx.unsafe("SELECT * FROM quotations WHERE id = $1 FOR UPDATE", [
-            quotationId,
-          ]);
-          if (qRows.length === 0) throw new Error("Quotation not found");
-          const quotation = qRows[0];
-          if (quotation.status !== "Pending") {
-            throw new Error(`Quotation is already ${quotation.status}`);
-          }
-
-          // 2) Fetch items
-          const itemRows = await tx.unsafe(
-            "SELECT * FROM quotation_items WHERE quotation_id = $1 ORDER BY id",
-            [quotationId],
-          );
-          if (itemRows.length === 0) throw new Error("Quotation has no items");
-
-          const snOverride = new Map<string, string>();
-          for (const o of itemSns || []) snOverride.set(o.itemId, o.sn);
-          const priceOverride = new Map<string, number>();
-          for (const o of itemPrices || []) priceOverride.set(o.itemId, o.price);
-
-          // 3) Pre-flight: check SNs and stock
-          for (const itemRow of itemRows) {
-            const itemId = itemRow.id as string;
-            const effectiveSn = snOverride.get(itemId) ?? (itemRow.sn as string);
-            if (effectiveSn && !effectiveSn.startsWith("NOSN-")) {
-              const [snCheck] = await tx.unsafe(
-                "SELECT status FROM serial_numbers WHERE sn = $1 FOR UPDATE",
-                [effectiveSn],
-              );
-              if (!snCheck || snCheck.status !== "In Stock") {
-                throw new Error(
-                  `Serial number ${effectiveSn} is no longer available (status: ${snCheck?.status ?? "not found"})`,
-                );
-              }
-            }
-            const productId = itemRow.product_id as string;
-            const qty = itemRow.quantity as number;
-            const [productCheck] = await tx.unsafe(
-              "SELECT stock, model FROM products WHERE id = $1 FOR UPDATE",
-              [productId],
-            );
-            if (!productCheck || Number(productCheck.stock) < qty) {
-              throw new Error(
-                `Insufficient stock for ${productCheck?.model ?? productId}: need ${qty}, have ${productCheck?.stock ?? 0}`,
-              );
-            }
-          }
-
-          // 4) Compute totals
-          let subtotalCalc = 0;
-          for (const itemRow of itemRows) {
-            const itemId = itemRow.id as string;
-            const basePrice =
-              priceOverride.get(itemId) ??
-              (typeof itemRow.price === "string"
-                ? parseFloat(itemRow.price)
-                : (itemRow.price as number));
-            subtotalCalc += basePrice * (itemRow.quantity as number);
-          }
-          const taxCalc = quotation.tax_enabled
-            ? typeof quotation.tax === "string"
-              ? parseFloat(quotation.tax)
-              : (quotation.tax as number)
-            : 0;
-          const totalCalc = subtotalCalc + taxCalc;
-
-          const saleId = `INV-${Date.now()}`;
-          const saleAmountPaid = Number(amountPaid) || 0;
-          const installmentsJson =
-            saleAmountPaid > 0
-              ? JSON.stringify([{ amount: saleAmountPaid, timestamp: new Date().toISOString() }])
-              : "[]";
-
-          // 5) Insert Sale
-          await tx.unsafe(
-            `INSERT INTO sales (id, customer_id, customer_name, subtotal, tax, tax_enabled, total, payment_method, staff_name, notes, po_number, quotation_id, due_date, is_paid, amount_paid, installments)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
-            [
-              saleId,
-              quotation.customer_id,
-              quotation.customer_name,
-              String(subtotalCalc),
-              String(taxCalc),
-              quotation.tax_enabled,
-              String(totalCalc),
-              paymentMethod,
-              staffName,
-              quotation.notes || null,
-              quotation.po_number || "",
-              quotationId,
-              dueDate || null,
-              paymentMethod !== "Utang" || saleAmountPaid >= totalCalc,
-              String(saleAmountPaid),
-              installmentsJson,
-            ],
-          );
-
-          // 6) Insert sale_items, mark SNs Sold, deduct stock
-          for (const itemRow of itemRows) {
-            const itemId = itemRow.id as string;
-            const effectiveSn = snOverride.get(itemId) ?? (itemRow.sn as string);
-            const effectivePrice =
-              priceOverride.get(itemId) ??
-              (typeof itemRow.price === "string"
-                ? parseFloat(itemRow.price)
-                : (itemRow.price as number));
-            const productId = itemRow.product_id as string;
-            const qty = itemRow.quantity as number;
-
-            const productRow = await tx.unsafe("SELECT * FROM products WHERE id = $1", [productId]);
-            const product = productRow[0];
-            const warrantyMonths = (product?.warranty_months as number) ?? 0;
-            const nowDate = new Date();
-            const expiry = new Date(nowDate);
-            expiry.setMonth(expiry.getMonth() + warrantyMonths);
-            const warrantyExpiry = expiry.toISOString();
-            const cogs = product?.cogs != null ? String(product.cogs) : "0";
-
-            await tx.unsafe(
-              `INSERT INTO sale_items (sale_id, product_id, brand, model, sn, price, cogs, warranty_expiry, quantity)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-              [
-                saleId,
-                productId,
-                itemRow.brand || product?.brand || null,
-                itemRow.model,
-                effectiveSn,
-                String(effectivePrice),
-                cogs,
-                warrantyExpiry,
-                qty,
-              ],
-            );
-
-            if (effectiveSn && !effectiveSn.startsWith("NOSN-")) {
-              await tx.unsafe("UPDATE serial_numbers SET status = 'Sold' WHERE sn = $1", [
-                effectiveSn,
-              ]);
-            }
-            await tx.unsafe("UPDATE products SET stock = stock - $1 WHERE id = $2", [
-              qty,
-              productId,
-            ]);
-
-            const snLabel =
-              effectiveSn && !effectiveSn.startsWith("NOSN-") ? `SN: ${effectiveSn}` : "tanpa SN";
-            await tx.unsafe(
-              `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())`,
-              [
-                `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
-                staffName,
-                "Sales Deduction",
-                `Sold ${qty} unit(s) of ${itemRow.model} (${snLabel}) to ${quotation.customer_name} (from Quotation ${quotationId})`,
-                productId,
-              ],
-            );
-          }
-
-          // 7) Update Quotation status
-          const decidedAt = new Date().toISOString();
-          await tx.unsafe(
-            `UPDATE quotations SET status = 'Approved', converted_sale_id = $1, decided_at = $2, decided_by = $3 WHERE id = $4`,
-            [saleId, decidedAt, staffName, quotationId],
-          );
-
-          // 8) Loyalty points
-          if ((paymentMethod !== "Utang" || saleAmountPaid >= totalCalc) && quotation.customer_id) {
-            const pointsEarned = Math.floor(totalCalc / 1000);
-            if (pointsEarned > 0) {
-              await tx.unsafe(
-                "UPDATE customers SET loyalty_points = loyalty_points + $1, updated_at = NOW() WHERE id = $2",
-                [pointsEarned, quotation.customer_id],
-              );
-            }
-          }
-
-          // 9) Audit logs
-          await tx.unsafe(
-            `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())`,
-            [
-              `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
-              staffName,
-              "Sale Created",
-              `Sale ${saleId} created from Quotation ${quotationId} - ${itemRows.length} item(s), Total: Rp ${new Intl.NumberFormat("id-ID").format(totalCalc)}, Customer: ${quotation.customer_name}`,
-              saleId,
-            ],
-          );
-          await tx.unsafe(
-            `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())`,
-            [
-              `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
-              staffName,
-              "Quotation Approved",
-              `Quotation ${quotationId} approved → converted to Sale ${saleId}`,
-              quotationId,
-            ],
-          );
-
-          const updatedQ = await tx.unsafe("SELECT * FROM quotations WHERE id = $1", [quotationId]);
-          const itemsForReturn = itemRows.map((r: Record<string, unknown>) =>
-            parseDbQuotationItem({
-              ...r,
-              sn: snOverride.get(r.id as string) ?? r.sn,
-              price: priceOverride.get(r.id as string)?.toString() ?? r.price,
-            }),
-          );
-          return {
-            quotation: parseDbQuotation(updatedQ[0], itemsForReturn),
-            sale: { id: saleId },
-          };
-        });
+        const result = await approveQuotationHandler(quotationId, input as ApproveQuotationInput);
         return res.status(200).json(result);
       } catch (err) {
         console.error("Approve quotation error:", err);
@@ -2989,37 +2643,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const { reason, staffName } = input || {};
 
-      const trimmedReason = typeof reason === "string" ? reason.trim() : "";
-      if (!trimmedReason) return res.status(400).json({ error: "Reason is required" });
-      if (!staffName) return res.status(400).json({ error: "Missing staffName" });
-
       try {
-        const result = await getClient().begin(async (tx) => {
-          const rows = await tx.unsafe("SELECT * FROM quotations WHERE id = $1 FOR UPDATE", [
-            quotationId,
-          ]);
-          if (rows.length === 0) throw new Error("Quotation not found");
-          if (rows[0].status !== "Pending") {
-            throw new Error(`Quotation is already ${rows[0].status}`);
-          }
-          const now = new Date().toISOString();
-          await tx.unsafe(
-            `UPDATE quotations SET status = 'Rejected', rejection_reason = $1, decided_at = $2, decided_by = $3 WHERE id = $4`,
-            [trimmedReason, now, staffName, quotationId],
-          );
-          await tx.unsafe(
-            `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())`,
-            [
-              `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
-              staffName,
-              "Quotation Rejected",
-              `Quotation ${quotationId} rejected - reason: ${trimmedReason}`,
-              quotationId,
-            ],
-          );
-          const updated = await tx.unsafe("SELECT * FROM quotations WHERE id = $1", [quotationId]);
-          return parseDbQuotation(updated[0], []);
-        });
+        const result = await rejectQuotationHandler(quotationId, reason, staffName);
         return res.status(200).json(result);
       } catch (err) {
         console.error("Reject quotation error:", err);
@@ -3036,37 +2661,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const { reason, staffName } = input || {};
 
-      const trimmedReason = typeof reason === "string" ? reason.trim() : "";
-      if (!trimmedReason) return res.status(400).json({ error: "Reason is required" });
-      if (!staffName) return res.status(400).json({ error: "Missing staffName" });
-
       try {
-        const result = await getClient().begin(async (tx) => {
-          const rows = await tx.unsafe("SELECT * FROM quotations WHERE id = $1 FOR UPDATE", [
-            quotationId,
-          ]);
-          if (rows.length === 0) throw new Error("Quotation not found");
-          if (rows[0].status !== "Pending") {
-            throw new Error(`Quotation is already ${rows[0].status}`);
-          }
-          const now = new Date().toISOString();
-          await tx.unsafe(
-            `UPDATE quotations SET status = 'Canceled', rejection_reason = $1, decided_at = $2, decided_by = $3 WHERE id = $4`,
-            [trimmedReason, now, staffName, quotationId],
-          );
-          await tx.unsafe(
-            `INSERT INTO audit_logs (id, staff_name, action, details, related_id, timestamp) VALUES ($1, $2, $3, $4, $5, NOW())`,
-            [
-              `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
-              staffName,
-              "Quotation Canceled",
-              `Quotation ${quotationId} canceled - reason: ${trimmedReason}`,
-              quotationId,
-            ],
-          );
-          const updated = await tx.unsafe("SELECT * FROM quotations WHERE id = $1", [quotationId]);
-          return parseDbQuotation(updated[0], []);
-        });
+        const result = await cancelQuotationHandler(quotationId, reason, staffName);
         return res.status(200).json(result);
       } catch (err) {
         console.error("Cancel quotation error:", err);
