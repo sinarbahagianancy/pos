@@ -117,35 +117,51 @@ const parseDbQuotation = (
  * Uses PostgreSQL UPSERT (ON CONFLICT DO UPDATE ... RETURNING) to ensure
  * the counter is incremented exactly once per call, even under concurrent
  * requests.
+ *
+ * The counter resets to 1 at the start of each new day.
  */
 const allocateQuotationNumber = async (tx: any): Promise<string> => {
-  // Get or create today's counter
+  // Get or create today's counter, incrementing if it already exists
+  // ON CONFLICT: if today's row exists, increment; if it's a new day, start at 1
   const result = await tx.unsafe(
-    `INSERT INTO quotation_counters (date, last_number) VALUES (CURRENT_DATE, 0)
-     ON CONFLICT (date) DO UPDATE SET last_number = quotation_counters.last_number
+    `INSERT INTO quotation_counters (date, last_number) VALUES (CURRENT_DATE, 1)
+     ON CONFLICT (date) DO UPDATE SET last_number = CASE
+       WHEN quotation_counters.date = CURRENT_DATE THEN quotation_counters.last_number + 1
+       ELSE 1
+     END
      RETURNING last_number`,
   );
-  let seq = result[0].last_number as number;
+  const seq = result[0].last_number as number;
   const now = new Date();
   const dd = String(now.getDate()).padStart(2, "0");
   const mm = String(now.getMonth() + 1).padStart(2, "0");
   const yyyy = now.getFullYear();
 
-  // Loop-and-skip: find next available PO number
+  const candidate = `SB/${dd}/${mm}/${yyyy}-${String(seq).padStart(3, "0")}`;
+
+  // Verify the candidate doesn't already exist (handles edge cases)
+  const exists = await tx.unsafe(`SELECT 1 FROM quotations WHERE po_number = $1 LIMIT 1`, [
+    candidate,
+  ]);
+  if (exists.length === 0) {
+    return candidate;
+  }
+
+  // Fallback: loop-and-skip if the candidate somehow already exists
+  let nextSeq = seq;
   while (true) {
-    seq++;
-    const candidate = `SB/${dd}/${mm}/${yyyy}-${String(seq).padStart(3, "0")}`;
-    const exists = await tx.unsafe(`SELECT 1 FROM quotations WHERE po_number = $1 LIMIT 1`, [
-      candidate,
+    nextSeq++;
+    const nextCandidate = `SB/${dd}/${mm}/${yyyy}-${String(nextSeq).padStart(3, "0")}`;
+    const nextExists = await tx.unsafe(`SELECT 1 FROM quotations WHERE po_number = $1 LIMIT 1`, [
+      nextCandidate,
     ]);
-    if (exists.length === 0) {
+    if (nextExists.length === 0) {
       // Update counter to reflect the used number
       await tx.unsafe(`UPDATE quotation_counters SET last_number = $1 WHERE date = CURRENT_DATE`, [
-        seq,
+        nextSeq,
       ]);
-      return candidate;
+      return nextCandidate;
     }
-    // Otherwise, loop and try next number
   }
 };
 
