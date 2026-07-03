@@ -30,8 +30,5 @@ export default defineConfig(({ mode }) => {
         external: ["postgres", "drizzle-orm/postgres-js", "playwright"],
       },
     },
-    define: {
-      "process.env.DATABASE_URL": JSON.stringify(env.DATABASE_URL),
-    },
   };
 });
