@@ -2567,21 +2567,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // === SALE ITEMS ROUTES ===
-
-    // GET /api/sale-items
-    if (method === "GET" && url === "/api/sale-items") {
-      const result = await query("SELECT * FROM sale_items ORDER BY id DESC");
-      return res.status(200).json(result.map(parseDbSaleItem));
-    }
-
-    // GET /api/sale-items/:saleId
-    if (method === "GET" && url?.startsWith("/api/sale-items/")) {
-      const saleId = url.replace("/api/sale-items/", "");
-      const result = await query("SELECT * FROM sale_items WHERE sale_id = $1", [saleId]);
-      return res.status(200).json(result.map(parseDbSaleItem));
-    }
-
     // === QUOTATION ROUTES ===
 
     // GET /api/quotations?page=&limit=&status=

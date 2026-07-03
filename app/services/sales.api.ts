@@ -79,19 +79,6 @@ export const createSale = async (input: {
   return response.json();
 };
 
-export const getAllSaleItems = async (): Promise<SaleItem[]> => {
-  const response = await fetch(`${API_BASE}/sale-items`);
-  if (!response.ok) {
-    let message = "Failed to fetch sale items";
-    try {
-      const e = await response.json();
-      message = e.error || message;
-    } catch {}
-    throw new Error(message);
-  }
-  return response.json();
-};
-
 export const markSaleAsPaid = async (saleId: string, staffName: string): Promise<Sale> => {
   const response = await fetch(`${API_BASE}/sales/${saleId}/mark-paid`, {
     method: "PUT",

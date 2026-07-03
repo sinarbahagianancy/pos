@@ -751,33 +751,6 @@ export default function apiServerPlugin() {
             return;
           }
 
-          if (path === "sale-items" && req.method === "GET") {
-            const { getAllSaleItemsHandler } = await import("./customers.js");
-            try {
-              const result = await getAllSaleItemsHandler();
-              res.setHeader("Content-Type", "application/json");
-              res.end(JSON.stringify(result));
-            } catch (error) {
-              res.statusCode = 500;
-              res.end(JSON.stringify({ error: String(error) }));
-            }
-            return;
-          }
-
-          if (path.startsWith("sale-items/") && req.method === "GET") {
-            const saleId = path.replace("sale-items/", "");
-            const { getSaleItemsBySaleIdHandler } = await import("./customers.js");
-            try {
-              const result = await getSaleItemsBySaleIdHandler(saleId);
-              res.setHeader("Content-Type", "application/json");
-              res.end(JSON.stringify(result));
-            } catch (error) {
-              res.statusCode = 500;
-              res.end(JSON.stringify({ error: String(error) }));
-            }
-            return;
-          }
-
           if (path === "warranty-claims" && req.method === "GET") {
             const { getAllWarrantyClaimsHandler } = await import("./customers.js");
             try {

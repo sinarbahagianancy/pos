@@ -2,18 +2,6 @@ import type { WarrantyClaim } from "../types";
 
 const API_BASE = "/api";
 
-export interface SaleItem {
-  id: string;
-  saleId: string;
-  productId: string;
-  model: string;
-  sn: string;
-  price: number;
-  cogs: number;
-  warrantyExpiry: string;
-  quantity: number;
-}
-
 export interface PaginatedWarrantyClaimsResult {
   claims: WarrantyClaim[];
   total: number;
@@ -26,32 +14,6 @@ export interface WarrantyClaimsParams {
   page?: number;
   limit?: number;
 }
-
-export const getAllSaleItems = async (): Promise<SaleItem[]> => {
-  const response = await fetch(`${API_BASE}/sale-items`);
-  if (!response.ok) {
-    let message = "Failed to fetch sale items";
-    try {
-      const e = await response.json();
-      message = e.error || message;
-    } catch {}
-    throw new Error(message);
-  }
-  return response.json();
-};
-
-export const getSaleItemsBySaleId = async (saleId: string): Promise<SaleItem[]> => {
-  const response = await fetch(`${API_BASE}/sale-items/${saleId}`);
-  if (!response.ok) {
-    let message = "Failed to fetch sale items";
-    try {
-      const e = await response.json();
-      message = e.error || message;
-    } catch {}
-    throw new Error(message);
-  }
-  return response.json();
-};
 
 export const getAllWarrantyClaims = async (
   params: WarrantyClaimsParams = {},

@@ -527,40 +527,6 @@ export const createSaleHandler = async (data: {
   });
 };
 
-export const getAllSaleItemsHandler = async () => {
-  const result = await client.unsafe("SELECT * FROM sale_items ORDER BY id DESC");
-  return result.map((row: Record<string, unknown>) => ({
-    id: row.id as string,
-    saleId: row.sale_id as string,
-    productId: row.product_id as string,
-    brand: row.brand as string | undefined,
-    model: row.model as string,
-    sn: row.sn as string,
-    price: typeof row.price === "string" ? parseFloat(row.price) : (row.price as number),
-    cogs: typeof row.cogs === "string" ? parseFloat(row.cogs) : (row.cogs as number),
-    warrantyExpiry: row.warranty_expiry as string,
-    quantity:
-      typeof row.quantity === "string" ? parseInt(row.quantity) : (row.quantity as number) || 1,
-  }));
-};
-
-export const getSaleItemsBySaleIdHandler = async (saleId: string) => {
-  const result = await client.unsafe("SELECT * FROM sale_items WHERE sale_id = $1", [saleId]);
-  return result.map((row: Record<string, unknown>) => ({
-    id: row.id as string,
-    saleId: row.sale_id as string,
-    productId: row.product_id as string,
-    brand: row.brand as string | undefined,
-    model: row.model as string,
-    sn: row.sn as string,
-    price: typeof row.price === "string" ? parseFloat(row.price) : (row.price as number),
-    cogs: typeof row.cogs === "string" ? parseFloat(row.cogs) : (row.cogs as number),
-    warrantyExpiry: row.warranty_expiry as string,
-    quantity:
-      typeof row.quantity === "string" ? parseInt(row.quantity) : (row.quantity as number) || 1,
-  }));
-};
-
 export interface PaginatedWarrantyClaimsResult {
   claims: {
     id: string;
