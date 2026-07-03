@@ -1,8 +1,12 @@
 import { FullConfig } from "@playwright/test";
 import { execSync } from "child_process";
 import { writeFileSync, mkdirSync } from "fs";
-import { join } from "path";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 import postgres from "postgres";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 /**
  * Global setup for E2E tests:
@@ -27,16 +31,18 @@ const SEED_SQL = `
   VALUES (1, 'Sinar Bahagia Test', 'Jl. Kramat Gantung No. 63', 11.00, 'IDR', 500000000);
 
   -- Admin user (password: nancy123 → base64: bmFuY3kxMjM=)
-  INSERT INTO staff_members (id, name, role, password_hash)
-  VALUES ('staff-admin-001', 'Nancy', 'Admin', 'bmFuY3kxMjM=');
+  -- Note: password_hash column is added by runtime migration (auth.ts),
+  -- so we skip it here and let the migration+auth flow set it.
+  INSERT INTO staff_members (id, name, role)
+  VALUES (gen_random_uuid(), 'Nancy', 'Admin');
 
-  -- Staff user (password: staff123 → base64: c3RhZmYxMjM=)
-  INSERT INTO staff_members (id, name, role, password_hash)
-  VALUES ('staff-staff-001', 'StaffTest', 'Staff', 'c3RhZmYxMjM=');
+  -- Staff user
+  INSERT INTO staff_members (id, name, role)
+  VALUES (gen_random_uuid(), 'StaffTest', 'Staff');
 
   -- Sample supplier
   INSERT INTO suppliers (id, name, phone, address)
-  VALUES ('sup-001', 'PT Sony Indonesia', '021-1234567', 'Jakarta');
+  VALUES (gen_random_uuid(), 'PT Sony Indonesia', '021-1234567', 'Jakarta');
 
   -- Sample product (with SN)
   INSERT INTO products (id, brand, model, category, condition, price, cogs, warranty_months, warranty_type, stock, has_serial_number, supplier, tax_enabled)
@@ -52,7 +58,7 @@ const SEED_SQL = `
 
   -- Sample customer
   INSERT INTO customers (id, name, phone, address)
-  VALUES ('cust-001', 'John Test', '081234567890', 'Surabaya');
+  VALUES (gen_random_uuid(), 'John Test', '081234567890', 'Surabaya');
 `;
 
 async function globalSetup(config: FullConfig) {
@@ -112,10 +118,12 @@ async function globalSetup(config: FullConfig) {
     if (!sql) {
       sql = postgres(TEST_DB_URL, { prepare: false });
     }
-    // Execute each statement separately to avoid issues with multi-statement queries
+    // Execute each statement separately to avoid issues with multi-statement queries.
+    // Note: comments follow the semicolons in the template, so each split part
+    // starts with a comment line. We keep them — PostgreSQL ignores SQL comments.
     const statements = SEED_SQL.split(";")
       .map((s) => s.trim())
-      .filter((s) => s.length > 0 && !s.startsWith("--"));
+      .filter((s) => s.length > 0);
 
     for (const stmt of statements) {
       await sql.unsafe(stmt);
@@ -128,7 +136,7 @@ async function globalSetup(config: FullConfig) {
   }
 
   // Step 5: Ensure .auth directory exists for storageState
-  const authDir = join(__dirname, ".auth");
+  const authDir = new URL(".auth", import.meta.url).pathname;
   mkdirSync(authDir, { recursive: true });
 
   console.log("  ✅ Global setup complete\n");

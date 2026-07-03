@@ -58,7 +58,7 @@ export default defineConfig({
   ],
 
   // Global setup: Docker Postgres + schema + seed
-  globalSetup: require.resolve("./tests/e2e/global-setup"),
+  globalSetup: new URL("./tests/e2e/global-setup.ts", import.meta.url).pathname,
 
   // Start dev server before tests
   webServer: {
