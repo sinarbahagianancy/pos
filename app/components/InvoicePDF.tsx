@@ -762,7 +762,7 @@ export const InvoiceDocument: React.FC<{
               <View style={styles.bankLogo} />
               <Text style={styles.bankInfo}>BCA : 010-5577-988</Text>
             </View>
-            <Text style={styles.bankHolder}>DJOKO SUBARDJO DJOHAN</Text>
+            <Text style={styles.bankHolder}>PT Sinar Bahagia Surabaya</Text>
           </View>
         )}
 
