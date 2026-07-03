@@ -405,36 +405,31 @@ const rootRoute = new RootRoute({
 
 // Dashboard
 const DashboardComponent = () => {
-  const [sales, setSales] = useState<Sale[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [claims, setClaims] = useState<WarrantyClaim[]>([]);
-  const [monthlyTarget, setMonthlyTarget] = useState<number>(500000000);
-  const [loading, setLoading] = useState(true);
+  const { data: salesData } = useQuery({
+    queryKey: ["sales"],
+    queryFn: () => getAllSales({ page: 1, limit: 500 }),
+  });
 
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        // Use reasonable pagination - dashboard doesn't need ALL records
-        const [salesData, productsData, claimsData, configData] = await Promise.all([
-          getAllSales({ page: 1, limit: 500 }),
-          getAllProducts({ page: 1, limit: 200 }),
-          getAllWarrantyClaims({ page: 1, limit: 100 }),
-          getStoreConfig(),
-        ]);
-        setSales(salesData.sales);
-        setProducts(productsData.products);
-        setClaims(claimsData.claims);
-        if (configData?.monthlyTarget) {
-          setMonthlyTarget(configData.monthlyTarget);
-        }
-      } catch (error) {
-        console.error("Failed to load dashboard data:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadData();
-  }, []);
+  const { data: productsData } = useQuery({
+    queryKey: ["products"],
+    queryFn: () => getAllProducts({ page: 1, limit: 200 }),
+  });
+
+  const { data: claimsData } = useQuery({
+    queryKey: ["warrantyClaims"],
+    queryFn: () => getAllWarrantyClaims({ page: 1, limit: 100 }),
+  });
+
+  const { data: configData } = useQuery({
+    queryKey: ["storeConfig"],
+    queryFn: getStoreConfig,
+  });
+
+  const sales = salesData?.sales || [];
+  const products = productsData?.products || [];
+  const claims = claimsData?.claims || [];
+  const monthlyTarget = configData?.monthlyTarget ?? 500000000;
+  const loading = !salesData || !productsData || !claimsData || !configData;
 
   if (loading) {
     return (
