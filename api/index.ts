@@ -208,6 +208,8 @@ interface SaleItem {
   sn: string;
   price: number;
   cogs: number;
+  quantity?: number;
+  brand?: string;
 }
 
 interface Sale {
@@ -251,6 +253,7 @@ interface SaleItem {
   sn: string;
   price: number;
   cogs: number;
+  quantity: number;
   warrantyExpiry: string;
 }
 
@@ -413,6 +416,8 @@ const parseDbSaleItem = (row: Record<string, unknown>): SaleItem => ({
   sn: row.sn as string,
   price: typeof row.price === "string" ? parseFloat(row.price) : (row.price as number),
   cogs: typeof row.cogs === "string" ? parseFloat(row.cogs) : (row.cogs as number),
+  quantity:
+    typeof row.quantity === "string" ? parseInt(row.quantity) : (row.quantity as number) || 1,
   warrantyExpiry: row.warranty_expiry as string,
 });
 
@@ -2146,7 +2151,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const joinedRows = await query(
         `SELECT s.*, si.id as si_id, si.product_id as si_product_id, si.brand as si_brand,
                 si.model as si_model, si.sn as si_sn, si.price as si_price,
-                si.cogs as si_cogs, si.warranty_expiry as si_warranty_expiry
+                si.cogs as si_cogs, si.warranty_expiry as si_warranty_expiry,
+                si.quantity as si_quantity
          FROM sales s
          LEFT JOIN sale_items si ON s.id = si.sale_id
          WHERE s.id IN (${placeholders})
@@ -2175,6 +2181,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             sn: row.si_sn,
             price: row.si_price,
             cogs: row.si_cogs,
+            quantity: row.si_quantity,
             warranty_expiry: row.si_warranty_expiry,
           });
         }
@@ -2242,7 +2249,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // Aggregate quantities by product
           const productQuantities = new Map<string, number>();
           for (const item of items) {
-            productQuantities.set(item.productId, (productQuantities.get(item.productId) || 0) + 1);
+            productQuantities.set(
+              item.productId,
+              (productQuantities.get(item.productId) || 0) + (item.quantity || 1),
+            );
           }
 
           // Batch check: get all products at once
@@ -2320,15 +2330,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             String(item.price),
             String(item.cogs),
             item.warrantyExpiry,
+            item.quantity || 1,
           ]);
           const saleItemPlaceholders = saleItemValues
             .map(
               (_, i) =>
-                `($${i * 8 + 1}, $${i * 8 + 2}, $${i * 8 + 3}, $${i * 8 + 4}, $${i * 8 + 5}, $${i * 8 + 6}, $${i * 8 + 7}, $${i * 8 + 8})`,
+                `($${i * 9 + 1}, $${i * 9 + 2}, $${i * 9 + 3}, $${i * 9 + 4}, $${i * 9 + 5}, $${i * 9 + 6}, $${i * 9 + 7}, $${i * 9 + 8}, $${i * 9 + 9})`,
             )
             .join(", ");
           await tx.unsafe(
-            `INSERT INTO sale_items (sale_id, product_id, brand, model, sn, price, cogs, warranty_expiry) VALUES ${saleItemPlaceholders}`,
+            `INSERT INTO sale_items (sale_id, product_id, brand, model, sn, price, cogs, warranty_expiry, quantity) VALUES ${saleItemPlaceholders}`,
             saleItemValues.flat(),
           );
 
