@@ -16,19 +16,19 @@ const styles = StyleSheet.create({
     padding: 0,
   },
 
-  // A4 Portrait layout (blank top half, invoice on bottom)
+  // A4 Portrait layout (invoice on top, blank bottom half)
   a4PortraitPage: {
     flexDirection: "column",
   },
   a4PortraitTopHalf: {
     flex: 1,
+    padding: 12,
     borderBottomWidth: 1,
     borderBottomColor: "#94a3b8",
     borderBottomStyle: "dashed",
   },
   a4PortraitBottomHalf: {
     flex: 1,
-    padding: 12,
   },
 
   // ============================================================
@@ -789,8 +789,8 @@ export const InvoiceDocument: React.FC<{
   return (
     <Document>
       <Page size="A4" style={[styles.pageA4Portrait, styles.a4PortraitPage]}>
-        <View style={styles.a4PortraitTopHalf} />
-        <View style={styles.a4PortraitBottomHalf}>{pageContent}</View>
+        <View style={styles.a4PortraitTopHalf}>{pageContent}</View>
+        <View style={styles.a4PortraitBottomHalf} />
       </Page>
     </Document>
   );
