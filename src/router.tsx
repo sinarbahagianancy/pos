@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from "react";
+import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import {
   createRouter,
@@ -797,7 +797,7 @@ const SalesLogsComponent = () => {
   });
 
   const { data: snsData } = useQuery({
-    queryKey: ["serial-numbers"],
+    queryKey: ["serialNumbers"],
     queryFn: getAllSerialNumbers,
   });
 
@@ -1120,6 +1120,7 @@ const AuditComponent = () => {
 
 // Settings
 const SettingsComponent = () => {
+  const queryClient = useQueryClient();
   const [storeConfig, setStoreConfig] = useState<StoreConfigType | null>(null);
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -1151,6 +1152,7 @@ const SettingsComponent = () => {
     try {
       const updated = await updateStoreConfig({ ...config, staffName });
       setStoreConfig(updated);
+      queryClient.invalidateQueries({ queryKey: ["storeConfig"] });
     } catch (error) {
       console.error("Failed to update store config:", error);
     }
@@ -1250,6 +1252,17 @@ const POSComponent = () => {
     loadData();
   }, []);
 
+  const invalidateSharedCaches = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["products"] });
+    queryClient.invalidateQueries({ queryKey: ["serialNumbers"] });
+    queryClient.invalidateQueries({ queryKey: ["auditLogs"] });
+    queryClient.invalidateQueries({ queryKey: ["suppliers"] });
+    queryClient.invalidateQueries({ queryKey: ["sales"] });
+    queryClient.invalidateQueries({ queryKey: ["quotations"] });
+    queryClient.invalidateQueries({ queryKey: ["storeConfig"] });
+    queryClient.invalidateQueries({ queryKey: ["warrantyClaims"] });
+  }, [queryClient]);
+
   const handleCompleteSale = async (sale: Sale) => {
     try {
       await apiCreateSale({
@@ -1287,10 +1300,7 @@ const POSComponent = () => {
         }),
       );
 
-      // Invalidate React Query caches so other pages (Sales Logs, Inventory, Dashboard) refresh
-      queryClient.invalidateQueries({ queryKey: ["sales"] });
-      queryClient.invalidateQueries({ queryKey: ["products"] });
-      queryClient.invalidateQueries({ queryKey: ["serialNumbers"] });
+      invalidateSharedCaches();
     } catch (error) {
       console.error("Failed to complete sale:", error);
       throw error;
@@ -1347,7 +1357,7 @@ const SuratJalanComponent = () => {
   });
 
   const { data: snsData } = useQuery({
-    queryKey: ["serial-numbers"],
+    queryKey: ["serialNumbers"],
     queryFn: getAllSerialNumbers,
   });
 
@@ -1364,6 +1374,17 @@ const SuratJalanComponent = () => {
   const user = getCurrentUser();
   const staffName = user?.name || "System";
 
+  const invalidateSharedCaches = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["products"] });
+    queryClient.invalidateQueries({ queryKey: ["serialNumbers"] });
+    queryClient.invalidateQueries({ queryKey: ["auditLogs"] });
+    queryClient.invalidateQueries({ queryKey: ["suppliers"] });
+    queryClient.invalidateQueries({ queryKey: ["sales"] });
+    queryClient.invalidateQueries({ queryKey: ["quotations"] });
+    queryClient.invalidateQueries({ queryKey: ["storeConfig"] });
+    queryClient.invalidateQueries({ queryKey: ["warrantyClaims"] });
+  }, [queryClient]);
+
   if (!storeConfig) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -1379,19 +1400,21 @@ const SuratJalanComponent = () => {
       customers={customersData?.customers || []}
       storeConfig={storeConfig}
       staffName={staffName}
+      onInvalidate={invalidateSharedCaches}
     />
   );
 };
 
 // Surat Penarikan Barang
 const SuratPenarikanComponent = () => {
+  const queryClient = useQueryClient();
   const { data: productsData } = useQuery({
     queryKey: ["products"],
     queryFn: () => getAllProducts({ page: 1, limit: 1000 }),
   });
 
   const { data: snsData } = useQuery({
-    queryKey: ["serial-numbers"],
+    queryKey: ["serialNumbers"],
     queryFn: getAllSerialNumbers,
   });
 
@@ -1402,6 +1425,17 @@ const SuratPenarikanComponent = () => {
 
   const user = getCurrentUser();
   const staffName = user?.name || "System";
+
+  const invalidateSharedCaches = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["products"] });
+    queryClient.invalidateQueries({ queryKey: ["serialNumbers"] });
+    queryClient.invalidateQueries({ queryKey: ["auditLogs"] });
+    queryClient.invalidateQueries({ queryKey: ["suppliers"] });
+    queryClient.invalidateQueries({ queryKey: ["sales"] });
+    queryClient.invalidateQueries({ queryKey: ["quotations"] });
+    queryClient.invalidateQueries({ queryKey: ["storeConfig"] });
+    queryClient.invalidateQueries({ queryKey: ["warrantyClaims"] });
+  }, [queryClient]);
 
   if (!storeConfig) {
     return (
@@ -1417,11 +1451,13 @@ const SuratPenarikanComponent = () => {
       sns={snsData || []}
       storeConfig={storeConfig}
       staffName={staffName}
+      onInvalidate={invalidateSharedCaches}
     />
   );
 };
 
 const BatchInputComponent = () => {
+  const queryClient = useQueryClient();
   const user = getCurrentUser();
   const staffName = user?.name || "System";
   const { data: productsData } = useQuery({
@@ -1433,11 +1469,23 @@ const BatchInputComponent = () => {
     queryFn: () => getAllSuppliers({ page: 1, limit: 1000 }),
   });
 
+  const invalidateSharedCaches = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["products"] });
+    queryClient.invalidateQueries({ queryKey: ["serialNumbers"] });
+    queryClient.invalidateQueries({ queryKey: ["auditLogs"] });
+    queryClient.invalidateQueries({ queryKey: ["suppliers"] });
+    queryClient.invalidateQueries({ queryKey: ["sales"] });
+    queryClient.invalidateQueries({ queryKey: ["quotations"] });
+    queryClient.invalidateQueries({ queryKey: ["storeConfig"] });
+    queryClient.invalidateQueries({ queryKey: ["warrantyClaims"] });
+  }, [queryClient]);
+
   return (
     <BatchInputView
       products={productsData?.products || []}
       suppliers={suppliersData?.suppliers || []}
       staffName={staffName}
+      onInvalidate={invalidateSharedCaches}
     />
   );
 };

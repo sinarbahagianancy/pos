@@ -26,6 +26,7 @@ interface SuratPenarikanViewProps {
   sns: SerialNumber[];
   storeConfig: StoreConfig;
   staffName: string;
+  onInvalidate?: () => void;
 }
 
 const SuratPenarikanView: React.FC<SuratPenarikanViewProps> = ({
@@ -33,6 +34,7 @@ const SuratPenarikanView: React.FC<SuratPenarikanViewProps> = ({
   sns,
   storeConfig,
   staffName,
+  onInvalidate,
 }) => {
   const [view, setView] = useState<ViewMode>("list");
   const [page, setPage] = useState(1);
@@ -199,6 +201,7 @@ const SuratPenarikanView: React.FC<SuratPenarikanViewProps> = ({
       }
       setView("list");
       loadList();
+      onInvalidate?.();
     } catch (err) {
       showToast(`Gagal membuat Surat Penarikan: ${String(err)}`, "error");
     } finally {

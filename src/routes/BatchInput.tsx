@@ -95,9 +95,15 @@ interface BatchInputViewProps {
   products: Product[];
   suppliers: Supplier[];
   staffName: string;
+  onInvalidate?: () => void;
 }
 
-const BatchInputView: React.FC<BatchInputViewProps> = ({ products, suppliers, staffName }) => {
+const BatchInputView: React.FC<BatchInputViewProps> = ({
+  products,
+  suppliers,
+  staffName,
+  onInvalidate,
+}) => {
   const [view, setView] = useState<ViewMode>("list");
 
   // List state
@@ -364,6 +370,7 @@ const BatchInputView: React.FC<BatchInputViewProps> = ({ products, suppliers, st
       const result = await createBatchInput(payload);
       setSummaryBatch(result);
       setView("summary");
+      onInvalidate?.();
     } catch (err) {
       showToast(`Gagal membuat Batch Input: ${String(err)}`, "error");
     } finally {

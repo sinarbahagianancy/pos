@@ -20,6 +20,7 @@ interface SuratJalanViewProps {
   customers: Customer[];
   storeConfig: StoreConfig;
   staffName: string;
+  onInvalidate?: () => void;
 }
 
 const SuratJalanView: React.FC<SuratJalanViewProps> = ({
@@ -28,6 +29,7 @@ const SuratJalanView: React.FC<SuratJalanViewProps> = ({
   customers,
   storeConfig,
   staffName,
+  onInvalidate,
 }) => {
   const [view, setView] = useState<ViewMode>("list");
   const [page, setPage] = useState(1);
@@ -181,6 +183,7 @@ const SuratJalanView: React.FC<SuratJalanViewProps> = ({
       }
       setView("list");
       loadList();
+      onInvalidate?.();
     } catch (err) {
       showToast(`Gagal membuat Surat Jalan: ${String(err)}`, "error");
     } finally {
