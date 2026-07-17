@@ -541,6 +541,18 @@ export const createSerialNumbersBulk = async (
 ) => {
   const validated = inputs.map(validateCreateSerialNumberInput);
 
+  // Check for duplicate SNs before inserting — postgres-js throws an opaque
+  // error on constraint violations, so we pre-flight with a clear message.
+  const snValues = validated.map((v) => v.sn);
+  const existingSNs = await client.unsafe(
+    `SELECT sn FROM serial_numbers WHERE sn = ANY($1::text[])`,
+    [snValues],
+  );
+  if (existingSNs.length > 0) {
+    const duplicateSN = (existingSNs[0] as { sn: string }).sn;
+    throw new Error(`Serial number already exists in the system: ${duplicateSN}`);
+  }
+
   const values = validated.map((v) => ({
     sn: v.sn,
     productId: v.productId,
@@ -576,7 +588,8 @@ export const createSerialNumbersBulk = async (
     }
     if (date) {
       setClauses.push(`date_restocked = $${paramIdx++}`);
-      params.push(new Date(date));
+      // Convert to ISO string — postgres-js client.unsafe() rejects Date objects
+      params.push(new Date(date).toISOString());
     }
     if (invoiceNumber) {
       // Append new procurement entry to existing history.
