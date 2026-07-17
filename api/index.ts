@@ -1341,6 +1341,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         status: "In Stock",
       }));
 
+      // Pre-flight duplicate SN check — postgres-js throws an opaque error on constraint violations
+      const snValues = validated.map((v: CreateSerialNumberInput) => v.sn);
+      const existingSNs = await query(`SELECT sn FROM serial_numbers WHERE sn = ANY($1)`, [
+        snValues,
+      ]);
+      if (existingSNs.length > 0) {
+        const duplicateSN = (existingSNs[0] as { sn: string }).sn;
+        return res.status(400).json({ error: `Serial number sudah ada di sistem: ${duplicateSN}` });
+      }
+
       const result = await db.insert("serial_numbers", values);
 
       // Increment stock for each product by the number of new SNs added
@@ -1381,8 +1391,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const product = productsById.get(productId);
         if (!product) continue;
 
-        const setClauses = ["stock = stock + $1", "updated_at = NOW()"];
-        const params: (string | number | Date | null)[] = [count];
+        const setClauses = ["stock = stock + $1", "has_serial_number = true", "updated_at = NOW()"];
+        const params: (string | number | null)[] = [count];
         let paramIdx = 2;
 
         if (supplier) {
@@ -1391,7 +1401,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         if (date) {
           setClauses.push(`date_restocked = $${paramIdx++}`);
-          params.push(new Date(date));
+          params.push(new Date(date).toISOString());
         }
         if (invoiceNumber) {
           const existing = parseApiRestockHistory(product.procurement_history);
