@@ -504,12 +504,14 @@ export const createBatchInputHandler = async (raw: unknown): Promise<BatchInput>
       await tx.unsafe(
         `UPDATE products
          SET stock = stock + $1,
-             date_restocked = $2,
-             procurement_history = $3,
+             has_serial_number = has_serial_number OR $2,
+             date_restocked = $3,
+             procurement_history = $4,
              updated_at = NOW()
-         WHERE id = $4`,
+         WHERE id = $5`,
         [
           stockIncrement,
+          group.hasSN && group.allSns.length > 0,
           restockDate.toISOString(),
           JSON.stringify(existingHistory),
           group.productId,

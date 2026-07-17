@@ -85,6 +85,13 @@
       "when": 1781100000000,
       "tag": "0011_surat_penarikan_customer_po_manual_items",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1784312000000,
+      "tag": "0012_fix_has_serial_number_flag",
+      "breakpoints": true
     }
   ]
 }

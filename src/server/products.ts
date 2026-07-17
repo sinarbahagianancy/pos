@@ -25,12 +25,14 @@ try {
     UPDATE products 
     SET has_serial_number = true 
     WHERE EXISTS (SELECT 1 FROM serial_numbers WHERE serial_numbers.product_id = products.id)
+      AND has_serial_number = false
   `);
 
   await client.unsafe(`
     UPDATE products 
     SET has_serial_number = false 
     WHERE NOT EXISTS (SELECT 1 FROM serial_numbers WHERE serial_numbers.product_id = products.id)
+      AND has_serial_number = true
   `);
 
   // Add Toko and No Warranty to warranty_type enum
@@ -155,6 +157,24 @@ export const createProduct = async (input: unknown) => {
   const staffName = ((input as Record<string, unknown>)?.staffName as string) || "System";
 
   const hasSerialNumber = validated.hasSerialNumber === true;
+
+  // Duplicate-SKU check: reject if a non-deleted product with the same brand+model exists
+  const [existingClash] = await client.unsafe(
+    `SELECT id, brand, model, stock FROM products
+     WHERE LOWER(TRIM(COALESCE(brand, ''))) = LOWER(TRIM($1))
+       AND LOWER(TRIM(model)) = LOWER(TRIM($2))
+       AND deleted = false
+     LIMIT 1`,
+    [validated.brand, validated.model],
+  );
+  if (existingClash) {
+    const c = existingClash as { brand?: string; model: string; stock: number };
+    throw new Error(
+      `"${c.brand ?? ""} ${c.model}" sudah ada di katalog (stok: ${c.stock}). ` +
+        `Gunakan halaman Inventory untuk mengubah stok atau detail produk.`,
+    );
+  }
+
   const stockCount = hasSerialNumber
     ? validated.serialNumbers?.length || 0
     : validated.quantity || 0;
@@ -543,7 +563,7 @@ export const createSerialNumbersBulk = async (
 
   for (const [productId, { count, sns }] of productCounts) {
     // Increment stock + update metadata in a single query
-    const setClauses = ["stock = stock + $1", "updated_at = NOW()"];
+    const setClauses = ["stock = stock + $1", "has_serial_number = true", "updated_at = NOW()"];
     const params: (string | number | Date | null)[] = [count];
     let paramIdx = 2;
 

@@ -892,8 +892,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const input = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const validated = validateCreateProductInput(input);
       const staffName = ((input as Record<string, unknown>)?.staffName as string) || "System";
-
       const hasSerialNumber = validated.hasSerialNumber === true;
+
+      // Duplicate-SKU check: reject if a non-deleted product with the same brand+model exists
+      const [existingClash] = await query(
+        `SELECT id, brand, model, stock FROM products
+         WHERE LOWER(TRIM(COALESCE(brand, ''))) = LOWER(TRIM($1))
+           AND LOWER(TRIM(model)) = LOWER(TRIM($2))
+           AND deleted = false
+         LIMIT 1`,
+        [validated.brand, validated.model],
+      );
+      if (existingClash) {
+        return res.status(400).json({
+          error: `"${existingClash.brand} ${existingClash.model}" sudah ada di katalog (stok: ${existingClash.stock}). Gunakan halaman Inventory untuk mengubah stok atau detail produk.`,
+        });
+      }
+
       const stockCount = hasSerialNumber
         ? validated.serialNumbers?.length || 0
         : validated.quantity || 0;
