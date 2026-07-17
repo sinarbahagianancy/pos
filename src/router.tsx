@@ -1220,37 +1220,34 @@ const SettingsComponent = () => {
 // POS
 const POSComponent = () => {
   const queryClient = useQueryClient();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [sns, setSns] = useState<SerialNumber[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [storeConfig, setStoreConfig] = useState<StoreConfigType | null>(null);
-  const [loading, setLoading] = useState(true);
-
   const user = getCurrentUser();
   const staffName = user?.name || "System";
   const isAdmin = user?.role === "Admin";
 
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [productsData, snsData, customersData, configData] = await Promise.all([
-          getAllProducts({ page: 1, limit: 5000 }),
-          getAllSerialNumbers(),
-          getAllCustomers({ page: 1, limit: 2000 }),
-          getStoreConfig(),
-        ]);
-        setProducts(productsData.products);
-        setSns(snsData);
-        setCustomers(customersData.customers);
-        setStoreConfig(configData);
-      } catch (error) {
-        console.error("Failed to load POS data:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadData();
-  }, []);
+  const { data: productsData, isLoading: productsLoading } = useQuery({
+    queryKey: ["products"],
+    queryFn: () => getAllProducts({ page: 1, limit: 5000 }),
+  });
+
+  const { data: snsData = [], isLoading: snsLoading } = useQuery({
+    queryKey: ["serialNumbers"],
+    queryFn: getAllSerialNumbers,
+  });
+
+  const { data: customersData, isLoading: customersLoading } = useQuery({
+    queryKey: ["customers"],
+    queryFn: () => getAllCustomers({ page: 1, limit: 2000 }),
+  });
+
+  const { data: storeConfig, isLoading: configLoading } = useQuery({
+    queryKey: ["storeConfig"],
+    queryFn: getStoreConfig,
+  });
+
+  const products = productsData?.products || [];
+  const sns = snsData;
+  const customers = customersData?.customers || [];
+  const loading = productsLoading || snsLoading || customersLoading || configLoading;
 
   const invalidateSharedCaches = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["products"] });
@@ -1283,23 +1280,8 @@ const POSComponent = () => {
         amountPaid: sale.amountPaid,
       });
 
-      // Update local serial numbers status (immediate UI feedback)
-      const soldSNs = sale.items.map((item) => item.sn);
-      setSns((prev) =>
-        prev.map((sn) => (soldSNs.includes(sn.sn) ? { ...sn, status: "Sold" as const } : sn)),
-      );
-
-      // Update local products stock (immediate UI feedback — no page refresh needed)
-      const soldProductIds = new Set(sale.items.map((item) => item.productId));
-      setProducts((prev) =>
-        prev.map((p) => {
-          if (!soldProductIds.has(p.id)) return p;
-          // Count how many of this product were sold in this transaction
-          const qtySold = sale.items.filter((item) => item.productId === p.id).length;
-          return { ...p, stock: Math.max(p.stock - qtySold, 0) };
-        }),
-      );
-
+      // Invalidate all shared caches — React Query will refetch
+      // products, serial numbers, and other data in the background
       invalidateSharedCaches();
     } catch (error) {
       console.error("Failed to complete sale:", error);
@@ -1316,7 +1298,7 @@ const POSComponent = () => {
         address,
         staffName,
       });
-      setCustomers((prev) => [...prev, newCustomer]);
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
       return newCustomer;
     } catch (error) {
       console.error("Failed to create customer:", error);
