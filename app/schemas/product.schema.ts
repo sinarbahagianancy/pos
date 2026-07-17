@@ -413,19 +413,15 @@ export function parseRestockHistory(
 }
 
 export function parseDbProduct(row: Record<string, unknown>): Product {
-  const hasSN = row.has_serial_number;
-  const taxEnabledValue = (
-    row.tax_enabled !== undefined ? row.tax_enabled : row.taxEnabled
-  ) as unknown;
-  console.log(
-    "[parseDbProduct] row.tax_enabled:",
-    row.tax_enabled,
-    "row.taxEnabled:",
-    row.taxEnabled,
-  );
+  // Support both snake_case (raw SQL / Drizzle column names) and camelCase (Drizzle ORM .returning())
+  const hasSN = row.has_serial_number ?? row.hasSerialNumber;
+  const taxEnabledRaw = row.tax_enabled ?? row.taxEnabled;
   const taxEnabled =
-    taxEnabledValue === true || taxEnabledValue === "true" || taxEnabledValue === 1 ? true : false;
-  console.log("[parseDbProduct] returning taxEnabled:", taxEnabled);
+    taxEnabledRaw === true || taxEnabledRaw === "true" || taxEnabledRaw === 1 ? true : false;
+  const warrantyMonths = row.warranty_months ?? row.warrantyMonths;
+  const warrantyType = row.warranty_type ?? row.warrantyType;
+  const dateRestocked = row.date_restocked ?? row.dateRestocked;
+  const procurementHistory = row.procurement_history ?? row.procurementHistory;
   return {
     id: row.id as string,
     brand: row.brand as string,
@@ -435,16 +431,16 @@ export function parseDbProduct(row: Record<string, unknown>): Product {
     condition: row.condition as ConditionType,
     price: typeof row.price === "string" ? parseFloat(row.price) : (row.price as number),
     cogs: typeof row.cogs === "string" ? parseFloat(row.cogs) : (row.cogs as number),
-    warrantyMonths: row.warranty_months as number,
-    warrantyType: row.warranty_type as WarrantyType,
+    warrantyMonths: warrantyMonths as number,
+    warrantyType: warrantyType as WarrantyType,
     stock: row.stock as number,
     hasSerialNumber: hasSN === true || hasSN === 1 || hasSN === "true",
     supplier: row.supplier as string | undefined,
-    dateRestocked: row.date_restocked as string | undefined,
+    dateRestocked: dateRestocked as string | undefined,
     hidden: row.hidden as number | undefined,
     taxEnabled,
-    restockHistory: parseRestockHistory(row.procurement_history),
-    procurementHistory: parseRestockHistory(row.procurement_history),
+    restockHistory: parseRestockHistory(procurementHistory),
+    procurementHistory: parseRestockHistory(procurementHistory),
   };
 }
 
