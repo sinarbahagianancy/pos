@@ -1,4 +1,4 @@
-import { defineConfig, loadEnv } from "vite";
+import { defineConfig, loadEnv } from "vite-plus";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import tsconfigPaths from "vite-tsconfig-paths";
@@ -29,6 +29,13 @@ export default defineConfig(({ mode }) => {
       rollupOptions: {
         external: ["postgres", "drizzle-orm/postgres-js", "playwright"],
       },
+    },
+    // Vitest (vp test) only runs unit tests. The Playwright e2e specs in
+    // tests/e2e/*.spec.ts are executed by `npx playwright test` via their own
+    // playwright.config.ts and must NOT be picked up by the unit runner
+    // (running them here throws "Playwright Test did not expect test.describe()").
+    test: {
+      include: ["tests/**/*.test.ts"],
     },
   };
 });
