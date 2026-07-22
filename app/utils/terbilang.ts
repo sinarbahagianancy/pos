@@ -45,15 +45,13 @@ function convertHundreds(num: number): string {
   let result = "";
 
   if (num >= 100) {
-    if (num === 100) {
-      result = "seratus";
-    } else {
-      result = ONES[Math.floor(num / 100)] + " ratus";
-    }
+    const hundreds = Math.floor(num / 100);
+    // "seratus" (not "satu ratus") for 100 and the 1xx range.
+    result = hundreds === 1 ? "seratus" : ONES[hundreds] + " ratus";
     num %= 100;
   }
 
-  if (num >= 12) {
+  if (num >= 20) {
     const tens = Math.floor(num / 10);
     const ones = num % 10;
     result += (result ? " " : "") + TENS[tens];
@@ -73,9 +71,10 @@ export function terbilang(num: number): string {
   // Round to integer
   num = Math.round(num);
 
-  // Handle negative
+  // Handle negative. The inner value is already capitalized, so we
+  // capitalize "Minus" to match the positive-path casing.
   if (num < 0) {
-    return "minus " + terbilang(-num);
+    return "Minus " + terbilang(-num);
   }
 
   let result = "";
