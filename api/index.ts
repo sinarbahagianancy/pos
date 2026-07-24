@@ -10,6 +10,7 @@ import {
   type CreateQuotationInput,
   type ApproveQuotationInput,
 } from "../src/server/quotations.js";
+import { fuzzyRank } from "../src/server/search.js";
 
 // ⚠️ DEPLOYMENT NOTE: Runtime migrations have been removed from this handler.
 // All schema changes are in supabase/drizzle/ SQL migration files.
@@ -760,45 +761,9 @@ const db = {
 // Search-query helpers for GET /api/products.
 // Tokenize: split on whitespace, lowercase, strip non-alphanumeric edges,
 // drop empties. So "  Sony A7!  " -> ["sony", "a7"].
-const tokenizeSearchQuery = (q: string): string[] =>
-  q
-    .toLowerCase()
-    .split(/\s+/)
-    .map((t) => t.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, ""))
-    .filter((t) => t.length > 0);
-
-// Escape ILIKE wildcards in user input so a user typing "50%" matches
-// the literal substring "50%", not "50<anything>". The escape character
-// itself must be escaped first. Uses a function-form replacement to
-// sidestep String.prototype.replace's $ and \ special-character handling.
-const escapeLikePattern = (s: string): string =>
-  s
-    .replace(/\\/g, () => "\\\\")
-    .replace(/%/g, () => "\\%")
-    .replace(/_/g, () => "\\_");
-
-// Build the dynamic WHERE clause for a per-token cross-column AND search
-// across (brand, model, id, supplier). Returns the SQL fragment (without
-// the leading "WHERE") and the matching parameter list.
-//
-// The caller is responsible for combining this with the rest of the
-// query (e.g. the data + count queries in GET /api/products).
-const buildProductSearchWhere = (tokens: string[]): { whereSql: string; params: string[] } => {
-  const params: string[] = [];
-  const tokenClauses = tokens.map((rawToken) => {
-    const token = escapeLikePattern(rawToken);
-    const i = params.length + 1;
-    params.push(`%${token}%`);
-    return `(
-      brand    ILIKE $${i} OR
-      model    ILIKE $${i} OR
-      id       ILIKE $${i} OR
-      supplier ILIKE $${i}
-    )`;
-  });
-  const whereSql = `deleted = false AND hidden = 0${tokenClauses.length > 0 ? ` AND ${tokenClauses.join(" AND ")}` : ""}`;
-  return { whereSql, params };
-};
+// Server-side fuzzy search is handled by fuzzyRank() from ../src/server/search.js
+// (Fuse in TypeScript) — DB-agnostic, no pg_trgm/extension required. This is
+// the production (Vercel) counterpart of the dev backend in src/server/*.
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { method, url } = req;
@@ -844,8 +809,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const queryParams = (req.query as Record<string, string>) || {};
       const q = (queryParams.q || "").trim();
 
+      // No search: paginate directly in SQL (efficient for large catalogs).
       if (q === "") {
-        // Fast path: no search filter, identical to the pre-search behavior.
         const { data, total, totalPages } = await getPaginatedResults(
           "products",
           "deleted = false AND hidden = 0",
@@ -862,24 +827,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       }
 
-      // Search path: tokenize, escape ILIKE wildcards, build a dynamic
-      // WHERE clause. Per-token cross-column AND across (brand, model, id, supplier).
-      const tokens = tokenizeSearchQuery(q);
-      const { whereSql, params: searchParams } = buildProductSearchWhere(tokens);
+      // Search: fetch all active products and rank in-memory with Fuse for
+      // typo-tolerant matching (DB-agnostic; same engine/threshold as the
+      // client and src/server/products.ts).
+      const all = await query(
+        `SELECT * FROM products WHERE deleted = false AND hidden = 0 ORDER BY created_at DESC`,
+      );
+      const ranked = fuzzyRank(all, ["id", "model", "brand", "supplier"], q);
+      const total = ranked.length;
       const offset = (page - 1) * limit;
-
-      const dataParams = [...searchParams, limit, offset];
-      const result = await query(
-        `SELECT * FROM products WHERE ${whereSql} ORDER BY created_at DESC LIMIT $${dataParams.length - 1} OFFSET $${dataParams.length}`,
-        dataParams,
-      );
-      const countResult = await query(
-        `SELECT COUNT(*) as count FROM products WHERE ${whereSql}`,
-        searchParams,
-      );
-      const total = Number(countResult[0]?.count) || 0;
+      const rows = ranked.slice(offset, offset + limit);
       return res.status(200).json({
-        products: result.map(parseDbProduct),
+        products: rows.map(parseDbProduct),
         total,
         page,
         limit,
@@ -2809,19 +2768,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { page, limit } = getPageLimit(req);
       const offset = (page - 1) * limit;
       const search = (req.query?.search as string | undefined) || "";
-      const whereClause = search
-        ? `WHERE id ILIKE $3 OR customer_name ILIKE $3 OR po_number ILIKE $3`
-        : "";
-      const params: (string | number)[] = search ? [limit, offset, `%${search}%`] : [limit, offset];
-      const result = await query(
-        `SELECT * FROM surat_jalan ${whereClause} ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
-        params,
-      );
-      const countResult = await query(
-        `SELECT COUNT(*) as count FROM surat_jalan ${whereClause}`,
-        search ? [`%${search}%`] : [],
-      );
-      const total = Number(countResult[0]?.count) || 0;
+      // Fetch all surat jalan, then rank in-memory with Fuse for
+      // typo-tolerant search (DB-agnostic; same engine as the client).
+      const all = await query(`SELECT * FROM surat_jalan ORDER BY created_at DESC`);
+      const ranked = search ? fuzzyRank(all, ["id", "customer_name", "po_number"], search) : all;
+      const total = ranked.length;
+      const result = ranked.slice(offset, offset + limit);
       const sjIds = result.map((r: Record<string, unknown>) => r.id as string);
       let itemsBySj: Record<string, unknown[]> = {};
       if (sjIds.length > 0) {
@@ -3017,17 +2969,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { page, limit } = getPageLimit(req);
       const offset = (page - 1) * limit;
       const search = (req.query?.search as string | undefined) || "";
-      const whereClause = search ? `WHERE id ILIKE $3 OR recipient ILIKE $3` : "";
-      const params: (string | number)[] = search ? [limit, offset, `%${search}%`] : [limit, offset];
-      const result = await query(
-        `SELECT * FROM surat_penarikan ${whereClause} ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
-        params,
-      );
-      const countResult = await query(
-        `SELECT COUNT(*) as count FROM surat_penarikan ${whereClause}`,
-        search ? [`%${search}%`] : [],
-      );
-      const total = Number(countResult[0]?.count) || 0;
+      // Fetch all surat penarikan, then rank in-memory with Fuse for
+      // typo-tolerant search (DB-agnostic; same engine as the client).
+      const all = await query(`SELECT * FROM surat_penarikan ORDER BY created_at DESC`);
+      const ranked = search ? fuzzyRank(all, ["id", "recipient"], search) : all;
+      const total = ranked.length;
+      const result = ranked.slice(offset, offset + limit);
       const spbIds = result.map((r: Record<string, unknown>) => r.id as string);
       let itemsBySpb: Record<string, unknown[]> = {};
       if (spbIds.length > 0) {
