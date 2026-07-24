@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useId } from "react";
+import { makeFuse, fuzzyRanked } from "../utils/fuzzy";
 
 /**
  * A single option in a `<SearchableCombobox />`. The optional `group`
@@ -12,6 +13,16 @@ export interface SearchableComboboxItem {
   group?: string;
 }
 
+/**
+ * Build `SearchableComboboxItem[]` from a list of display strings.
+ * Both `id` and `label` are set to the string — the correct shape for
+ * name-based pickers (supplier / staff) where the stored value IS the
+ * display name. See ADR 0007.
+ */
+export function toComboboxItems(values: string[]): SearchableComboboxItem[] {
+  return values.map((v) => ({ id: v, label: v }));
+}
+
 interface SearchableComboboxProps {
   items: SearchableComboboxItem[];
   /** The id of the currently selected item. Pass `""` for "nothing selected". */
@@ -20,6 +31,11 @@ interface SearchableComboboxProps {
   placeholder?: string;
   emptyMessage?: string;
   className?: string;
+  /** Extra classes for the inner text `<input>` (the visible control).
+   *  Use when a call site needs a different size/weight than the component
+   *  default (e.g. the Login staff picker). The outer wrapper still
+   *  receives `className`. */
+  inputClassName?: string;
   panelClassName?: string;
   disabled?: boolean;
   /** HTML form `required` attribute. When true, the input is marked
@@ -52,6 +68,7 @@ const SearchableCombobox: React.FC<SearchableComboboxProps> = ({
   placeholder = "Pilih...",
   emptyMessage = "Tidak ada hasil",
   className = "",
+  inputClassName = "",
   panelClassName = "",
   disabled = false,
   required = false,
@@ -65,12 +82,13 @@ const SearchableCombobox: React.FC<SearchableComboboxProps> = ({
   const listboxId = `searchable-combobox-listbox-${generatedId}`;
   const optionId = (id: string) => `searchable-combobox-option-${generatedId}-${id}`;
 
-  // Filter items by search (substring, case-insensitive).
+  // Filter + rank items by fuzzy (typo-tolerant) search.
+  const fuse = useMemo(() => makeFuse(items, ["label"]), [items]);
   const filteredItems = useMemo(() => {
-    if (!search.trim()) return items;
-    const q = search.toLowerCase().trim();
-    return items.filter((it) => it.label.toLowerCase().includes(q));
-  }, [items, search]);
+    const q = search.trim();
+    if (!q) return items;
+    return fuzzyRanked(fuse, q);
+  }, [fuse, items, search]);
 
   // Currently selected item (for displaying the value when not focused).
   // Search against the FULL items list, not filteredItems, so a stale
@@ -173,7 +191,7 @@ const SearchableCombobox: React.FC<SearchableComboboxProps> = ({
         aria-autocomplete="list"
         disabled={disabled}
         required={required && !value}
-        className={`w-full px-3 py-2 border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed ${
+        className={`w-full px-3 py-2 border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed ${inputClassName} ${
           isOpen ? "border-indigo-500" : "border-slate-200"
         }`}
         placeholder={placeholder}

@@ -32,11 +32,13 @@ test.describe("POS (Cashier) Page", () => {
 
   test("can add product to cart via search results", async ({ page }) => {
     const searchInput = page.getByPlaceholder(/Scan Barcode/i);
-    await searchInput.fill("Sony");
+    // "Sony" matches the product row, but Sony A7IV is a serial-numbered item,
+    // so its product result only opens the SN picker. Search by serial instead
+    // and click the serial-number result, which adds directly to the cart.
+    await searchInput.fill("SN-TEST");
 
-    // Wait for results and click on the Sony A7IV product
-    await expect(page.getByText("A7IV")).toBeVisible({ timeout: 5_000 });
-    await page.locator("button").filter({ hasText: "A7IV" }).first().click();
+    await expect(page.getByText("Serial Numbers")).toBeVisible({ timeout: 5_000 });
+    await page.getByRole("button", { name: /SN-TEST-001/ }).click();
 
     // Cart should now have an item
     await expect(page.getByText("1 Unit(s)")).toBeVisible();
@@ -51,7 +53,9 @@ test.describe("POS (Cashier) Page", () => {
   });
 
   test("shows settlement methods", async ({ page }) => {
-    await expect(page.getByText("Cash")).toBeVisible();
+    // Scope "Cash" to the payment button — the "Cashier (POS)" nav link also
+    // contains "Cash" and would trip strict-mode matching.
+    await expect(page.getByRole("button", { name: "Cash" })).toBeVisible();
     await expect(page.getByText("Debit")).toBeVisible();
     await expect(page.getByText("QRIS")).toBeVisible();
   });
@@ -62,11 +66,11 @@ test.describe("POS (Cashier) Page", () => {
   });
 
   test("cart shows subtotal and total", async ({ page }) => {
-    // Add a product first
+    // Add a product first (search by serial number for this SN product)
     const searchInput = page.getByPlaceholder(/Scan Barcode/i);
-    await searchInput.fill("Sony");
-    await expect(page.getByText("A7IV")).toBeVisible({ timeout: 5_000 });
-    await page.locator("button").filter({ hasText: "A7IV" }).first().click();
+    await searchInput.fill("SN-TEST");
+    await expect(page.getByText("Serial Numbers")).toBeVisible({ timeout: 5_000 });
+    await page.getByRole("button", { name: /SN-TEST-001/ }).click();
 
     // Should show subtotal
     await expect(page.getByText("Subtotal")).toBeVisible();
@@ -74,11 +78,11 @@ test.describe("POS (Cashier) Page", () => {
   });
 
   test("checkout button requires customer selection", async ({ page }) => {
-    // Add a product
+    // Add a product (search by serial number for this SN product)
     const searchInput = page.getByPlaceholder(/Scan Barcode/i);
-    await searchInput.fill("Sony");
-    await expect(page.getByText("A7IV")).toBeVisible({ timeout: 5_000 });
-    await page.locator("button").filter({ hasText: "A7IV" }).first().click();
+    await searchInput.fill("SN-TEST");
+    await expect(page.getByText("Serial Numbers")).toBeVisible({ timeout: 5_000 });
+    await page.getByRole("button", { name: /SN-TEST-001/ }).click();
 
     // Checkout button should be disabled without customer
     const checkoutBtn = page.getByRole("button", { name: /Selesaikan Transaksi/i });

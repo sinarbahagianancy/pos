@@ -57,7 +57,9 @@ const initializeDatabase = async () => {
       const hash = btoa(admin.password);
       await client
         .unsafe(
-          `INSERT INTO staff_members (name, role, password_hash) VALUES ($1, $2, $3) ON CONFLICT (name) DO UPDATE SET role = EXCLUDED.role`,
+          // Set the password hash on insert, and backfill it on conflict only when
+          // it is still null (so we never clobber a password a user has since changed).
+          `INSERT INTO staff_members (name, role, password_hash) VALUES ($1, $2, $3) ON CONFLICT (name) DO UPDATE SET role = EXCLUDED.role, password_hash = COALESCE(staff_members.password_hash, EXCLUDED.password_hash)`,
           [admin.name, admin.role, hash],
         )
         .catch(() => {});

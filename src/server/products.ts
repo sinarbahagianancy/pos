@@ -1,4 +1,5 @@
 import { client, db } from "../db/index.js";
+import { fuzzyRank } from "./search.js";
 import { products, serialNumbers, auditLogs } from "../db/schema.js";
 import { eq, desc, sql } from "drizzle-orm";
 import {
@@ -65,39 +66,8 @@ export interface PaginatedProductsResult {
   totalPages: number;
 }
 
-// Search-query helpers for the dev-server /api/products route.
-// Mirrors the production handler in api/index.ts: tokenize on whitespace,
-// lowercase, strip non-alphanumeric edges, drop empties; escape ILIKE
-// wildcards in user input.
-const tokenizeSearchQuery = (q: string): string[] =>
-  q
-    .toLowerCase()
-    .split(/\s+/)
-    .map((t) => t.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, ""))
-    .filter((t) => t.length > 0);
-
-const escapeLikePattern = (s: string): string =>
-  s
-    .replace(/\\/g, () => "\\\\")
-    .replace(/%/g, () => "\\%")
-    .replace(/_/g, () => "\\_");
-
-const buildProductSearchWhere = (tokens: string[]): { whereSql: string; params: string[] } => {
-  const params: string[] = [];
-  const tokenClauses = tokens.map((rawToken) => {
-    const token = escapeLikePattern(rawToken);
-    const i = params.length + 1;
-    params.push(`%${token}%`);
-    return `(
-      p.brand    ILIKE $${i} OR
-      p.model    ILIKE $${i} OR
-      p.id       ILIKE $${i} OR
-      p.supplier ILIKE $${i}
-    )`;
-  });
-  const whereSql = `p.deleted = false AND p.hidden = 0${tokenClauses.length > 0 ? ` AND ${tokenClauses.join(" AND ")}` : ""}`;
-  return { whereSql, params };
-};
+// Server-side fuzzy search is handled by fuzzyRank() in ./search.ts (Fuse in
+// TypeScript) — DB-agnostic, no pg_trgm/extension required.
 
 export const getAllProducts = async (
   page: number = 1,
@@ -106,40 +76,44 @@ export const getAllProducts = async (
 ): Promise<PaginatedProductsResult> => {
   const offset = (page - 1) * limit;
   const trimmedQ = (q || "").trim();
-  const tokens = trimmedQ === "" ? [] : tokenizeSearchQuery(trimmedQ);
-  const { whereSql, params: searchParams } = buildProductSearchWhere(tokens);
 
-  // Get total count (filtered by the same WHERE as the data query)
-  const countResult = await client.unsafe(
-    `SELECT COUNT(*) as count FROM products p WHERE ${whereSql}`,
-    searchParams,
+  const baseWhere = `p.deleted = false AND p.hidden = 0`;
+  const selectCols = `
+    p.id, p.brand, p.model, p.category, p.mount, p.condition,
+    p.price, p.cogs, p.warranty_months, p.warranty_type, p.stock,
+    p.has_serial_number, p.supplier, p.date_restocked, p.hidden, p.deleted,
+    p.tax_enabled, p.procurement_history, p.created_at,
+    (SELECT COUNT(*) FROM serial_numbers sn WHERE sn.product_id = p.id) as sn_count`;
+
+  // No search: paginate directly in SQL (efficient for large catalogs).
+  if (!trimmedQ) {
+    const countResult = await client.unsafe(
+      `SELECT COUNT(*) as count FROM products p WHERE ${baseWhere}`,
+    );
+    const total = parseInt(countResult[0]?.count || "0", 10);
+    const rawResult = await client.unsafe(
+      `SELECT ${selectCols} FROM products p WHERE ${baseWhere} ORDER BY p.created_at DESC LIMIT $1 OFFSET $2`,
+      [limit, offset],
+    );
+    return {
+      products: rawResult.map((row: any) => parseDbProduct(row)),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  // Search: fetch all active products and rank in-memory with Fuse for
+  // typo-tolerant matching (DB-agnostic; no pg_trgm/extension needed).
+  const all = await client.unsafe(
+    `SELECT ${selectCols} FROM products p WHERE ${baseWhere} ORDER BY p.created_at DESC`,
   );
-  const total = parseInt(countResult[0]?.count || "0", 10);
-
-  // Data query: limit/offset follow the search tokens in the param list.
-  const dataParams = [...searchParams, limit, offset];
-  const limitIdx = dataParams.length - 1;
-  const offsetIdx = dataParams.length;
-
-  // Use direct SQL to avoid any Drizzle ORM issues
-  const rawResult = await client.unsafe(
-    `
-    SELECT
-      p.id, p.brand, p.model, p.category, p.mount, p.condition,
-      p.price, p.cogs, p.warranty_months, p.warranty_type, p.stock,
-      p.has_serial_number, p.supplier, p.date_restocked, p.hidden, p.deleted,
-      p.tax_enabled, p.procurement_history, p.created_at,
-      (SELECT COUNT(*) FROM serial_numbers sn WHERE sn.product_id = p.id) as sn_count
-    FROM products p
-    WHERE ${whereSql}
-    ORDER BY p.created_at DESC
-    LIMIT $${limitIdx} OFFSET $${offsetIdx}
-  `,
-    dataParams,
-  );
-
+  const ranked = fuzzyRank(all, ["id", "model", "brand", "supplier"], trimmedQ);
+  const total = ranked.length;
+  const rows = ranked.slice(offset, offset + limit);
   return {
-    products: rawResult.map((row: any) => parseDbProduct(row)),
+    products: rows.map((row: any) => parseDbProduct(row)),
     total,
     page,
     limit,

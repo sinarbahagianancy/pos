@@ -7,6 +7,7 @@ import { InvoiceDocument, InvoiceLayout } from "../../app/components/InvoicePDF"
 import { QuotationDetailModal } from "../../app/components/QuotationDetailModal";
 import Pagination from "../../app/components/Pagination";
 import { RupiahInput } from "../../app/components/RupiahInput";
+import { makeFuse, fuzzyRanked } from "../../app/utils/fuzzy";
 
 interface SalesLogsProps {
   activeTab?: "sales" | "quotations";
@@ -165,27 +166,25 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
     return entries;
   }, [sales]);
 
+  const entriesFuse = useMemo(
+    () => makeFuse(logEntries, ["saleId", "customerName", "staffName"]),
+    [logEntries],
+  );
   const filteredEntries = useMemo(() => {
-    if (!search.trim()) return logEntries;
-    const q = search.toLowerCase();
-    return logEntries.filter(
-      (e) =>
-        e.saleId.toLowerCase().includes(q) ||
-        e.customerName.toLowerCase().includes(q) ||
-        e.staffName.toLowerCase().includes(q),
-    );
-  }, [logEntries, search]);
+    const q = search.trim();
+    if (!q) return logEntries;
+    return fuzzyRanked(entriesFuse, q);
+  }, [entriesFuse, logEntries, search]);
 
+  const quotationsFuse = useMemo(
+    () => makeFuse(quotations, ["id", "customerName", "staffName"]),
+    [quotations],
+  );
   const filteredQuotations = useMemo(() => {
-    if (!search.trim()) return quotations;
-    const q = search.toLowerCase();
-    return quotations.filter(
-      (qt) =>
-        qt.id.toLowerCase().includes(q) ||
-        qt.customerName.toLowerCase().includes(q) ||
-        qt.staffName.toLowerCase().includes(q),
-    );
-  }, [quotations, search]);
+    const q = search.trim();
+    if (!q) return quotations;
+    return fuzzyRanked(quotationsFuse, q);
+  }, [quotationsFuse, quotations, search]);
 
   const handleRecordInstallment = async () => {
     if (!installmentPopover || !onRecordInstallment) return;

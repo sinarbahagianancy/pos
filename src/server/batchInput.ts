@@ -1,6 +1,7 @@
 import { client, db } from "../db/index.js";
 import { batchInputs, batchInputItems, auditLogs, products, serialNumbers } from "../db/schema.js";
-import { eq, sql, desc, or, ilike, inArray } from "drizzle-orm";
+import { eq, desc, inArray } from "drizzle-orm";
+import { fuzzyRank } from "./search.js";
 import { validateCreateBatchInputInput } from "../../app/schemas/document.schema.js";
 import type { BatchInput, BatchInputItem } from "../../app/types";
 
@@ -595,40 +596,14 @@ export const getAllBatchInputHandler = async (
   search: string = "",
 ): Promise<PaginatedBatchInputResult> => {
   const offset = (page - 1) * limit;
-  const searchPattern = `%${search}%`;
+  const q = search.trim();
 
-  // Total count (with search filter)
-  const [countRow] = await db.execute(sql`
-    SELECT COUNT(*)::int AS total
-    FROM ${batchInputs}
-    WHERE ${
-      search
-        ? or(
-            ilike(batchInputs.id, searchPattern),
-            ilike(batchInputs.supplier, searchPattern),
-            ilike(batchInputs.notes, searchPattern),
-          )
-        : sql`TRUE`
-    }
-  `);
-  const total = (countRow as unknown as { total: number }).total;
-
-  // Paginated rows
-  const rows = await db.execute(sql`
-    SELECT ${batchInputs}.*
-    FROM ${batchInputs}
-    WHERE ${
-      search
-        ? or(
-            ilike(batchInputs.id, searchPattern),
-            ilike(batchInputs.supplier, searchPattern),
-            ilike(batchInputs.notes, searchPattern),
-          )
-        : sql`TRUE`
-    }
-    ORDER BY ${batchInputs.createdAt} DESC
-    LIMIT ${limit} OFFSET ${offset}
-  `);
+  // Fetch all batch inputs, then rank in-memory with Fuse for typo-tolerant
+  // search (DB-agnostic; no pg_trgm/extension needed).
+  const all = await db.select().from(batchInputs).orderBy(desc(batchInputs.createdAt));
+  const ranked = q ? fuzzyRank(all, ["id", "supplier", "notes"], q) : all;
+  const total = ranked.length;
+  const rows = ranked.slice(offset, offset + limit);
 
   // For each batch, fetch its items (so the log table can show total units)
   const batchIds = (rows as unknown as Array<{ id: string }>).map((r) => r.id);

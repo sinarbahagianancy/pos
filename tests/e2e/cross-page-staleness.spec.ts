@@ -29,6 +29,31 @@ test.describe("Cross-page cache invalidation", () => {
   });
 
   test("Surat Jalan creation updates Inventory stock without page reload", async ({ page }) => {
+    // Create a dedicated serial number for this test so we don't consume the
+    // shared seeded SN-TEST-001 (which pos.spec relies on for its search tests).
+    const sjSn = `SN-E2E-SJ-${Date.now()}`;
+    const setupRes = await page.request.post("/api/batch-input", {
+      data: {
+        id: `E2E-SJ-SETUP-${Date.now()}`,
+        supplier: "PT Sony Indonesia",
+        date: new Date().toISOString().split("T")[0],
+        staffName: "Nancy",
+        items: [
+          {
+            mode: "restock",
+            existingProductId: "BRC-TEST-001",
+            quantity: 1,
+            sns: [sjSn],
+          },
+        ],
+      },
+    });
+    if (!setupRes.ok()) {
+      const body = await setupRes.text();
+      console.error(`Batch Input setup error (${setupRes.status()}): ${body}`);
+    }
+    expect(setupRes.ok()).toBeTruthy();
+
     // Step 1: Check current stock of a product from the Inventory page
     await page.goto("/inventory");
     await expect(page.getByText("Master Inventori & Barcode")).toBeVisible({ timeout: 15_000 });
@@ -44,7 +69,7 @@ test.describe("Cross-page cache invalidation", () => {
     expect(initialStockMatch).not.toBeNull();
     const initialStock = parseInt(initialStockMatch![1], 10);
 
-    // Step 2: Create a Surat Jalan (withdraw 1 unit of A7IV)
+    // Step 2: Create a Surat Jalan (withdraw 1 unit of A7IV) using the dedicated SN
     const sjRes = await page.request.post("/api/surat-jalan", {
       data: {
         customerName: "Test Customer",
@@ -55,7 +80,7 @@ test.describe("Cross-page cache invalidation", () => {
             productId: "BRC-TEST-001",
             brand: "Sony",
             model: "A7IV",
-            sn: "SN-TEST-001",
+            sn: sjSn,
             quantity: 1,
           },
         ],

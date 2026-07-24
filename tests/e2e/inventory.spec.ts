@@ -8,8 +8,9 @@ test.describe("Inventory Page", () => {
   });
 
   test("displays inventory table with seeded products", async ({ page }) => {
-    // Should see the Sony A7IV product from seed data
-    await expect(page.getByText("Sony")).toBeVisible();
+    // Should see the Sony A7IV product from seed data (brand appears in
+    // multiple cells, so scope to first match to avoid strict-mode ambiguity)
+    await expect(page.getByText("Sony").first()).toBeVisible();
     await expect(page.getByText("A7IV")).toBeVisible();
   });
 

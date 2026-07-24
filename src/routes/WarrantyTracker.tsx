@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { SerialNumber, Sale, WarrantyClaim, ClaimStatus } from "../../app/types";
 import { formatDate } from "../../app/utils/formatters";
 import Pagination from "../../app/components/Pagination";
+import { makeFuse, fuzzyRanked } from "../../app/utils/fuzzy";
 
 interface WarrantyTrackerProps {
   sns: SerialNumber[];
@@ -46,15 +47,27 @@ const WarrantyTrackerView: React.FC<WarrantyTrackerProps> = ({
     }
   }, []);
 
+  // Flatten every (sale, item) pair so we can fuzzy-search by serial number.
+  const snPairs = useMemo(() => {
+    const pairs: { sale: Sale; item: any }[] = [];
+    for (const s of sales) {
+      for (const i of s.items) {
+        if (i.sn) pairs.push({ sale: s, item: i });
+      }
+    }
+    return pairs;
+  }, [sales]);
+  const snFuse = useMemo(() => makeFuse(snPairs, ["item.sn"]), [snPairs]);
+
   const handleSearch = () => {
-    if (!searchSN) return;
-    // Exact SN match in existing sales history
-    const sale = sales.find((s) =>
-      s.items.some((i) => i.sn.toUpperCase() === searchSN.toUpperCase()),
-    );
-    if (sale) {
+    const q = searchSN.trim();
+    if (!q) return;
+    // Typo-tolerant SN lookup in existing sales history
+    const ranked = fuzzyRanked(snFuse, q);
+    if (ranked.length > 0) {
+      const { sale, item } = ranked[0];
       setFoundSale(sale);
-      setFoundItem(sale.items.find((i) => i.sn.toUpperCase() === searchSN.toUpperCase()));
+      setFoundItem(item);
     } else {
       setFoundSale(null);
       setFoundItem(null);

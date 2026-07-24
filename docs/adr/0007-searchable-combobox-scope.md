@@ -1,0 +1,7 @@
+# Standardize data-backed pickers on `SearchableCombobox`; keep tiny enums as native `<select>`
+
+The request was to make "every drop-down field" a searchable combobox. We scoped this to **data-backed lookups and long lists only**; tiny static enums (currency, role, status, category, condition, warrantyType, reason pickers) and numeric page-size selectors (10/20/50/100) stay as native `<select>`. Under that rule the conversion set is exactly two fields: the `Login` staff picker and the `BatchInput` supplier picker (the `Inventory` supplier picker is already a `SearchableCombobox`).
+
+**Considered Options** (scope): (A) data-backed + long lists only, tiny enums native — _chosen_; (B) literally every `<select>` becomes a combobox (uniformity over micro-UX); (C) narrower/broader.
+
+**Consequences**: The chosen `SearchableCombobox` (`app/components/SearchableCombobox.tsx`) is single-select, follows the W3C ARIA combobox pattern, and is `id`/`label`-based — it is **not** a native `<select>`, so Playwright `selectOption()` no longer works on converted fields; e2e interactions must type-and-click (`getByRole("combobox")` → `getByRole("option")`). Both converted fields are **name-based** (they store the display name, not a DB id), matching the existing `Inventory` `supplierItems` mapping and CONTEXT §139; we deliberately do **not** switch to id-based identity — that is a separate refactor. A shared `toComboboxItems(values: string[])` util builds the `items` array so the `{id, label}` map is not duplicated across call sites.

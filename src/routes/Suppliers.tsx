@@ -6,19 +6,7 @@ import {
   deleteSupplier,
 } from "../../app/services/supplier.service";
 import Pagination from "../../app/components/Pagination";
-
-// Fuzzy match: checks if all characters in query appear in order in text (case-insensitive)
-const fuzzyMatch = (text: string, query: string): boolean => {
-  const t = text.toLowerCase();
-  const q = query.toLowerCase();
-  let ti = 0;
-  for (let qi = 0; qi < q.length; qi++) {
-    const found = t.indexOf(q[qi], ti);
-    if (found === -1) return false;
-    ti = found + 1;
-  }
-  return true;
-};
+import { makeFuse, fuzzyRanked } from "../../app/utils/fuzzy";
 
 interface SuppliersViewProps {
   staffName: string;
@@ -52,15 +40,16 @@ const SuppliersView: React.FC<SuppliersViewProps> = ({
   const [localPage, setLocalPage] = useState(1);
   const [localPerPage, setLocalPerPage] = useState(20);
 
-  // Fuzzy search across all supplier fields
+  // Fuzzy (typo-tolerant) search across supplier fields, ranked by score
+  const supplierFuse = useMemo(
+    () => makeFuse(suppliers, ["name", "phone", "address"]),
+    [suppliers],
+  );
   const filteredSuppliers = useMemo(() => {
-    if (!searchQuery.trim()) return suppliers;
     const q = searchQuery.trim();
-    return suppliers.filter(
-      (s) =>
-        fuzzyMatch(s.name, q) || fuzzyMatch(s.phone || "", q) || fuzzyMatch(s.address || "", q),
-    );
-  }, [suppliers, searchQuery]);
+    if (!q) return suppliers;
+    return fuzzyRanked(supplierFuse, q);
+  }, [supplierFuse, suppliers, searchQuery]);
 
   // Client-side pagination derived from filtered results
   const totalItems = filteredSuppliers.length;

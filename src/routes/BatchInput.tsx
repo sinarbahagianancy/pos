@@ -5,6 +5,7 @@ import { RupiahInput } from "../../app/components/RupiahInput";
 import Pagination from "../../app/components/Pagination";
 import SearchableCombobox, {
   SearchableComboboxItem,
+  toComboboxItems,
 } from "../../app/components/SearchableCombobox";
 import {
   getAllBatchInput,
@@ -546,20 +547,13 @@ const BatchInputView: React.FC<BatchInputViewProps> = ({
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
                   Supplier *
                 </label>
-                <select
+                <SearchableCombobox
+                  items={toComboboxItems(suppliers.filter((s) => !s.deleted).map((s) => s.name))}
                   value={supplier}
-                  onChange={(e) => setSupplier(e.target.value)}
-                  className="w-full px-4 py-3 border border-slate-200 rounded-xl text-slate-900 text-sm font-bold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 bg-white"
-                >
-                  <option value="">Pilih supplier...</option>
-                  {suppliers
-                    .filter((s) => !s.deleted)
-                    .map((s) => (
-                      <option key={s.id} value={s.name}>
-                        {s.name}
-                      </option>
-                    ))}
-                </select>
+                  onChange={setSupplier}
+                  placeholder="Pilih supplier..."
+                  required
+                />
                 {suppliers.filter((s) => !s.deleted).length === 0 && (
                   <p className="text-[10px] text-amber-600 mt-1">
                     Belum ada supplier. Tambahkan di halaman Suppliers terlebih dahulu.

@@ -1,6 +1,7 @@
 import { client, db } from "../db/index.js";
 import { suratPenarikan, suratPenarikanItems, auditLogs } from "../db/schema.js";
-import { eq, sql, desc, or, ilike, inArray } from "drizzle-orm";
+import { eq, desc, inArray } from "drizzle-orm";
+import { fuzzyRank } from "./search.js";
 import { validateCreateSuratPenarikanInput } from "../../app/schemas/document.schema.js";
 import type { SuratPenarikan, SuratPenarikanItem, PenarikanReason } from "../../app/types";
 
@@ -269,26 +270,14 @@ export const getAllSuratPenarikanHandler = async (
 ): Promise<PaginatedSuratPenarikanResult> => {
   const offset = (page - 1) * limit;
 
-  const whereClause = search
-    ? or(ilike(suratPenarikan.id, `%${search}%`), ilike(suratPenarikan.recipient, `%${search}%`))
-    : undefined;
+  const q = (search ?? "").trim();
 
-  const rows = await db
-    .select()
-    .from(suratPenarikan)
-    .where(whereClause)
-    .orderBy(desc(suratPenarikan.createdAt))
-    .limit(limit)
-    .offset(offset);
-
-  const countQuery = whereClause
-    ? db
-        .select({ count: sql<number>`count(*)` })
-        .from(suratPenarikan)
-        .where(whereClause)
-    : db.select({ count: sql<number>`count(*)` }).from(suratPenarikan);
-  const countResult = await countQuery;
-  const total = Number(countResult[0]?.count) || 0;
+  // Fetch all surat penarikan, then rank in-memory with Fuse for
+  // typo-tolerant search (DB-agnostic; no pg_trgm/extension needed).
+  const all = await db.select().from(suratPenarikan).orderBy(desc(suratPenarikan.createdAt));
+  const ranked = q ? fuzzyRank(all, ["id", "recipient"], q) : all;
+  const total = ranked.length;
+  const rows = ranked.slice(offset, offset + limit);
 
   const spbIds = rows.map((r) => r.id);
   let items: SuratPenarikanItem[] = [];

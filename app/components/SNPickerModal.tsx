@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { makeFuse, fuzzyRanked } from "../utils/fuzzy";
 
 interface SNPickerModalProps {
   isOpen: boolean;
@@ -42,12 +43,13 @@ const SNPickerModal: React.FC<SNPickerModalProps> = ({
     return availableSNs.filter((sn) => !blocked.has(sn));
   }, [availableSNs, pickedInOtherRows]);
 
-  // Apply search filter (substring, case-insensitive).
+  // Fuzzy (typo-tolerant) SN search, ranked by score.
+  const fuse = useMemo(() => makeFuse(visibleSNs), [visibleSNs]);
   const filteredSNs = useMemo(() => {
-    if (!search.trim()) return visibleSNs;
-    const q = search.trim().toLowerCase();
-    return visibleSNs.filter((sn) => sn.toLowerCase().includes(q));
-  }, [visibleSNs, search]);
+    const q = search.trim();
+    if (!q) return visibleSNs;
+    return fuzzyRanked(fuse, q);
+  }, [fuse, visibleSNs, search]);
 
   const toggleSN = (sn: string) => {
     setSelected((prev) => {

@@ -18,7 +18,9 @@ setup("authenticate as admin", async ({ page }) => {
   await expect(page.getByText("Sinar Bahagia POS")).toBeVisible();
 
   // Select Nancy from the dropdown
-  await page.getByRole("combobox").selectOption({ label: "Nancy" });
+  const staffPicker = page.getByRole("combobox");
+  await staffPicker.click();
+  await page.getByRole("option", { name: "Nancy" }).click();
 
   // Enter password
   await page.getByPlaceholder("Enter password").fill(ADMIN_PASSWORD);

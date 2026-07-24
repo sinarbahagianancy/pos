@@ -1,19 +1,9 @@
 import React, { useState, useMemo, useCallback } from "react";
 import { Customer, Sale } from "../../app/types";
 import { formatIDR, formatDate } from "../../app/utils/formatters";
+import { makeFuse, fuzzyRanked } from "../../app/utils/fuzzy";
 
 // Fuzzy match: checks if all characters in query appear in order in text (case-insensitive)
-const fuzzyMatch = (text: string, query: string): boolean => {
-  const t = text.toLowerCase();
-  const q = query.toLowerCase();
-  let ti = 0;
-  for (let qi = 0; qi < q.length; qi++) {
-    const found = t.indexOf(q[qi], ti);
-    if (found === -1) return false;
-    ti = found + 1;
-  }
-  return true;
-};
 
 interface CustomersProps {
   customers: Customer[];
@@ -71,19 +61,16 @@ const CustomersView: React.FC<CustomersProps> = ({
     return { label: "Standard Member", color: "bg-slate-100 text-slate-600 shadow-slate-50" };
   };
 
-  // Fuzzy search across all customer fields
+  // Fuzzy (typo-tolerant) search across customer fields, ranked by score
+  const customerFuse = useMemo(
+    () => makeFuse(customers, ["name", "phone", "email", "address", "npwp"]),
+    [customers],
+  );
   const filteredCustomers = useMemo(() => {
-    if (!searchQuery.trim()) return customers;
     const q = searchQuery.trim();
-    return customers.filter(
-      (c) =>
-        fuzzyMatch(c.name, q) ||
-        fuzzyMatch(c.phone || "", q) ||
-        fuzzyMatch(c.email || "", q) ||
-        fuzzyMatch(c.address || "", q) ||
-        fuzzyMatch(c.npwp || "", q),
-    );
-  }, [customers, searchQuery]);
+    if (!q) return customers;
+    return fuzzyRanked(customerFuse, q);
+  }, [customerFuse, customers, searchQuery]);
 
   // Client-side pagination derived from filtered results
   const totalItems = filteredCustomers.length;

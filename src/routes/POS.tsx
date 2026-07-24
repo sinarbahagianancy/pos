@@ -14,6 +14,7 @@ import { pdf } from "@react-pdf/renderer";
 import { InvoiceDocument, InvoiceLayout } from "../../app/components/InvoicePDF";
 import { RupiahInput } from "../../app/components/RupiahInput";
 import { createQuotation as apiCreateQuotation } from "../../app/services/quotation.api";
+import { makeFuse, fuzzyRanked } from "../../app/utils/fuzzy";
 
 interface POSProps {
   products: Product[];
@@ -147,36 +148,19 @@ const POSView: React.FC<POSProps> = ({
   // Negative or zero stock = out of stock
   const isOutOfStock = (p: Product) => getEffectiveStock(p) <= 0;
 
-  const fuzzyMatch = (text: string, query: string): boolean => {
-    const textLower = text.toLowerCase();
-    const queryLower = query.toLowerCase();
-    if (textLower.includes(queryLower)) return true;
-    let queryIndex = 0;
-    for (let i = 0; i < textLower.length && queryIndex < queryLower.length; i++) {
-      if (textLower[i] === queryLower[queryIndex]) {
-        queryIndex++;
-      }
-    }
-    return queryIndex === queryLower.length;
-  };
+  const productFuse = useMemo(
+    () => makeFuse(visibleProducts, ["id", "model", "brand"]),
+    [visibleProducts],
+  );
+  const snFuse = useMemo(() => makeFuse(availableSNs, ["sn"]), [availableSNs]);
 
   const filteredResults = useMemo(() => {
-    if (!search || search.length < 2) return { products: [], serialNumbers: [] };
-    const query = search.toLowerCase();
-
-    const matchedProducts = visibleProducts.filter((p) => {
-      return fuzzyMatch(p.id, query) || fuzzyMatch(p.model, query) || fuzzyMatch(p.brand, query);
-    });
-
-    const matchedSNs = availableSNs.filter((sn) => {
-      if (!sn.productId) return fuzzyMatch(sn.sn, query);
-      const product = visibleProducts.find((p) => p.id === sn.productId);
-      if (!product) return fuzzyMatch(sn.sn, query);
-      return fuzzyMatch(sn.sn, query);
-    });
-
+    if (!search || search.trim().length < 2) return { products: [], serialNumbers: [] };
+    const q = search.trim();
+    const matchedProducts = fuzzyRanked(productFuse, q);
+    const matchedSNs = fuzzyRanked(snFuse, q);
     return { products: matchedProducts, serialNumbers: matchedSNs };
-  }, [search, visibleProducts, availableSNs]);
+  }, [search, productFuse, snFuse]);
 
   const addToCartByProduct = (product: Product) => {
     if (product.hasSerialNumber) {

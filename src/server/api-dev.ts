@@ -15,7 +15,7 @@ export default function apiServerPlugin() {
         const { runBatchInputMigrations } = await import("./migrations.js");
         await runBatchInputMigrations();
       } catch (e) {
-        console.error("[api-server] Failed to run batch input migrations:", e);
+        console.error("[api-server] Failed to run migrations:", e);
       }
 
       // Remind developers to apply migrations before using the dev server.

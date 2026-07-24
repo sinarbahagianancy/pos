@@ -36,6 +36,24 @@ _Avoid_ for Input Barang Baru: Add Product (use the Indonesian term — it match
 _Avoid_ for Batch Input Barang: Do NOT call it a tab inside Inventory — it's a top-level page. The names "Restock" / "Stock Addition" / "Penerimaan Barang" used to be in this avoid list because they implied only existing-product restock; Batch Input now legitimately handles supplier-papered restocks too, so those terms are no longer _wrong_ — just _incomplete_ (they hide the new-product case). The page is still best called "Batch Input Barang" in chrome, because that name is the only one that covers all three cases (all-new, all-restock, mixed).
 _Avoid_ for Tambah Stok: Don't call it "Restock" alone — that's ambiguous with the supplier-papered restock on the Batch Input page. The "ad-hoc" qualifier (or "no-paper" qualifier) is what makes it unambiguous. Don't call it "Stock Addition" alone either — same reason.
 
+### UI Pickers
+
+| Term                         | Definition                                                                                                                                                                                                                                                                                |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Searchable Combobox**      | A data-backed, single-select picker built on `app/components/SearchableCombobox.tsx` (W3C ARIA combobox: type-to-filter, group headers, full keyboard nav). Used for lookups whose option list is dynamic or long — e.g. supplier, staff, product. Not a native `<select>`. See ADR 0007. |
+| **Dropdown (native select)** | A plain HTML `<select>` used only for tiny static enums (currency, role, status, category, condition, warrantyType, reason) and numeric page-size selectors (10/20/50/100). Deliberately not a Searchable Combobox. See ADR 0007.                                                         |
+
+_Avoid_ for Searchable Combobox: Dropdown, select, picker (use the precise term — "dropdown" is ambiguous between the two picker types). Do NOT confuse with Dropdown (native select) — a Searchable Combobox is not a `<select>`.
+_Avoid_ for Dropdown: Combobox (a native `<select>` is not searchable).
+
+### Search
+
+| Term             | Definition                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Fuzzy Search** | Typo-tolerant matching across all search surfaces (ADR 0008). Client-side via `fuse.js` (combobox, SN picker, Suppliers, Customers, SalesLogs, POS, WarrantyTracker); server-side also via `fuse.js`, run **in TypeScript inside the API handlers** (`src/server/search.ts`) over fetched candidates, so it works on any Postgres (incl. managed Supabase) with no extension. Results are ranked by similarity, not insertion order. |
+
+_Avoid_: smart search, approximate search (use "fuzzy"). Do NOT confuse with the plain substring matching that predates ADR 0008.
+
 ### Quotation Status
 
 | Term         | Definition                                                                                  |
@@ -161,7 +179,7 @@ The form has two sections: **Items** (catalog, via `DocumentItemEditor`) and **B
 - **Pagination interaction**: every search change (including clearing) resets the page to 1.
 - **Debounce**: 300ms between input stop and API request.
 - **Empty state**: when the search returns zero matches, the table body shows a single row with the message `"Tidak ada produk yang cocok dengan pencarian."` (Indonesian, matching the rest of the table's voice).
-- **Future migration to typo-tolerant search (Trigram similarity / `pg_trgm`)**: the matching rule can be swapped without changing the API contract or the client. The natural C-strategy migration point adds a GIN index on `lower(brand || ' ' || model || ' ' || supplier || ' ' || id)` with `gin_trgm_ops` and replaces the ILIKE chain with a similarity-ranked query.
+- **Fuzzy search (adopted — ADR 0008): typo-tolerant via `fuse.js`.** Client filters use a shared `fuzzy.ts` helper. Server search originally used Postgres `pg_trgm` `%` similarity, but that was **reverted**: the `%` operator's 0.3 threshold makes short-query-vs-long-field similarity too low (every search returned empty), and `pg_trgm` isn't reliably creatable on managed Supabase. Server search now fetches candidates and ranks them with `fuzzyRank()` in `src/server/search.ts` — DB-agnostic, no extension, same threshold as the client. The API contract and client are unchanged.
 
 _Avoid_ `LIKE '%' || q || '%'` without escaping — a user typing `"50%"` would otherwise match `"50 anything"`. _Avoid_ including `category` / `condition` / `mount` in the free-text search — they're structured enums, not free text. _Avoid_ re-ranking by relevance in v1 — with B there is no relevance score, and the `created_at DESC` order is the only meaningful one.
 

@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import SearchableCombobox, { toComboboxItems } from "../../app/components/SearchableCombobox";
 
 interface LoginProps {
   staffList: string[];
@@ -57,30 +58,13 @@ const LoginView: React.FC<LoginProps> = ({ staffList, onLogin }) => {
               <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">
                 Select Identity
               </label>
-              <div className="relative">
-                <select
-                  value={selectedStaff}
-                  onChange={(e) => setSelectedStaff(e.target.value)}
-                  className="w-full px-6 py-4 rounded-2xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none appearance-none cursor-pointer transition-all hover:bg-white text-center"
-                >
-                  <option value="">-- Select Staff --</option>
-                  {staffList.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
-                </div>
-              </div>
+              <SearchableCombobox
+                items={toComboboxItems(staffList)}
+                value={selectedStaff}
+                onChange={setSelectedStaff}
+                placeholder="Select Staff"
+                inputClassName="w-full px-6 py-4 rounded-2xl border border-slate-200 bg-slate-50 text-slate-900 text-sm font-bold focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all hover:bg-white text-left"
+              />
             </div>
 
             <div className="space-y-2">
