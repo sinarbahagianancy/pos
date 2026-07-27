@@ -12,8 +12,14 @@ export const FUZZY_THRESHOLD = 0.3;
  * for arrays of plain strings (e.g. serial numbers, SN pairs).
  */
 export function makeFuse<T>(items: T[], keys?: string[]): Fuse<T> {
+  // IMPORTANT: only pass `keys` when it is provided. Passing
+  // `keys: undefined` explicitly OVERWRITES Fuse's own default
+  // `keys: []`, leaving Fuse to build a KeyStore on `undefined`
+  // (`undefined.forEach(...)`) and throw. For plain-string arrays
+  // (e.g. serial numbers) callers omit `keys`; we must let Fuse's
+  // default empty-array keys apply so it treats each item as a string.
   return new Fuse<T>(items, {
-    keys,
+    ...(keys ? { keys } : {}),
     threshold: FUZZY_THRESHOLD,
     ignoreLocation: true,
     minMatchCharLength: 1,
