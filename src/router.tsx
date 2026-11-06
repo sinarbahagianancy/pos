@@ -781,9 +781,33 @@ const SalesLogsComponent = () => {
   >("all");
   const [activeTab, setActiveTab] = useState<"sales" | "quotations">("sales");
 
+  // Server-side search for both tabs. searchInput is what the controlled input
+  // shows (immediate); search is the debounced value that flows into the React
+  // Query keys, so the API searches the WHOLE table instead of just the rows
+  // on the current page.
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setSearch(searchInput), 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+  // Any search change invalidates the current page offset for both tabs.
+  useEffect(() => {
+    setSalesPage(1);
+    setQuotationPage(1);
+  }, [search]);
+
   const { data: salesData, isLoading: salesLoading } = useQuery({
-    queryKey: ["sales", salesPage, salesPerPage],
-    queryFn: () => getAllSales({ page: salesPage, limit: salesPerPage }),
+    // Only the visible tab carries the query, so the inactive tab keeps its
+    // unfiltered page instead of re-fetching on every keystroke.
+    queryKey: ["sales", salesPage, salesPerPage, activeTab === "sales" ? search : ""],
+    queryFn: () =>
+      getAllSales({
+        page: salesPage,
+        limit: salesPerPage,
+        q: activeTab === "sales" ? search : "",
+      }),
+    placeholderData: keepPreviousData,
   });
 
   const { data: customersData } = useQuery({
@@ -812,13 +836,16 @@ const SalesLogsComponent = () => {
       quotationPage,
       quotationPerPage,
       quotationStatusFilter === "all" ? null : quotationStatusFilter,
+      activeTab === "quotations" ? search : "",
     ],
     queryFn: () =>
       getAllQuotations({
         page: quotationPage,
         limit: quotationPerPage,
         status: quotationStatusFilter === "all" ? undefined : quotationStatusFilter,
+        q: activeTab === "quotations" ? search : "",
       }),
+    placeholderData: keepPreviousData,
   });
 
   const sales = salesData?.sales || [];
@@ -880,6 +907,8 @@ const SalesLogsComponent = () => {
       onPageChange={setSalesPage}
       perPage={salesPerPage}
       onPerPageChange={setSalesPerPage}
+      search={searchInput}
+      onSearchChange={setSearchInput}
       onMarkAsPaid={handleMarkAsPaid}
       onRecordInstallment={handleRecordInstallment}
       // Quotation tab

@@ -1,0 +1,15 @@
+# 0009 - Server-side search for the paginated log tables (Sales Logs)
+
+The **Sales Logs** page (both tabs — Sales and Quotations) now searches on the server. `GET /api/sales?q=` and `GET /api/quotations?q=&status=` fetch the candidate rows, rank them with `fuzzyRank()` (`src/server/search.ts`, the ADR 0008 engine and threshold), and paginate the ranked list in memory. The Fuse instances that used to live in `src/routes/SalesLogs.tsx` are gone: the component renders exactly the rows the API returned.
+
+**The bug this fixes.** Sales Logs paginates server-side at 20 rows per page (240 sales / 35 quotations in the production DB at the time of the fix). The search box filtered `filteredEntries` / `filteredQuotations` — the array of _the current page only_. Searching `"SB/12"` therefore reported "Tidak ada hasil pencarian" whenever the matching transaction lived on page 2+. Two thirds of the table was unreachable from search, and the empty state actively told staff the record did not exist. Every other paginated list (Inventory, Surat Jalan, Batch Input, Surat Penarikan) already searched server-side per ADRs 0003/0008, so Sales Logs was the last page-scoped search.
+
+**Why the API, not a bigger `limit`.** The alternative — fetch all sales into the browser and keep filtering there — is what Suppliers and Customers already do (limits 1000/5000). It is exactly the design that fails silently once the table outgrows the cap: no error, just missing rows. Sales is the highest-volume table in the app and the one staff actually search for old invoices, so it gets the correct shape now.
+
+**Two surfaces that intentionally stay client-side.** POS product search, the SN picker, `SearchableCombobox`, WarrantyTracker's scanner lookup, and the Suppliers/Customers/AuditLogs filters all operate on lists that are fetched whole (or are bounded pickers), so their search is not page-scoped and a round trip per keystroke would only add latency. If those lists ever move to server pagination, their search must move with them — that is the invariant this ADR establishes: **a search box must never filter a page.**
+
+**Cancellation of stale responses.** `placeholderData: keepPreviousData` keeps the previous rows on screen while the next query is in flight, and the 300ms debounce (same value as Inventory) collapses keystrokes. The inactive tab does not carry `q` in its query key, so switching tabs does not re-issue the other tab's search.
+
+**Consequences.** The API contract is additive (`q` is optional; omitting it restores exact SQL pagination, so every existing caller and e2e test is unaffected). Hit counts (`total`/`totalPages`) now describe the filtered set, which is what the pagination footer and the tab badge should show. Search results are ranked by Fuse score rather than `timestamp DESC`, matching the other fuzzy surfaces. `src/server/customers.ts` and `api/index.ts` must keep identical `q` behaviour — the two backends are maintained in parallel by hand.
+
+**Reversibility.** Easy. Delete the `q` branch and the client-side Fuse block can be restored from ADR 0008's implementation. Nothing is persisted and no migration is involved.

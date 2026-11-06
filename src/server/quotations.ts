@@ -1,5 +1,6 @@
 import { client } from "../db/index.js";
 import { calculateWarrantyExpiry } from "../../app/utils/formatters.js";
+import { fuzzyRank } from "./search.js";
 
 // ============================================================
 // Types
@@ -200,10 +201,40 @@ export const getAllQuotationsHandler = async (
   page: number = 1,
   limit: number = 20,
   status?: QuotationStatus,
+  search?: string,
 ): Promise<PaginatedQuotationsResult> => {
   const offset = (page - 1) * limit;
 
   const hasStatus = !!status;
+  const q = (search ?? "").trim();
+
+  // Search spans ALL quotations (respecting the status filter), not just the
+  // current page. Fuse in TS — same engine/threshold as the client.
+  if (q) {
+    const whereClause = hasStatus ? "WHERE status = $1" : "";
+    const params: string[] = hasStatus ? [status as string] : [];
+    const all = await client.unsafe(
+      `SELECT * FROM quotations ${whereClause} ORDER BY created_at DESC`,
+      params,
+    );
+    // "${whereClause}" is interpolated as SQL text, never user input.
+    const ranked = fuzzyRank(all, ["id", "po_number", "customer_name", "staff_name"], q);
+    const total = ranked.length;
+    const rows = ranked.slice(offset, offset + limit);
+    const ids = rows.map((r: Record<string, unknown>) => r.id as string);
+    const itemsMap = await fetchItemsForQuotations(ids);
+
+    return {
+      quotations: rows.map((r: Record<string, unknown>) =>
+        parseDbQuotation(r, itemsMap.get(r.id as string) || []),
+      ),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
   const filterClause = hasStatus ? "WHERE status = $3" : "";
   const countParams: unknown[] = [];
   if (hasStatus) countParams.push(status);

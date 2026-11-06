@@ -540,7 +540,8 @@ export default function apiServerPlugin() {
             try {
               const page = parseInt(queryParams.page as string) || 1;
               const limit = parseInt(queryParams.limit as string) || 20;
-              const result = await getAllSalesHandler(page, limit);
+              const q = (queryParams.q as string) || "";
+              const result = await getAllSalesHandler(page, limit, q);
               res.setHeader("Content-Type", "application/json");
               res.end(JSON.stringify(result));
             } catch (error) {
@@ -550,7 +551,7 @@ export default function apiServerPlugin() {
             return;
           }
 
-          // GET /api/quotations?page=&limit=&status=Pending|Approved|Rejected|Canceled
+          // GET /api/quotations?page=&limit=&status=Pending|Approved|Rejected|Canceled&q=
           if (path === "quotations" && req.method === "GET") {
             const { getAllQuotationsHandler } = await import("./quotations.js");
             try {
@@ -562,7 +563,8 @@ export default function apiServerPlugin() {
                 | "Rejected"
                 | "Canceled"
                 | undefined;
-              const result = await getAllQuotationsHandler(page, limit, status);
+              const q = (queryParams.q as string) || "";
+              const result = await getAllQuotationsHandler(page, limit, status, q);
               res.setHeader("Content-Type", "application/json");
               res.end(JSON.stringify(result));
             } catch (error) {

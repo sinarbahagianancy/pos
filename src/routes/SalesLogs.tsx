@@ -7,7 +7,6 @@ import { InvoiceDocument, InvoiceLayout } from "../../app/components/InvoicePDF"
 import { QuotationDetailModal } from "../../app/components/QuotationDetailModal";
 import Pagination from "../../app/components/Pagination";
 import { RupiahInput } from "../../app/components/RupiahInput";
-import { makeFuse, fuzzyRanked } from "../../app/utils/fuzzy";
 
 interface SalesLogsProps {
   activeTab?: "sales" | "quotations";
@@ -21,6 +20,12 @@ interface SalesLogsProps {
   onPageChange?: (page: number) => void;
   perPage?: number;
   onPerPageChange?: (perPage: number) => void;
+  /**
+   * Server-side search. The query is executed by the API across ALL rows, so
+   * matches on other pages are found; the parent owns the debounced value.
+   */
+  search?: string;
+  onSearchChange?: (value: string) => void;
   onMarkAsPaid?: (saleId: string) => Promise<void>;
   onRecordInstallment?: (saleId: string, amount: number) => Promise<void>;
   // Quotation tab props
@@ -55,6 +60,8 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
   onPageChange,
   perPage = 20,
   onPerPageChange,
+  search = "",
+  onSearchChange,
   onRecordInstallment,
   // Quotation tab props
   quotations = [],
@@ -73,7 +80,6 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
   sns = [],
   staffName = "System",
 }) => {
-  const [search, setSearch] = useState("");
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [customerMap, setCustomerMap] = useState<Record<string, Customer>>({});
   const [printPdfUrl, setPrintPdfUrl] = useState<string | null>(null);
@@ -166,25 +172,10 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
     return entries;
   }, [sales]);
 
-  const entriesFuse = useMemo(
-    () => makeFuse(logEntries, ["saleId", "customerName", "staffName"]),
-    [logEntries],
-  );
-  const filteredEntries = useMemo(() => {
-    const q = search.trim();
-    if (!q) return logEntries;
-    return fuzzyRanked(entriesFuse, q);
-  }, [entriesFuse, logEntries, search]);
-
-  const quotationsFuse = useMemo(
-    () => makeFuse(quotations, ["id", "customerName", "staffName"]),
-    [quotations],
-  );
-  const filteredQuotations = useMemo(() => {
-    const q = search.trim();
-    if (!q) return quotations;
-    return fuzzyRanked(quotationsFuse, q);
-  }, [quotationsFuse, quotations, search]);
+  // NOTE: results are NOT filtered here. The API matches and paginates across
+  // the whole table (?q=), so logEntries/quotations already hold only the
+  // matching rows for the current page. Re-filtering here would re-apply the
+  // match to a single page and drop hits that live on other pages.
 
   const handleRecordInstallment = async () => {
     if (!installmentPopover || !onRecordInstallment) return;
@@ -335,7 +326,7 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
                   placeholder="Cari invoice number, customer, atau staff..."
                   className="w-full px-6 py-4 pl-14 rounded-2xl border border-slate-200 bg-slate-50 text-slate-900 placeholder-slate-400 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all text-sm font-bold"
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(e) => onSearchChange?.(e.target.value)}
                 />
                 <svg
                   className="w-6 h-6 absolute left-5 top-4 text-slate-400"
@@ -368,7 +359,7 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-sm font-medium">
-                  {filteredEntries.map((entry, idx) => {
+                  {logEntries.map((entry, idx) => {
                     const isInstallment = entry.type === "installment";
                     return (
                       <tr
@@ -544,7 +535,7 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
                       </tr>
                     );
                   })}
-                  {filteredEntries.length === 0 && (
+                  {logEntries.length === 0 && (
                     <tr>
                       <td colSpan={8} className="px-6 py-12 text-center text-slate-400">
                         {search ? "Tidak ada hasil pencarian" : "Belum ada transaksi"}
@@ -564,7 +555,7 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
                   placeholder="Cari nomor quotation, customer, atau staff..."
                   className="w-full px-6 py-4 pl-14 rounded-2xl border border-slate-200 bg-slate-50 text-slate-900 placeholder-slate-400 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all text-sm font-bold"
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(e) => onSearchChange?.(e.target.value)}
                 />
                 <svg
                   className="w-6 h-6 absolute left-5 top-4 text-slate-400"
@@ -621,14 +612,14 @@ const SalesLogsView: React.FC<SalesLogsProps> = ({
                         Loading...
                       </td>
                     </tr>
-                  ) : filteredQuotations.length === 0 ? (
+                  ) : quotations.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="px-6 py-12 text-center text-slate-400">
                         {search ? "Tidak ada hasil pencarian" : "Belum ada Quotation"}
                       </td>
                     </tr>
                   ) : (
-                    filteredQuotations.map((q) => {
+                    quotations.map((q) => {
                       const statusStyle: Record<QuotationStatus, string> = {
                         Pending: "bg-amber-50 text-amber-700 border-amber-200",
                         Approved: "bg-green-50 text-green-700 border-green-200",

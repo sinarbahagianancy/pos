@@ -14,6 +14,8 @@ export interface QuotationsParams {
   page?: number;
   limit?: number;
   status?: QuotationStatus;
+  /** Free-text search (quotation no / PO, customer, staff). Runs server-side across ALL pages. */
+  q?: string;
 }
 
 const errorFromResponse = async (response: Response, fallback: string): Promise<string> => {
@@ -28,12 +30,13 @@ const errorFromResponse = async (response: Response, fallback: string): Promise<
 export const getAllQuotations = async (
   params: QuotationsParams = {},
 ): Promise<PaginatedQuotationsResult> => {
-  const { page = 1, limit = 20, status } = params;
+  const { page = 1, limit = 20, status, q } = params;
   const queryParams: Record<string, string> = {
     page: page.toString(),
     limit: limit.toString(),
   };
   if (status) queryParams.status = status;
+  if (q && q.trim()) queryParams.q = q.trim();
 
   const queryString = new URLSearchParams(queryParams).toString();
   const response = await fetch(`${API_BASE}/quotations?${queryString}`);

@@ -13,14 +13,19 @@ export interface PaginatedSalesResult {
 export interface SalesParams {
   page?: number;
   limit?: number;
+  /** Free-text search (invoice no, customer, staff). Runs server-side across ALL pages. */
+  q?: string;
 }
 
 export const getAllSales = async (params: SalesParams = {}): Promise<PaginatedSalesResult> => {
-  const { page = 1, limit = 20 } = params;
-  const queryString = new URLSearchParams({
+  const { page = 1, limit = 20, q } = params;
+  const queryParams: Record<string, string> = {
     page: page.toString(),
     limit: limit.toString(),
-  }).toString();
+  };
+  if (q && q.trim()) queryParams.q = q.trim();
+
+  const queryString = new URLSearchParams(queryParams).toString();
 
   const response = await fetch(`${API_BASE}/sales?${queryString}`);
   if (!response.ok) {

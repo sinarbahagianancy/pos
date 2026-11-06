@@ -1,6 +1,6 @@
 # Make all search fuzzy (typo-tolerant), client + server
 
-Every search surface in the app is made typo-tolerant ("fuzzy"): the 7 client-side JS filters (SearchableCombobox, SN picker, Suppliers, Customers, SalesLogs, POS, WarrantyTracker) and the 4 server-side SQL `ILIKE` queries (Products, Surat Jalan, Batch Input, Surat Penarikan).
+Every search surface in the app is made typo-tolerant ("fuzzy"): the 7 client-side JS filters (SearchableCombobox, SN picker, Suppliers, Customers, SalesLogs, POS, WarrantyTracker — SalesLogs moved to the server in ADR 0009) and the 4 server-side SQL `ILIKE` queries (Products, Surat Jalan, Batch Input, Surat Penarikan).
 
 **Client side:** `fuse.js` (new dependency), wrapped in one shared `fuzzy.ts` helper with a consistent threshold; results are ranked by Fuse score (best match first). **Server side:** also `fuse.js`, but run **in TypeScript inside the API handlers** (`src/server/search.ts`), not in SQL. Each search endpoint fetches its candidate rows (no `pg_trgm`/`%`) and ranks them with the same `fuzzyRank()` helper and threshold as the client, then paginates in memory. This is DB-agnostic and works on managed Postgres (e.g. Supabase) with no extension or GUC tuning.
 

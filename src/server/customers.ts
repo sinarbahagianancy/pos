@@ -1,6 +1,7 @@
 import { client, db } from "../db/index.js";
 import { customers, sales, saleItems, serialNumbers, auditLogs, products } from "../db/schema.js";
 import { eq, sql } from "drizzle-orm";
+import { fuzzyRank } from "./search.js";
 
 const parseDbCustomer = (row: Record<string, unknown>) => ({
   id: row.id as string,
@@ -255,23 +256,42 @@ export interface PaginatedSalesResult {
 export const getAllSalesHandler = async (
   page: number = 1,
   limit: number = 20,
+  search?: string,
 ): Promise<PaginatedSalesResult> => {
   const offset = (page - 1) * limit;
+  const q = (search ?? "").trim();
 
-  // Get paginated sale IDs first (lightweight)
-  const saleIds = await client.unsafe(
-    "SELECT id FROM sales ORDER BY timestamp DESC LIMIT $1 OFFSET $2",
-    [limit, offset],
-  );
-  const countResult = await client.unsafe("SELECT COUNT(*) as count FROM sales");
-  const total = Number(countResult[0]?.count) || 0;
+  // Search spans ALL sales, not just the rows on the current page, so a match
+  // on page 7 is found while page 1 is displayed. Fuse in TS — same engine and
+  // threshold as the client (app/utils/fuzzy.ts) and api/index.ts.
+  let idList: string[];
+  let total: number;
 
-  if (saleIds.length === 0) {
-    return { sales: [], total: 0, page, limit, totalPages: 0 };
+  if (q) {
+    const candidates = await client.unsafe(
+      "SELECT id, customer_name, staff_name FROM sales ORDER BY timestamp DESC",
+    );
+    const ranked = fuzzyRank(candidates, ["id", "customer_name", "staff_name"], q);
+    total = ranked.length;
+    idList = ranked
+      .slice(offset, offset + limit)
+      .map((r: Record<string, unknown>) => r.id as string);
+  } else {
+    // No search: paginate directly in SQL (cheap, uses the timestamp index).
+    const saleIds = await client.unsafe(
+      "SELECT id FROM sales ORDER BY timestamp DESC LIMIT $1 OFFSET $2",
+      [limit, offset],
+    );
+    const countResult = await client.unsafe("SELECT COUNT(*) as count FROM sales");
+    total = Number(countResult[0]?.count) || 0;
+    idList = saleIds.map((r: Record<string, unknown>) => r.id as string);
+  }
+
+  if (idList.length === 0) {
+    return { sales: [], total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   // Fetch all sales + their items in ONE query using JOIN
-  const idList = saleIds.map((r: Record<string, unknown>) => r.id as string);
   const placeholders = idList.map((_: string, i: number) => `$${i + 1}`).join(", ");
   const joinedRows = await client.unsafe(
     `SELECT s.*, si.id as si_id, si.product_id as si_product_id, si.brand as si_brand,

@@ -2111,26 +2111,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // === SALES ROUTES ===
 
-    // GET /api/sales with pagination
+    // GET /api/sales with pagination + optional free-text search
+    // (search: ?q=...  -- invoice no / customer / staff, matched across ALL
+    // sales rather than only the rows on the current page.)
     if (method === "GET" && (url === "/api/sales" || url?.startsWith("/api/sales?"))) {
       const { page, limit } = getPageLimit(req);
       const offset = (page - 1) * limit;
+      const q = ((req.query as Record<string, string>)?.q || "").trim();
 
-      // Use a single JOIN query instead of N+1 queries
-      // 1) Get paginated sale IDs first (lightweight)
-      const saleIds = await query(
-        `SELECT id FROM sales ORDER BY timestamp DESC LIMIT $1 OFFSET $2`,
-        [limit, offset],
-      );
-      const countResult = await query("SELECT COUNT(*) as count FROM sales");
-      const total = Number(countResult[0]?.count) || 0;
+      // Search spans the whole table, then paginate the ranked ids in memory
+      // (same Fuse engine/threshold as src/server/customers.ts and the client).
+      let idList: string[];
+      let total: number;
 
-      if (saleIds.length === 0) {
-        return res.status(200).json({ sales: [], total: 0, page, limit, totalPages: 0 });
+      if (q) {
+        const candidates = await query(
+          `SELECT id, customer_name, staff_name FROM sales ORDER BY timestamp DESC`,
+        );
+        const ranked = fuzzyRank(candidates, ["id", "customer_name", "staff_name"], q);
+        total = ranked.length;
+        idList = ranked
+          .slice(offset, offset + limit)
+          .map((r: Record<string, unknown>) => r.id as string);
+      } else {
+        // No search: paginate directly in SQL (efficient).
+        const saleIds = await query(
+          `SELECT id FROM sales ORDER BY timestamp DESC LIMIT $1 OFFSET $2`,
+          [limit, offset],
+        );
+        const countResult = await query("SELECT COUNT(*) as count FROM sales");
+        total = Number(countResult[0]?.count) || 0;
+        idList = saleIds.map((r: Record<string, unknown>) => r.id as string);
       }
 
-      // 2) Fetch all sales + their items in ONE query using JOIN
-      const idList = saleIds.map((r: Record<string, unknown>) => r.id as string);
+      if (idList.length === 0) {
+        return res
+          .status(200)
+          .json({ sales: [], total, page, limit, totalPages: Math.ceil(total / limit) });
+      }
+
+      // Fetch all sales + their items in ONE query using JOIN
       const placeholders = idList.map((_: string, i: number) => `$${i + 1}`).join(", ");
       const joinedRows = await query(
         `SELECT s.*, si.id as si_id, si.product_id as si_product_id, si.brand as si_brand,
@@ -2553,13 +2573,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // === QUOTATION ROUTES ===
 
-    // GET /api/quotations?page=&limit=&status=
+    // GET /api/quotations?page=&limit=&status=&q=
     if (method === "GET" && (url === "/api/quotations" || url?.startsWith("/api/quotations?"))) {
       try {
         const page = parseInt((req.query as Record<string, string>)?.page || "1", 10) || 1;
         const limit = parseInt((req.query as Record<string, string>)?.limit || "20", 10) || 20;
         const status = (req.query as Record<string, string>)?.status as string | undefined;
-        const result = await getAllQuotationsHandler(page, limit, status);
+        const q = ((req.query as Record<string, string>)?.q || "").trim();
+        const result = await getAllQuotationsHandler(page, limit, status, q);
         return res.status(200).json(result);
       } catch (err) {
         console.error("Get quotations error:", err);
